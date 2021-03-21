@@ -6,11 +6,9 @@ class Graphics(gc: GraphicsContext) {
 
   def setLineType(t: LineType): Unit = ???
 
-  def setDrawColor(c: Int): Unit = ???
+  def setColor(c: Int): Unit = ???
 
   def setFont(f: Font): Unit = ???
-
-  def setFillColor(c: Int): Unit = ???
 
   def drawLine(x1: Double, y1: Double, x2: Double, y2: Double): Unit = ???
 

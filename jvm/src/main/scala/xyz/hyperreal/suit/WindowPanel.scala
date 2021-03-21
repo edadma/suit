@@ -26,6 +26,7 @@ class WindowPanel(win: Window) extends Panel {
     g.setRenderingHints(new RenderingHints(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON))
     g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
 
+    gc.graphics2D = g
   }
 
 }
