@@ -39,4 +39,7 @@ class JVMGraphicsContext extends GraphicsContext {
     graphics2D.drawGlyphVector(gs.gv, xp.toFloat, yp.toFloat)
   }
 
+  def drawGlyphString(g: GlyphString, x: Double, y: Double): Unit =
+    graphics2D.drawGlyphVector(g.asInstanceOf[JVMGlyphString].gv, x.toFloat, y.toFloat)
+
 }

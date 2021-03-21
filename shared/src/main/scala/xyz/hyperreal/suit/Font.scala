@@ -1,6 +1,6 @@
 package xyz.hyperreal.suit
 
-abstract class Font(typeface: String, size: Double, style: TextStyle) {
+trait Font /*(typeface: String, size: Double, style: TextStyle)*/ {
 
   def getGlyphString(s: String): GlyphString
 

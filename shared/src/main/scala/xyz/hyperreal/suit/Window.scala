@@ -8,4 +8,5 @@ class Window extends Composite {
   def listenTo(ps: Publisher*): Unit = ???
 
   val reactions: Reactions = null
+  var font: Font = _
 }

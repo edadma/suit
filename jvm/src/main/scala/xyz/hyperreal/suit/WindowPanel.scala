@@ -8,8 +8,6 @@ import scala.swing.Swing._
 
 class WindowPanel(win: Window) extends Panel {
 
-  private val FRC = new FontRenderContext(null, true, false)
-
   private val STYLE_MAP =
     Map[TextStyle, Int](
       TextStyle.PLAIN -> Font.PLAIN,
