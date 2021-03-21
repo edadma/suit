@@ -7,5 +7,5 @@ class Window extends Composite {
 
   def listenTo(ps: Publisher*): Unit = ???
 
-  val reactions: Reactions = _
+  val reactions: Reactions = null
 }

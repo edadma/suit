@@ -14,7 +14,15 @@ case object ABOVE extends TextPosition
 case object BASELINE extends TextPosition
 
 abstract class TextStyle(val name: String)
-case object ITALIC extends TextStyle("italic")
-case object BOLD extends TextStyle("bold")
-case object BOLD_ITALIC extends TextStyle("bold italic")
-case object PLAIN extends TextStyle("plain")
+
+object TextStyle {
+
+  case object ITALIC extends TextStyle("italic")
+
+  case object BOLD extends TextStyle("bold")
+
+  case object BOLD_ITALIC extends TextStyle("bold italic")
+
+  case object PLAIN extends TextStyle("plain")
+
+}

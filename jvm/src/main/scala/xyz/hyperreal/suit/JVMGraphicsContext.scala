@@ -1,9 +1,20 @@
 package xyz.hyperreal.suit
 
-class PlatformGraphics(lineWidth: Double, lineType: LineType, drawColor: Int, font: Font)
-    extends Graphics(lineWidth, lineType, drawColor, font) {
+import scala.swing.Graphics2D
 
-  var fillColor: Int = drawColor
+class JVMGraphicsContext extends GraphicsContext {
+
+  var g: Graphics2D = _
+
+  def setLineWidth(n: Double): Unit = ???
+
+  def setLineType(t: LineType): Unit = ???
+
+  def setDrawColor(c: Int): Unit = ???
+
+  def setFont(f: Font): Unit = ???
+
+  def setFillColor(c: Int): Unit = ???
 
   def drawLine(x1: Double, y1: Double, x2: Double, y2: Double): Unit = ???
 

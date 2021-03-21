@@ -1,19 +1,22 @@
 package xyz.hyperreal.suit
 
-abstract class Graphics {
+class Graphics(gc: GraphicsContext) {
 
-  var lineWidth: Double
-  var lineType: LineType
-  var drawColor: Int
-  var font: Font
+  def setLineWidth(n: Double): Unit = ???
 
-  var fillColor: Int
+  def setLineType(t: LineType): Unit = ???
 
-  def drawLine(x1: Double, y1: Double, x2: Double, y2: Double): Unit
+  def setDrawColor(c: Int): Unit = ???
 
-  def drawRectangle(x: Double, y: Double, w: Double, h: Double): Unit
+  def setFont(f: Font): Unit = ???
 
-  def fillRectangle(x: Double, y: Double, w: Double, h: Double): Unit
+  def setFillColor(c: Int): Unit = ???
+
+  def drawLine(x1: Double, y1: Double, x2: Double, y2: Double): Unit = ???
+
+  def drawRectangle(x: Double, y: Double, w: Double, h: Double): Unit = ???
+
+  def fillRectangle(x: Double, y: Double, w: Double, h: Double): Unit = ???
 
 //  def drawRoundRectangle(x1: Double, y1: Double, x2: Double, y2: Double): Unit
 //
@@ -27,7 +30,7 @@ abstract class Graphics {
 //
 //  def fillCircle(x: Double, y: Double, r: Double): Unit
 
-  def drawText(s: String, x: Double, y: Double): Unit
+  def drawText(s: String, x: Double, y: Double): Unit = ???
 
 }
 
