@@ -1,20 +1,25 @@
 package xyz.hyperreal.suit
 
-class Graphics(gc: GraphicsContext) {
+class Graphics(cx: Double, cy: Double, gc: GraphicsContext) {
 
-  def setLineWidth(n: Double): Unit = ???
+  private var font: Font = null
 
-  def setLineType(t: LineType): Unit = ???
+  def setLineWidth(n: Double): Unit = gc.setLineWidth(n)
 
-  def setColor(c: Int): Unit = ???
+  def setLineType(t: LineType): Unit = gc.setLineType(t)
 
-  def setFont(f: Font): Unit = ???
+  def setColor(c: Int): Unit = gc.setColor(c)
 
-  def drawLine(x1: Double, y1: Double, x2: Double, y2: Double): Unit = ???
+  def setFont(f: Font): Unit = {
+    font = f
+    gc.setFont(f)
+  }
 
-  def drawRectangle(x: Double, y: Double, w: Double, h: Double): Unit = ???
+  def drawLine(x1: Double, y1: Double, x2: Double, y2: Double): Unit = gc.drawLine(cx + x1, cy + y1, cx + x2, cy + y2)
 
-  def fillRectangle(x: Double, y: Double, w: Double, h: Double): Unit = ???
+  def drawRectangle(x: Double, y: Double, w: Double, h: Double): Unit = gc.drawRectangle(cx + x, cy + y, w, h)
+
+  def fillRectangle(x: Double, y: Double, w: Double, h: Double): Unit = gc.fillRectangle(cx + x, cy + y, w, h)
 
 //  def drawRoundRectangle(x1: Double, y1: Double, x2: Double, y2: Double): Unit
 //
@@ -28,7 +33,7 @@ class Graphics(gc: GraphicsContext) {
 //
 //  def fillCircle(x: Double, y: Double, r: Double): Unit
 
-  def drawText(s: String, x: Double, y: Double): Unit = ???
+  def drawText(s: String, x: Double, y: Double): Unit = gc.drawGlyphString(font.getGlyphString(s), cx + x, cy + y)
 
 }
 

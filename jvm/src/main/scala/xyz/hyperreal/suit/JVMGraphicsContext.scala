@@ -27,6 +27,16 @@ class JVMGraphicsContext extends GraphicsContext {
   def fillRectangle(x: Double, y: Double, w: Double, h: Double): Unit =
     graphics2D.fill(new Rectangle2D.Double(x, y, w, h))
 
-  def drawText(s: String, x: Double, y: Double): Unit = ???
+  def drawGlyphString(gs: JVMGlyphString, x: Double, y: Double, pos: TextPosition): Unit = {
+    val (xp, yp) =
+      pos match {
+        case TextPosition.ABOVE => (x - gs.vb.getCenterX, y)
+        case TextPosition.BELOW => (x - gs.vb.getCenterX, y + gs.vb.getHeight)
+        case TextPosition.RIGHT => (x - gs.vb.getX, y - gs.vb.getCenterY)
+        case TextPosition.LEFT  => (x - gs.vb.getWidth - gs.vb.getX, y - gs.vb.getCenterY)
+      }
+
+    graphics2D.drawGlyphVector(gs.gv, xp.toFloat, yp.toFloat)
+  }
 
 }
