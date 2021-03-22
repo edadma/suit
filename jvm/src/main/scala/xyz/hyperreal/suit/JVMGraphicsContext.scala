@@ -1,6 +1,6 @@
 package xyz.hyperreal.suit
 
-import java.awt.geom.{Line2D, Rectangle2D, RoundRectangle2D}
+import java.awt.geom.{Line2D, Rectangle2D}
 import java.awt.{BasicStroke, Color}
 import scala.swing.Graphics2D
 
@@ -15,7 +15,7 @@ class JVMGraphicsContext extends GraphicsContext {
 
   def setColor(c: Int): Unit = graphics2D.setColor(new Color(c))
 
-  def setFont(f: Font): Unit = ???
+  def setFont(f: Font): Unit = graphics2D.setFont(f.asInstanceOf[JVMFont].font)
 
   def drawLine(x1: Double, y1: Double, x2: Double, y2: Double): Unit =
     graphics2D.draw(new Line2D.Double(x1, y1, x2, y2))

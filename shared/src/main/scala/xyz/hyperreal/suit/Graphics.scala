@@ -33,7 +33,9 @@ class Graphics(cx: Double, cy: Double, gc: GraphicsContext) {
 //
 //  def fillCircle(x: Double, y: Double, r: Double): Unit
 
-  def drawText(s: String, x: Double, y: Double): Unit = gc.drawGlyphString(font.getGlyphString(s), cx + x, cy + y)
+  def drawText(s: String, x: Double, y: Double): Unit = drawGlyphString(font.getGlyphString(s), x, y)
+
+  def drawGlyphString(gs: GlyphString, x: Double, y: Double): Unit = gc.drawGlyphString(gs, cx + x, cy + y)
 
 }
 

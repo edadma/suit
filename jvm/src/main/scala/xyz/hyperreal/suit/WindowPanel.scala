@@ -8,12 +8,6 @@ import scala.swing.Swing._
 
 class WindowPanel(win: Window) extends Panel {
 
-  private val STYLE_MAP =
-    Map[TextStyle, Int](
-      TextStyle.PLAIN -> Font.PLAIN,
-      TextStyle.ITALIC -> Font.ITALIC
-    )
-
   val gc = new JVMGraphicsContext
 
   override protected def paintComponent(g: Graphics2D): Unit = {

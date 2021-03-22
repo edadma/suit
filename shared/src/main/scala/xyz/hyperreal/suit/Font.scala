@@ -1,8 +1,17 @@
 package xyz.hyperreal.suit
 
-trait Font /*(typeface: String, size: Double, style: TextStyle)*/ {
+trait Font {
 
   def getGlyphString(s: String): GlyphString
+
+}
+
+object Font {
+
+  def apply(typeface: String, size: Double, style: TextStyle): Font =
+    PlatformDependent.getFont(typeface: String, size: Double, style: TextStyle)
+
+  def default: Font = apply("Nimbus Sans L", 14, TextStyle.PLAIN)
 
 }
 

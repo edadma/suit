@@ -1,3 +1,3 @@
 package xyz.hyperreal.suit
 
-class Canvas extends Component
+class Canvas extends Nonreactive

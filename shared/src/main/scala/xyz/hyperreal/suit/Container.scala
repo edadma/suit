@@ -2,18 +2,18 @@ package xyz.hyperreal.suit
 
 import scala.collection.mutable.ArrayBuffer
 
-abstract class Container extends Component {
+abstract class Container extends Reactive {
 
   protected val limit = false
 
-  private class Contents extends ArrayBuffer[Component] {
-    override def addOne(elem: Component): Contents = {
+  class Contents extends ArrayBuffer[Component] {
+    override def addOne(elem: Component): Contents.this.type = {
       require(!limit || isEmpty, "only one component can be added")
       super.addOne(elem)
     }
   }
 
-  protected val contents = new Contents
+  val contents = new Contents
 
   private[suit] def layout(): Unit
 
