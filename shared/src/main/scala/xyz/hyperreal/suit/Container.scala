@@ -15,7 +15,17 @@ abstract class Container extends Reactive {
 
   val contents = new Contents
 
-  private[suit] def layout(): Unit
+  def layout(): Unit = {
+    for (c <- contents)
+      c.layout()
+  }
+
+  override def paint(g: Graphics): Unit = {
+    super.paint(g)
+
+    for (c <- contents)
+      c.paint(new Graphics(c.x, c.y, g.gc))
+  }
 
 }
 
@@ -23,10 +33,13 @@ class Composite extends Container {
 
   override protected val limit: Boolean = true
 
-  private[suit] def layout(): Unit = {
+  override def layout(): Unit = {
+    super.layout()
     contents.head.x = 0
     contents.head.y = 0
     contents.head.parent = this
+    width = contents.head.width
+    height = contents.head.height
   }
 
 }

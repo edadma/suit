@@ -27,19 +27,19 @@ class JVMGraphicsContext extends GraphicsContext {
   def fillRectangle(x: Double, y: Double, w: Double, h: Double): Unit =
     graphics2D.fill(new Rectangle2D.Double(x, y, w, h))
 
-  def drawGlyphString(gs: JVMGlyphString, x: Double, y: Double, pos: TextPosition): Unit = {
+  def drawGlyphString(gs: GlyphString, x: Double, y: Double, pos: TextPosition): Unit = {
+    val jgs = gs.asInstanceOf[JVMGlyphString]
+
     val (xp, yp) =
       pos match {
-        case TextPosition.ABOVE => (x - gs.vb.getCenterX, y)
-        case TextPosition.BELOW => (x - gs.vb.getCenterX, y + gs.vb.getHeight)
-        case TextPosition.RIGHT => (x - gs.vb.getX, y - gs.vb.getCenterY)
-        case TextPosition.LEFT  => (x - gs.vb.getWidth - gs.vb.getX, y - gs.vb.getCenterY)
+        case TextPosition.ABOVE       => (x - jgs.vb.getCenterX, y)
+        case TextPosition.BELOW       => (x - jgs.vb.getCenterX, y + jgs.vb.getHeight)
+        case TextPosition.RIGHT       => (x - jgs.vb.getX, y - jgs.vb.getCenterY)
+        case TextPosition.BELOW_RIGHT => (x - jgs.vb.getX, y + jgs.vb.getHeight)
+        case TextPosition.LEFT        => (x - jgs.vb.getWidth - jgs.vb.getX, y - jgs.vb.getCenterY)
       }
 
-    graphics2D.drawGlyphVector(gs.gv, xp.toFloat, yp.toFloat)
+    graphics2D.drawGlyphVector(jgs.gv, xp.toFloat, yp.toFloat)
   }
-
-  def drawGlyphString(g: GlyphString, x: Double, y: Double): Unit =
-    graphics2D.drawGlyphVector(g.asInstanceOf[JVMGlyphString].gv, x.toFloat, y.toFloat)
 
 }

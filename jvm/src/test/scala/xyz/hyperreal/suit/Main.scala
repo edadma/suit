@@ -5,7 +5,7 @@ import scala.swing.{Frame, MainFrame, SimpleSwingApplication}
 object Main extends SimpleSwingApplication {
   val w =
     new Window {
-      contents += new Text("OK")
+      contents += new Text("Some Text asdfasdfasdfsadfasdf")
     }
 
   def top: Frame =

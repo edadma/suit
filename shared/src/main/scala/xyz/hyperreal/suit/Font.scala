@@ -11,7 +11,7 @@ object Font {
   def apply(typeface: String, size: Double, style: TextStyle): Font =
     PlatformDependent.getFont(typeface: String, size: Double, style: TextStyle)
 
-  def default: Font = apply("Nimbus Sans L", 14, TextStyle.PLAIN)
+  def default: Font = apply("Nimbus Sans L", 18, TextStyle.PLAIN)
 
 }
 
@@ -22,6 +22,7 @@ object TextPosition {
   case object RIGHT extends TextPosition
   case object LEFT extends TextPosition
   case object BELOW extends TextPosition
+  case object BELOW_RIGHT extends TextPosition
   case object ABOVE extends TextPosition
   case object BASELINE extends TextPosition
 

@@ -1,14 +1,15 @@
 package xyz.hyperreal.suit
 
-import java.awt.{BasicStroke, Color, Font, RenderingHints}
-import java.awt.font.{FontRenderContext, GlyphVector}
-import java.awt.geom.{Ellipse2D, Path2D, Rectangle2D}
+import java.awt.RenderingHints
 import scala.swing.{Graphics2D, Panel}
 import scala.swing.Swing._
 
 class WindowPanel(win: Window) extends Panel {
 
   val gc = new JVMGraphicsContext
+
+  win.layout()
+  preferredSize = (win.width.toInt, win.height.toInt)
 
   override protected def paintComponent(g: Graphics2D): Unit = {
     super.paintComponent(g)
@@ -19,6 +20,7 @@ class WindowPanel(win: Window) extends Panel {
     g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
 
     gc.graphics2D = g
+    win.paint(new Graphics(0, 0, gc))
   }
 
 }

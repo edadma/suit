@@ -7,8 +7,6 @@ abstract class Component extends Publisher {
   private[suit] var parent: Component = _
   private[suit] var x: Double = _
   private[suit] var y: Double = _
-  private[suit] var minwidth: Double = 0
-  private[suit] var minheight: Double = 0
   private[suit] var width: Double = 0
   private[suit] var height: Double = 0
 
@@ -22,12 +20,14 @@ abstract class Component extends Publisher {
     (x1 + x, y1 + y)
   }
 
-  private[suit] def size(w: Double, h: Double): Unit = {
+  def size(w: Double, h: Double): Unit = {
     width = w
     height = h
   }
 
-  private[suit] def paint(g: Graphics): Unit = {
+  def layout(): Unit
+
+  def paint(g: Graphics): Unit = {
     g.setColor(backgroundColor)
     g.fillRectangle(0, 0, width, height)
     g.setColor(foregroundColor)
@@ -36,7 +36,7 @@ abstract class Component extends Publisher {
 
 }
 
-class Nonreactive extends Component {
+abstract class Nonreactive extends Component {
 
   private def na = sys.error("non-reactive component")
 
@@ -64,7 +64,7 @@ class Nonreactive extends Component {
 
 }
 
-class Reactive extends Component {
+abstract class Reactive extends Component {
 
   val listening = new ArrayBuffer[Reactor]
 

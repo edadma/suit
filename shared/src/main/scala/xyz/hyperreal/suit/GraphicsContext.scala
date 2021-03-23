@@ -16,6 +16,6 @@ trait GraphicsContext {
 
   def fillRectangle(x: Double, y: Double, w: Double, h: Double): Unit
 
-  def drawGlyphString(g: GlyphString, x: Double, y: Double): Unit
+  def drawGlyphString(gs: GlyphString, x: Double, y: Double, pos: TextPosition): Unit
 
 }

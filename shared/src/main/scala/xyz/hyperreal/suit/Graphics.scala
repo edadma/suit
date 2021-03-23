@@ -1,6 +1,6 @@
 package xyz.hyperreal.suit
 
-class Graphics(cx: Double, cy: Double, gc: GraphicsContext) {
+class Graphics(cx: Double, cy: Double, val gc: GraphicsContext) {
 
   private var font: Font = null
 
@@ -35,7 +35,8 @@ class Graphics(cx: Double, cy: Double, gc: GraphicsContext) {
 
   def drawText(s: String, x: Double, y: Double): Unit = drawGlyphString(font.getGlyphString(s), x, y)
 
-  def drawGlyphString(gs: GlyphString, x: Double, y: Double): Unit = gc.drawGlyphString(gs, cx + x, cy + y)
+  def drawGlyphString(gs: GlyphString, x: Double, y: Double): Unit =
+    gc.drawGlyphString(gs, cx + x, cy + y, TextPosition.BELOW_RIGHT)
 
 }
 
