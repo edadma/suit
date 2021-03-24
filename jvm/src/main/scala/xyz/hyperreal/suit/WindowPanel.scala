@@ -3,6 +3,7 @@ package xyz.hyperreal.suit
 import java.awt.RenderingHints
 import scala.swing.{Graphics2D, Panel}
 import scala.swing.Swing._
+import scala.swing.event.MousePressed
 
 class WindowPanel(win: Window) extends Panel {
 
@@ -10,6 +11,12 @@ class WindowPanel(win: Window) extends Panel {
 
   win.layout()
   preferredSize = (win.width.toInt, win.height.toInt)
+
+  listenTo(mouse.clicks)
+
+  reactions += {
+    case MousePressed(_, p, _, _, _) => win.mouse publish MouseDown(p.getX, p.getY)
+  }
 
   override protected def paintComponent(g: Graphics2D): Unit = {
     super.paintComponent(g)

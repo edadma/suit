@@ -3,9 +3,9 @@ package xyz.hyperreal.suit
 import scala.swing.{Frame, MainFrame, SimpleSwingApplication}
 
 object Main extends SimpleSwingApplication {
-  val w =
+  val w: Window =
     new Window {
-      contents += new Text("Some Text asdfasdfasdfsadfasdf")
+      contents += new Button("OK")(())
     }
 
   def top: Frame =

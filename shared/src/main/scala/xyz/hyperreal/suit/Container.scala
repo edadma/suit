@@ -2,7 +2,7 @@ package xyz.hyperreal.suit
 
 import scala.collection.mutable.ArrayBuffer
 
-abstract class Container extends Reactive {
+abstract class Container extends Component {
 
   protected val limit = false
 
@@ -14,6 +14,16 @@ abstract class Container extends Reactive {
   }
 
   val contents = new Contents
+
+  listenTo(mouse)
+
+  reactions += {
+    case MouseDown(x, y) =>
+      contents.find(_.contains(x, y)) match {
+        case None    =>
+        case Some(c) => c.mouse publish MouseDown(x - c.x, y - c.y)
+      }
+  }
 
   def layout(): Unit = {
     for (c <- contents)

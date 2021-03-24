@@ -4,11 +4,16 @@ import scala.collection.mutable.ArrayBuffer
 
 trait Publisher extends Reactor {
 
-  def publish(e: Event): Unit
+  val listening = new ArrayBuffer[Reactor]
 
-  def subscribe(r: Reactor): Unit
+  def publish(e: Event): Unit = {
+    for (r <- listening)
+      r.reactions(e)
+  }
 
-  def unsubscribe(r: Reactor): Unit
+  def subscribe(r: Reactor): Unit = listening += r
+
+  def unsubscribe(r: Reactor): Unit = listening -= r
 
   //  val listening = new ArrayBuffer[Reactor]
 //
