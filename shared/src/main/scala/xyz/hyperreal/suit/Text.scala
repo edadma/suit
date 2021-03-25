@@ -1,6 +1,6 @@
 package xyz.hyperreal.suit
 
-class Text(s: String, padding: Double = 10) extends Nonreactive {
+class Text(s: String, padding: Double = 10) extends Component {
 
   private val gs = font.getGlyphString(s)
 

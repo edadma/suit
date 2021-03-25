@@ -2,7 +2,7 @@ package xyz.hyperreal.suit
 
 import scala.collection.mutable.ArrayBuffer
 
-trait Publisher extends Reactor {
+class Publisher extends Reactor {
 
   val listening = new ArrayBuffer[Reactor]
 

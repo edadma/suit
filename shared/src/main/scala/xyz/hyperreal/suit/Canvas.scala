@@ -1,6 +1,6 @@
 package xyz.hyperreal.suit
 
-class Canvas extends Nonreactive {
+class Canvas extends Component {
 
   def layout(): Unit = ???
 

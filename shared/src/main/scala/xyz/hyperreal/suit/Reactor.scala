@@ -2,7 +2,7 @@ package xyz.hyperreal.suit
 
 import scala.collection.mutable.ArrayBuffer
 
-trait Reactor {
+class Reactor {
 
   def deafTo(ps: Publisher*): Unit =
     for (p <- ps)
