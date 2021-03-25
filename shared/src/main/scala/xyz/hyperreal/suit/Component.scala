@@ -1,7 +1,5 @@
 package xyz.hyperreal.suit
 
-import scala.collection.mutable.ArrayBuffer
-
 abstract class Component extends Publisher {
 
   private[suit] var parent: Component = _

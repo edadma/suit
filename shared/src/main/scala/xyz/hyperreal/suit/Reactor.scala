@@ -21,7 +21,7 @@ trait Reactor {
     def apply(e: Event): Unit =
       handlers.find(_.isDefinedAt(e)) match {
         case Some(r) => r(e)
-        case None    => sys.error(s"can't react to event: $e")
+        case None    =>
       }
 
     def +=(r: Reaction): Reactions = {

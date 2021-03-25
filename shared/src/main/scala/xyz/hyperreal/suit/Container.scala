@@ -18,10 +18,10 @@ abstract class Container extends Component {
   listenTo(mouse)
 
   reactions += {
-    case MouseDown(x, y) =>
-      contents.find(_.contains(x, y)) match {
+    case e: MousePositionalEvent =>
+      contents.find(_.contains(e.x, e.y)) match {
         case None    =>
-        case Some(c) => c.mouse publish MouseDown(x - c.x, y - c.y)
+        case Some(c) => c.mouse publish e(e.x - c.x, e.y - c.y)
       }
   }
 
