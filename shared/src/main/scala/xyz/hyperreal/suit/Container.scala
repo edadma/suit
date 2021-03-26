@@ -9,6 +9,7 @@ abstract class Container extends Component {
   class Contents extends ArrayBuffer[Component] {
     override def addOne(elem: Component): Contents.this.type = {
       require(!limit || isEmpty, "only one component can be added")
+      elem.parent = Container.this
       super.addOne(elem)
     }
   }
@@ -59,7 +60,9 @@ abstract class Container extends Component {
     super.paint(g)
 
     for (c <- contents) {
-      c.paint(new Graphics(c.x, c.y, g.gc))
+      val (sx, sy) = c.screen
+
+      c.paint(new Graphics(sx, sy, g.gc))
     }
   }
 

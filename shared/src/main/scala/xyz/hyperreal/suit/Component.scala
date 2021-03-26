@@ -15,8 +15,8 @@ abstract class Component extends Reactor {
   val mouse: Publisher = new Publisher
   val keyboard: Publisher = new Publisher
 
-  def screen(x: Double, y: Double): (Double, Double) = {
-    val (x1, y1) = parent.screen(this.x, this.y)
+  def screen: (Double, Double) = {
+    val (x1, y1) = parent.screen
 
     (x1 + x, y1 + y)
   }

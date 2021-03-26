@@ -16,6 +16,7 @@ class Button(text: String)(action: => Unit) extends Component {
   }
 
   override def paint(g: Graphics): Unit = {
+    println(text, x, y, width, height)
     super.paint(g)
     g.drawGlyphString(gs, padding, padding)
     g.drawRectangle(0, 0, width - thickness, height - thickness)
