@@ -1,6 +1,6 @@
 package xyz.hyperreal.suit
 
-class Horizontal(interspace: Double = 5) extends Container {
+class Horizontal(interspace: Double = 10) extends Container {
 
   override def layout(): Unit = {
     super.layout()

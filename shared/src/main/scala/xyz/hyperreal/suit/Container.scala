@@ -59,7 +59,6 @@ abstract class Container extends Component {
     super.paint(g)
 
     for (c <- contents) {
-      println(c.x, c.y)
       c.paint(new Graphics(c.x, c.y, g.gc))
     }
   }
