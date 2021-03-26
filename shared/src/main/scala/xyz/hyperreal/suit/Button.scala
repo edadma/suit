@@ -14,6 +14,8 @@ class Button(text: String)(action: => Unit) extends Component {
   reactions += {
     case MouseClick(_, _) => action
     case MouseDown(x, y)  => println(s"mouse down: $x, $y")
+    case MouseEnter       => println("enter")
+    case MouseExit        => println("exit")
   }
 
   override def paint(g: Graphics): Unit = {

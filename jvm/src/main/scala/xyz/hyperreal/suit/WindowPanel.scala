@@ -3,7 +3,7 @@ package xyz.hyperreal.suit
 import java.awt.RenderingHints
 import scala.swing.{Graphics2D, Panel}
 import scala.swing.Swing._
-import scala.swing.event.{MouseClicked, MouseMoved, MousePressed, MouseReleased}
+import scala.swing.event.{MouseClicked, MouseExited, MouseMoved, MousePressed, MouseReleased}
 
 class WindowPanel(win: Window) extends Panel {
 
@@ -15,6 +15,7 @@ class WindowPanel(win: Window) extends Panel {
   listenTo(mouse.clicks, mouse.moves)
 
   reactions += {
+    case MouseExited(_, _, _)         => win.mouse publish MouseExit
     case MouseMoved(_, p, _)          => win.mouse publish MouseMove(p.getX, p.getY)
     case MouseClicked(_, p, _, _, _)  => win.mouse publish MouseClick(p.getX, p.getY)
     case MousePressed(_, p, _, _, _)  => win.mouse publish MouseDown(p.getX, p.getY)

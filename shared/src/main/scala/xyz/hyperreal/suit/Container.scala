@@ -14,11 +14,36 @@ abstract class Container extends Component {
   }
 
   val contents = new Contents
+  var within: Option[Component] = None
 
   listenTo(mouse)
 
   reactions += {
-    case e: MousePositionalEvent =>
+    case MouseExit if within.isDefined =>
+      within.get.mouse publish MouseExit
+      within = None
+    case MouseMove(x, y) =>
+      contents.find(_.contains(x, y)) match {
+        case None if within.isDefined =>
+          within.get.mouse publish MouseExit
+          within = None
+        case None =>
+        case Some(c) =>
+          within match {
+            case Some(cw) =>
+              if (c != cw) {
+                cw.mouse publish MouseExit
+                c.mouse publish MouseEnter
+                within = Some(c)
+              }
+            case None =>
+              c.mouse publish MouseEnter
+              within = Some(c)
+          }
+
+          c.mouse publish MouseMove(x - c.x, y - c.y)
+      }
+    case e: MouseButtonEvent =>
       contents.find(_.contains(e.x, e.y)) match {
         case None    =>
         case Some(c) => c.mouse publish e(e.x - c.x, e.y - c.y)
