@@ -18,11 +18,7 @@ class Reactor {
 
     def isDefinedAt(e: Event): Boolean = handlers.exists(_.isDefinedAt(e))
 
-    def apply(e: Event): Unit =
-      handlers.find(_.isDefinedAt(e)) match {
-        case Some(r) => r(e)
-        case None    =>
-      }
+    def apply(e: Event): Unit = handlers filter (_.isDefinedAt(e)) foreach (_(e))
 
     def +=(r: Reaction): Reactions = {
       handlers += r

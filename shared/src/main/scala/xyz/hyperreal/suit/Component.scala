@@ -1,6 +1,6 @@
 package xyz.hyperreal.suit
 
-abstract class Component extends Publisher {
+abstract class Component extends Reactor {
 
   var parent: Component = _
   var x: Double = _

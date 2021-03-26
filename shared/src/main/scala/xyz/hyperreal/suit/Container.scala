@@ -32,13 +32,13 @@ abstract class Container extends Component {
           within match {
             case Some(cw) =>
               if (c != cw) {
+                within = Some(c)
                 cw.mouse publish MouseExit
                 c.mouse publish MouseEnter
-                within = Some(c)
               }
             case None =>
-              c.mouse publish MouseEnter
               within = Some(c)
+              c.mouse publish MouseEnter
           }
 
           c.mouse publish MouseMove(x - c.x, y - c.y)
