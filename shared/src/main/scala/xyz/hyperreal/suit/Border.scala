@@ -1,6 +1,6 @@
 package xyz.hyperreal.suit
 
-abstract class Border(c: Component) extends Single(c) {}
+//abstract class Border(c: Component) extends Single(c) {}
 
 //class Padding(c: Component, padding: Double = 5) extends Border(c) {}
 //

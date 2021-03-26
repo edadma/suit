@@ -37,4 +37,10 @@ abstract class Component extends Publisher {
     g.setFont(font)
   }
 
+  object timer {
+    def start(action: => Unit, ms: Int): Unit = {}
+
+    def stop(): Unit = {}
+  }
+
 }

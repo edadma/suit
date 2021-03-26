@@ -58,29 +58,10 @@ abstract class Container extends Component {
   override def paint(g: Graphics): Unit = {
     super.paint(g)
 
-    for (c <- contents)
+    for (c <- contents) {
+      println(c.x, c.y)
       c.paint(new Graphics(c.x, c.y, g.gc))
+    }
   }
-
-}
-
-class Composite extends Container {
-
-  override protected val limit: Boolean = true
-
-  override def layout(): Unit = {
-    super.layout()
-    contents.head.x = 0
-    contents.head.y = 0
-    contents.head.parent = this
-    width = contents.head.width
-    height = contents.head.height
-  }
-
-}
-
-class Single(c: Component) extends Composite {
-
-  contents += c
 
 }
