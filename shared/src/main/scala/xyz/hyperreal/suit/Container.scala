@@ -51,7 +51,9 @@ abstract class Container extends Component {
       }
   }
 
-  def layout(): Unit = {
+  override def layout(): Unit = {
+    super.layout()
+
     for (c <- contents)
       c.layout()
   }
@@ -62,7 +64,7 @@ abstract class Container extends Component {
     for (c <- contents) {
       val (sx, sy) = c.screen
 
-      c.paint(new Graphics(sx, sy, g.gc))
+      c.paintComponent(new Graphics(sx, sy, g.gc))
     }
   }
 

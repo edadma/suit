@@ -7,6 +7,8 @@ abstract class Component extends Reactor {
   var y: Double = _
   var width: Double = 0
   var height: Double = 0
+  var padding: Double = 0
+  var border: Border = EmptyBorder
 
   var backgroundColor: Int = Color.DARK_GRAY
   var foregroundColor: Int = Color.LIGHT_GRAY
@@ -16,9 +18,9 @@ abstract class Component extends Reactor {
   val keyboard: Publisher = new Publisher
 
   def screen: (Double, Double) = {
-    val (x1, y1) = parent.screen
+    val (px, py) = parent.screen
 
-    (x1 + x, y1 + y)
+    (px + x, py + y)
   }
 
   def contains(px: Double, py: Double): Boolean = x <= px && px < x + width && y <= py && py < y + height
@@ -28,11 +30,20 @@ abstract class Component extends Reactor {
     height = h
   }
 
-  def layout(): Unit
+  def layout(): Unit = {
+    println(border)
+    width = 2 * padding + border.left + border.right
+    height = 2 * padding + border.top + border.bottom
+  }
+
+  def paintComponent(g: Graphics): Unit = {
+//    border.paint(g, this)
+    paint(g.graphics(border.left + padding, border.top + padding))
+  }
 
   def paint(g: Graphics): Unit = {
     g.setColor(backgroundColor)
-    g.fillRectangle(0, 0, width, height)
+    g.fillRectangle(0, 0, width - padding - border.left, height - padding - border.top)
     g.setColor(foregroundColor)
     g.setFont(font)
   }

@@ -1,8 +1,17 @@
 package xyz.hyperreal.suit
 
-//abstract class Border(c: Component) extends Single(c) {}
+abstract class Border {
 
-//class Padding(c: Component, padding: Double = 5) extends Border(c) {}
-//
-//class SolidBorder(c: Component, thickness: Double = 1, color: Int = Color.LIGHT_GRAY, padding: Double = 5)
-//    extends Border(new Padding(c, padding)) {}
+  def top: Double
+
+  def right: Double
+
+  def left: Double
+
+  def bottom: Double
+
+  def paint(g: Graphics, c: Component): Unit
+
+  override def toString: String = s"border[$top, $right, $bottom, $left]"
+
+}

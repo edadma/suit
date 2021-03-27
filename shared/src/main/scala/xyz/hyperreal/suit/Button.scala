@@ -4,10 +4,10 @@ class Button(text: String)(action: => Unit) extends Component {
 
   private val gs = font.getGlyphString(text)
 
-  protected val padding: Double = 10
-  protected val thickness: Double = 1
   protected val hoverBackgroundColor: Int = Color.BLUE
   protected val mouseDownBackgroundColor: Int = Color.GREEN
+
+  border = new SolidBorder(1, foregroundColor)
 
   listenTo(mouse)
 
@@ -16,15 +16,16 @@ class Button(text: String)(action: => Unit) extends Component {
   }
 
   override def paint(g: Graphics): Unit = {
-    println(text, x, y, width, height)
     super.paint(g)
-    g.drawGlyphString(gs, padding, padding)
-    g.drawRectangle(0, 0, width - thickness, height - thickness)
+    g.drawGlyphString(gs, 0, 0, TextPosition.BELOW_RIGHT)
+//    g.drawGlyphString(gs, padding, padding, TextPosition.BELOW_RIGHT)
+//    g.drawRectangle(0, 0, width - thickness, height - thickness)
   }
 
-  def layout(): Unit = {
-    width = gs.width + 2 * padding
-    height = gs.height + 2 * padding
+  override def layout(): Unit = {
+    super.layout()
+    width += gs.width
+    height += gs.height
   }
 
 }

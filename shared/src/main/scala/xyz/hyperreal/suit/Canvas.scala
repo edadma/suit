@@ -1,7 +1,11 @@
 package xyz.hyperreal.suit
 
-class Canvas extends Component {
+class Canvas(w: Double, h: Double) extends Component {
 
-  def layout(): Unit = ???
+  override def layout(): Unit = {
+    super.layout()
+    width += w
+    height += h
+  }
 
 }

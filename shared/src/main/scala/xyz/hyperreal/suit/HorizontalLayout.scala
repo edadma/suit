@@ -1,6 +1,6 @@
 package xyz.hyperreal.suit
 
-class Vertical(interspace: Double = 10) extends Container {
+class HorizontalLayout(interspace: Double = 10) extends Container {
 
   override def layout(): Unit = {
     super.layout()
@@ -9,14 +9,14 @@ class Vertical(interspace: Double = 10) extends Container {
     height = 0
 
     for (c <- contents) {
-      c.x = 0
-      c.y = height
+      c.x = width
+      c.y = 0
       c.parent = this
-      width = c.width max width
-      height += c.height
+      width += c.width
+      height = c.height max height
 
       if (c != contents.last)
-        height += interspace
+        width += interspace
     }
   }
 

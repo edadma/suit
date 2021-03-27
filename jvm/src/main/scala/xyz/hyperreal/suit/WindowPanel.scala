@@ -31,7 +31,7 @@ class WindowPanel(win: Window) extends Panel {
     g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
 
     gc.graphics2D = g
-    win.paint(new Graphics(0, 0, gc))
+    win.paintComponent(new Graphics(0, 0, gc))
   }
 
 }

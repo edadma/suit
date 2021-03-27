@@ -6,11 +6,10 @@ class Box extends Container {
 
   override def layout(): Unit = {
     super.layout()
-    contents.head.x = 0
-    contents.head.y = 0
-    contents.head.parent = this
-    width = contents.head.width
-    height = contents.head.height
+    contents.head.x = padding
+    contents.head.y = padding
+    width += contents.head.width
+    height += contents.head.height
   }
 
 }
