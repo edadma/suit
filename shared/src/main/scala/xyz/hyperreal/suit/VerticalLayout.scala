@@ -1,20 +1,28 @@
 package xyz.hyperreal.suit
 
-class VerticalLayout(interspace: Double = 10) extends Container {
+class VerticalLayout(space: Double = 10) extends Container {
 
   override def layout(): Unit = {
     super.layout()
 
-    for (c <- contents) {
-      c.x = 0
-      c.y = height
-      c.parent = this
-      width = c.width max width
-      height += c.height
+    var wmax = 0D
+    var cy = 0D
 
-      if (c != contents.last)
-        height += interspace
+    for (c <- contents) {
+      c.x = padding + border.left
+      c.y = cy + padding + border.top
+      c.parent = this
+      wmax = c.width max wmax
+      height += c.height
+      cy += c.height
+
+      if (c != contents.last) {
+        height += space
+        cy += space
+      }
     }
+
+    width += wmax
   }
 
 }
