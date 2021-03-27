@@ -1,5 +1,6 @@
 package xyz.hyperreal.suit
 
+import java.awt.Color
 import java.awt.RenderingHints
 import scala.swing.{Graphics2D, Panel}
 import scala.swing.Swing._
@@ -8,9 +9,14 @@ import scala.swing.event.{MouseClicked, MouseExited, MouseMoved, MousePressed, M
 class WindowPanel(win: Window) extends Panel {
 
   val gc = new JVMGraphicsContext
+  val EDGE = 50
 
   win.layout()
-  preferredSize = (win.width.toInt, win.height.toInt)
+  win.x = EDGE
+  win.y = EDGE
+
+  preferredSize = (win.width.toInt + 2 * EDGE, win.height.toInt + 2 * EDGE)
+  background = Color.BLACK
 
   listenTo(mouse.clicks, mouse.moves)
 
@@ -31,7 +37,7 @@ class WindowPanel(win: Window) extends Panel {
     g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
 
     gc.graphics2D = g
-    win.paintComponent(new Graphics(0, 0, gc))
+    win.paintComponent(new Graphics(EDGE, EDGE, gc))
   }
 
 }

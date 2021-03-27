@@ -7,7 +7,7 @@ class Button(text: String)(action: => Unit) extends Component {
   protected val hoverBackgroundColor: Int = Color.BLUE
   protected val mouseDownBackgroundColor: Int = Color.GREEN
 
-  border = new SolidBorder(1, foregroundColor)
+  border = new SolidBorder(2, foregroundColor)
 
   listenTo(mouse)
 
@@ -23,6 +23,7 @@ class Button(text: String)(action: => Unit) extends Component {
   }
 
   override def layout(): Unit = {
+    println(border)
     super.layout()
     width += gs.width
     height += gs.height

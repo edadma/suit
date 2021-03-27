@@ -7,7 +7,7 @@ abstract class Component extends Reactor {
   var y: Double = _
   var width: Double = 0
   var height: Double = 0
-  var padding: Double = 0
+  var padding: Double = 5
   var border: Border = EmptyBorder
 
   var backgroundColor: Int = Color.DARK_GRAY
@@ -31,19 +31,21 @@ abstract class Component extends Reactor {
   }
 
   def layout(): Unit = {
-    println(border)
     width = 2 * padding + border.left + border.right
     height = 2 * padding + border.top + border.bottom
   }
 
   def paintComponent(g: Graphics): Unit = {
-//    border.paint(g, this)
+    border.paint(g, this)
     paint(g.graphics(border.left + padding, border.top + padding))
   }
 
   def paint(g: Graphics): Unit = {
-    g.setColor(backgroundColor)
-    g.fillRectangle(0, 0, width - padding - border.left, height - padding - border.top)
+//    g.setColor(backgroundColor)
+//    g.fillRectangle(0,
+//                    0,
+//                    width - 2 * padding - border.left - border.right,
+//                    height - 2 * padding - border.top - border.bottom)
     g.setColor(foregroundColor)
     g.setFont(font)
   }

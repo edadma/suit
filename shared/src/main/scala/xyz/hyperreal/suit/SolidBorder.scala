@@ -6,8 +6,10 @@ class SolidBorder(thickness: Double, color: Int) extends Border {
   val right: Double = thickness
   val bottom: Double = thickness
 
-  def paint(g: Graphics, c: Component): Unit = {
+  override def paint(g: Graphics, c: Component): Unit = {
+    super.paint(g, c)
     g.setColor(color)
+    g.setLineWidth(thickness)
     g.drawRectangle(0, 0, c.width, c.height)
   }
 }

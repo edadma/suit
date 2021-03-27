@@ -10,7 +10,10 @@ abstract class Border {
 
   def bottom: Double
 
-  def paint(g: Graphics, c: Component): Unit
+  def paint(g: Graphics, c: Component): Unit = {
+    g.setColor(c.backgroundColor)
+    g.fillRectangle(0, 0, c.width, c.height)
+  }
 
   override def toString: String = s"border[$top, $right, $bottom, $left]"
 

@@ -6,5 +6,5 @@ object EmptyBorder extends Border {
   val right: Double = 0
   val bottom: Double = 0
 
-  def paint(g: Graphics, c: Component): Unit = {}
+  override def paint(g: Graphics, c: Component): Unit = super.paint(g, c)
 }

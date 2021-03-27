@@ -7,8 +7,8 @@ class JVMGlyphString private[suit] (val gv: GlyphVector) extends GlyphString {
 
   val vb: Rectangle2D = gv.getVisualBounds
 
-  def width: Double = vb.getWidth
+  def width: Double = vb.getWidth.ceil
 
-  def height: Double = vb.getHeight
+  def height: Double = vb.getHeight.ceil
 
 }
