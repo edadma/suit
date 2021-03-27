@@ -12,8 +12,6 @@ class WindowPanel(win: Window) extends Panel {
   val EDGE = 50
 
   win.layout()
-  win.x = EDGE
-  win.y = EDGE
 
   preferredSize = (win.width.toInt + 2 * EDGE, win.height.toInt + 2 * EDGE)
   background = Color.BLACK
@@ -37,6 +35,8 @@ class WindowPanel(win: Window) extends Panel {
     g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
 
     gc.graphics2D = g
+    win.x = EDGE
+    win.y = EDGE
     win.paintComponent(new Graphics(EDGE, EDGE, gc))
   }
 

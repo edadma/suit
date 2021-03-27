@@ -23,7 +23,11 @@ abstract class Component extends Reactor {
     (px + x, py + y)
   }
 
-  def contains(px: Double, py: Double): Boolean = x <= px && px < x + width && y <= py && py < y + height
+  def contains(px: Double, py: Double): Boolean = {
+    val (sx, sy) = screen
+
+    sx <= px && px < sx + width && sy <= py && py < sy + height
+  }
 
   def size(w: Double, h: Double): Unit = {
     width = w
@@ -36,16 +40,12 @@ abstract class Component extends Reactor {
   }
 
   def paintComponent(g: Graphics): Unit = {
+    println(g)
     border.paint(g, this)
     paint(g.graphics(border.left + padding, border.top + padding))
   }
 
   def paint(g: Graphics): Unit = {
-//    g.setColor(backgroundColor)
-//    g.fillRectangle(0,
-//                    0,
-//                    width - 2 * padding - border.left - border.right,
-//                    height - 2 * padding - border.top - border.bottom)
     g.setColor(foregroundColor)
     g.setFont(font)
   }

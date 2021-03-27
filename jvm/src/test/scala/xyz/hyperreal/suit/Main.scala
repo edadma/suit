@@ -8,17 +8,17 @@ object Main extends SimpleSwingApplication {
       contents +=
 //        new VerticalLayout {
 //          contents +=
-//            new HorizontalLayout {
-//              contents +=
-        new Button("A Button")(println("a mouse click")) {
-          listenTo(mouse)
+        new HorizontalLayout {
+          contents +=
+            new Button("A Button")(println("a mouse click")) {
+              listenTo(mouse)
 
-          reactions += {
-            case MouseDown(x, y) => println(s"a mouse down: $x, $y")
-            case MouseEnter      => println("a enter")
-            case MouseExit       => println("a exit")
-          }
-        }
+              reactions += {
+                case MouseDown(x, y) => println(s"a mouse down: $x, $y")
+                case MouseEnter      => println("a enter")
+                case MouseExit       => println("a exit")
+              }
+            }
 //              contents +=
 //                new Button("BB Button")(println("b mouse click")) {
 //                  listenTo(mouse)
@@ -53,7 +53,7 @@ object Main extends SimpleSwingApplication {
 //                  }
 //                }
 //            }
-//        }
+        }
     }
 
   def top: Frame =

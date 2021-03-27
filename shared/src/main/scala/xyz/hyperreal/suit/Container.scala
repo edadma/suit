@@ -7,10 +7,10 @@ abstract class Container extends Component {
   protected val limit = false
 
   class Contents extends ArrayBuffer[Component] {
-    override def addOne(elem: Component): Contents.this.type = {
+    override def addOne(c: Component): Contents.this.type = {
       require(!limit || isEmpty, "only one component can be added")
-      elem.parent = Container.this
-      super.addOne(elem)
+      c.parent = Container.this
+      super.addOne(c)
     }
   }
 
@@ -64,7 +64,9 @@ abstract class Container extends Component {
     for (c <- contents) {
       val (sx, sy) = c.screen
 
-      c.paintComponent(new Graphics(sx, sy, g.gc))
+      println("container", x, y, sx, sy)
+
+      c.paintComponent(g)
     }
   }
 

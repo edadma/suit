@@ -5,12 +5,9 @@ class HorizontalLayout(interspace: Double = 10) extends Container {
   override def layout(): Unit = {
     super.layout()
 
-    width = 0
-    height = 0
-
     for (c <- contents) {
-      c.x = width
-      c.y = 0
+      c.x = width + padding + border.left
+      c.y = padding + border.top
       c.parent = this
       width += c.width
       height = c.height max height

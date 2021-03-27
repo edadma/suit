@@ -35,6 +35,8 @@ class Graphics(gx: Double, gy: Double, val gc: GraphicsContext) {
 //    gc.drawRectangle(gx + x, gy + y, gs.width, gs.height)
   }
 
+  override def toString: String = s"graphics[$gx, $gy]"
+
 }
 
 object Graphics {}
