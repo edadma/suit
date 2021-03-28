@@ -62,11 +62,8 @@ abstract class Container extends Component {
     border.paint(g, this)
 //    paint(g.graphics(border.left + padding, border.top + padding))
 
-    for (c <- contents) {
-      val (sx, sy) = c.screen
-
+    for (c <- contents)
       c.paintComponent(g.graphics(c.x, c.y))
-    }
   }
 
 //  override def paint(g: Graphics): Unit = {
