@@ -12,4 +12,5 @@ class Box extends Container {
     height += contents.head.height
   }
 
+  val name: String = "box"
 }

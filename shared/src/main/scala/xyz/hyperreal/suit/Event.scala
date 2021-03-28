@@ -16,3 +16,5 @@ case object MouseEnter extends MouseEvent
 case object MouseExit extends MouseEvent
 
 case class Keystroke(c: Char) extends Event
+
+case object Tick extends Event

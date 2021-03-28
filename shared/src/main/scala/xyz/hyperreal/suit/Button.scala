@@ -7,7 +7,7 @@ class Button(text: String)(action: => Unit) extends Component {
   protected val hoverBackgroundColor: Int = Color.BLUE
   protected val mouseDownBackgroundColor: Int = Color.GREEN
 
-  padding = 5
+  padding = 20
   border = new SolidBorder(1, foregroundColor)
 
   listenTo(mouse)

@@ -16,6 +16,7 @@ abstract class Component extends Reactor {
 
   val mouse: Publisher = new Publisher
   val keyboard: Publisher = new Publisher
+  val timer: TimerPublisher = new TimerPublisher
 
   def screen: (Double, Double) = {
     val (px, py) = parent.screen
@@ -47,12 +48,6 @@ abstract class Component extends Reactor {
   def paint(g: Graphics): Unit = {
     g.setColor(foregroundColor)
     g.setFont(font)
-  }
-
-  object timer {
-    def start(action: => Unit, ms: Int): Unit = {}
-
-    def stop(): Unit = {}
   }
 
 }

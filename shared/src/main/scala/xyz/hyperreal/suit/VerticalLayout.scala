@@ -12,9 +12,9 @@ class VerticalLayout(space: Double = 10) extends Container {
       c.x = padding + border.left
       c.y = cy + padding + border.top
       c.parent = this
-      wmax = c.width max wmax
       height += c.height
       cy += c.height
+      wmax = c.width max wmax
 
       if (c != contents.last) {
         height += space
@@ -25,4 +25,5 @@ class VerticalLayout(space: Double = 10) extends Container {
     width += wmax
   }
 
+  val name: String = "vert"
 }

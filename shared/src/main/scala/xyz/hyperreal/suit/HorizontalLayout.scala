@@ -25,4 +25,5 @@ class HorizontalLayout(space: Double = 10) extends Container {
     height += hmax
   }
 
+  val name: String = "hor"
 }

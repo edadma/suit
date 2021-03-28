@@ -4,6 +4,8 @@ import scala.collection.mutable.ArrayBuffer
 
 abstract class Container extends Component {
 
+  val name: String
+
   protected val limit = false
 
   class Contents extends ArrayBuffer[Component] {
@@ -23,9 +25,10 @@ abstract class Container extends Component {
     case MouseExit if within.isDefined =>
       within.get.mouse publish MouseExit
       within = None
-    case MouseMove(x, y) =>
-      contents.find(_.contains(x, y)) match {
+    case MouseMove(mx, my) =>
+      contents.find(_.contains(mx, my)) match {
         case None if within.isDefined =>
+          println(s"exit $mx, $my - $name[$x, $y]")
           within.get.mouse publish MouseExit
           within = None
         case None =>
@@ -39,10 +42,13 @@ abstract class Container extends Component {
               }
             case None =>
               within = Some(c)
+              println(s"enter $mx, $my - $name[$x, $y]")
               c.mouse publish MouseEnter
           }
 
-          c.mouse publish MouseMove(x - c.x, y - c.y)
+          val (sx, sy) = c.screen
+
+          c.mouse publish MouseMove(mx - sx, my - sy)
       }
     case e: MouseButtonEvent =>
       contents.find(_.contains(e.x, e.y)) match {
