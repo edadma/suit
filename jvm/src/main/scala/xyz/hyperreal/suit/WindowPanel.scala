@@ -37,7 +37,14 @@ class WindowPanel(win: Window) extends Panel {
     gc.graphics2D = g
     win.x = EDGE
     win.y = EDGE
-    win.paintComponent(new Graphics(EDGE, EDGE, gc))
+
+    def windowPaint(): Unit = win.paintComponent(new Graphics(EDGE, EDGE, gc))
+
+    win.repaintWindow = () => {
+      windowPaint()
+      repaint()
+    }
+    windowPaint()
   }
 
 }

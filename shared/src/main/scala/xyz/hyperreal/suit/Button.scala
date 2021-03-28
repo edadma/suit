@@ -6,15 +6,23 @@ class Button(text: String)(action: => Unit) extends Component {
 
   private val gs = font.getGlyphString(text)
 
-  protected val hoverBackgroundColor: Int = Color.BLUE
+  protected val mouseEnterBackgroundColor: Int = Color.BLUE
   protected val mouseDownBackgroundColor: Int = Color.GREEN
 
+  val solidBorder = new SolidBorder(1, foregroundColor)
+
   padding = 5
-  border = new SolidBorder(1, foregroundColor)
+  border = solidBorder
 
   listenTo(mouse)
 
   reactions += {
+    case MouseEnter =>
+      solidBorder.color = Color.GREEN
+      repaint()
+    case MouseExit =>
+      solidBorder.color = foregroundColor
+      repaint()
     case MouseClick(_, _) => action
   }
 
