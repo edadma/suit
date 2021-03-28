@@ -9,7 +9,7 @@ import scala.swing.event.{MouseClicked, MouseExited, MouseMoved, MousePressed, M
 class WindowPanel(win: Window) extends Panel {
 
   val gc = new JVMGraphicsContext
-  val EDGE = 50
+  val EDGE = 0
 
   win.layout()
 

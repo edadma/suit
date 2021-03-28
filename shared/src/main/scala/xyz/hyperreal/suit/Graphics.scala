@@ -14,7 +14,8 @@ class Graphics(gx: Double, gy: Double, val gc: GraphicsContext) {
 
   def drawLine(x1: Double, y1: Double, x2: Double, y2: Double): Unit = gc.drawLine(gx + x1, gy + y1, gx + x2, gy + y2)
 
-  def drawRectangle(x: Double, y: Double, w: Double, h: Double): Unit = gc.drawRectangle(gx + x, gy + y, w, h)
+  def drawRectangle(x: Double, y: Double, w: Double, h: Double): Unit =
+    gc.drawRectangle((gx + x).floor + 0.5, (gy + y).floor + 0.5, w.floor, h.floor)
 
   def fillRectangle(x: Double, y: Double, w: Double, h: Double): Unit = gc.fillRectangle(gx + x, gy + y, w, h)
 

@@ -7,7 +7,7 @@ abstract class Component extends Reactor {
   var y: Double = _
   var width: Double = 0
   var height: Double = 0
-  var padding: Double = 5
+  var padding: Double = 0
   var border: Border = EmptyBorder
 
   var backgroundColor: Int = Color.DARK_GRAY
@@ -40,7 +40,6 @@ abstract class Component extends Reactor {
   }
 
   def paintComponent(g: Graphics): Unit = {
-    println(g)
     border.paint(g, this)
     paint(g.graphics(border.left + padding, border.top + padding))
   }

@@ -58,16 +58,25 @@ abstract class Container extends Component {
       c.layout()
   }
 
-  override def paint(g: Graphics): Unit = {
-    super.paint(g)
+  override def paintComponent(g: Graphics): Unit = {
+    border.paint(g, this)
+//    paint(g.graphics(border.left + padding, border.top + padding))
 
     for (c <- contents) {
       val (sx, sy) = c.screen
 
-      println("container", x, y, sx, sy)
-
-      c.paintComponent(g)
+      c.paintComponent(g.graphics(c.x, c.y))
     }
   }
+
+//  override def paint(g: Graphics): Unit = {
+//    super.paint(g)
+//
+//    for (c <- contents) {
+//      val (sx, sy) = c.screen
+//
+//      c.paintComponent(new Graphics(sx, sy, g.gc))
+//    }
+//  }
 
 }
