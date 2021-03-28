@@ -4,14 +4,12 @@ import scala.collection.mutable.ArrayBuffer
 
 abstract class Container extends Component {
 
-  val name: String
-
   protected val limit = false
 
   class Contents extends ArrayBuffer[Component] {
     override def addOne(c: Component): Contents.this.type = {
       require(!limit || isEmpty, "only one component can be added")
-      c.parent = Container.this
+      c.container = Container.this
       super.addOne(c)
     }
   }
@@ -79,5 +77,7 @@ abstract class Container extends Component {
 //      c.paintComponent(new Graphics(sx, sy, g.gc))
 //    }
 //  }
+
+  override def toString: String = s"${super.toString} {${contents mkString ", "}}"
 
 }

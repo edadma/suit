@@ -2,6 +2,8 @@ package xyz.hyperreal.suit
 
 class VerticalLayout(space: Double = 10) extends Container {
 
+  val name: String = "VerticalLayout"
+
   override def layout(): Unit = {
     super.layout()
 
@@ -11,7 +13,7 @@ class VerticalLayout(space: Double = 10) extends Container {
     for (c <- contents) {
       c.x = padding + border.left
       c.y = cy + padding + border.top
-      c.parent = this
+      c.container = this
       height += c.height
       cy += c.height
       wmax = c.width max wmax
@@ -25,5 +27,4 @@ class VerticalLayout(space: Double = 10) extends Container {
     width += wmax
   }
 
-  val name: String = "vert"
 }

@@ -1,6 +1,6 @@
 package xyz.hyperreal.suit
 
-class SolidBorder(thickness: Double, color: Int) extends Border {
+class SolidBorder(thickness: Double, var color: Int) extends Border {
   val left: Double = thickness
   val top: Double = thickness
   val right: Double = thickness

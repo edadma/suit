@@ -2,7 +2,9 @@ package xyz.hyperreal.suit
 
 abstract class Component extends Reactor {
 
-  var parent: Component = _
+  val name: String
+
+  var container: Container = _
   var x: Double = _
   var y: Double = _
   var width: Double = 0
@@ -23,6 +25,8 @@ abstract class Component extends Reactor {
 //
 //    (px + x, py + y)
 //  }
+
+  def repaint(): Unit = container.repaint()
 
   def contains(px: Double, py: Double): Boolean = 0 <= px && px < width && 0 <= py && py < height
 
@@ -45,5 +49,7 @@ abstract class Component extends Reactor {
     g.setColor(foregroundColor)
     g.setFont(font)
   }
+
+  override def toString: String = s"$name [$width, $height]"
 
 }

@@ -2,6 +2,8 @@ package xyz.hyperreal.suit
 
 class HorizontalLayout(space: Double = 10) extends Container {
 
+  val name: String = "HorizontalLayout"
+
   override def layout(): Unit = {
     super.layout()
 
@@ -11,7 +13,7 @@ class HorizontalLayout(space: Double = 10) extends Container {
     for (c <- contents) {
       c.x = cx + padding + border.left
       c.y = padding + border.top
-      c.parent = this
+      c.container = this
       width += c.width
       cx += c.width
       hmax = c.height max hmax
@@ -25,5 +27,4 @@ class HorizontalLayout(space: Double = 10) extends Container {
     height += hmax
   }
 
-  val name: String = "hor"
 }

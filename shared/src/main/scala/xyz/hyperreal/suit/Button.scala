@@ -2,12 +2,14 @@ package xyz.hyperreal.suit
 
 class Button(text: String)(action: => Unit) extends Component {
 
+  val name: String = "Button"
+
   private val gs = font.getGlyphString(text)
 
   protected val hoverBackgroundColor: Int = Color.BLUE
   protected val mouseDownBackgroundColor: Int = Color.GREEN
 
-  padding = 20
+  padding = 5
   border = new SolidBorder(1, foregroundColor)
 
   listenTo(mouse)

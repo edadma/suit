@@ -2,6 +2,8 @@ package xyz.hyperreal.suit
 
 class Box extends Container {
 
+  val name = "Box"
+
   override protected val limit: Boolean = true
 
   override def layout(): Unit = {
@@ -12,5 +14,4 @@ class Box extends Container {
     height += contents.head.height
   }
 
-  val name: String = "box"
 }

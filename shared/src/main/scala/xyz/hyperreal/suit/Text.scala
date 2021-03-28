@@ -2,6 +2,8 @@ package xyz.hyperreal.suit
 
 class Text(s: String) extends Component {
 
+  val name: String = "Text"
+
   private val gs = font.getGlyphString(s)
 
   override def paint(g: Graphics): Unit = {
