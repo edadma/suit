@@ -18,17 +18,13 @@ abstract class Component extends Reactor {
   val keyboard: Publisher = new Publisher
   val timer: TimerPublisher = new TimerPublisher
 
-  def screen: (Double, Double) = {
-    val (px, py) = parent.screen
+//  def screen: (Double, Double) = {
+//    val (px, py) = parent.screen
+//
+//    (px + x, py + y)
+//  }
 
-    (px + x, py + y)
-  }
-
-  def contains(px: Double, py: Double): Boolean = {
-    val (sx, sy) = screen
-
-    sx <= px && px < sx + width && sy <= py && py < sy + height
-  }
+  def contains(px: Double, py: Double): Boolean = 0 <= px && px < width && 0 <= py && py < height
 
   def size(w: Double, h: Double): Unit = {
     width = w

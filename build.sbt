@@ -12,6 +12,7 @@ lazy val suit = crossProject(JSPlatform, JVMPlatform, NativePlatform).in(file(".
     organization := "xyz.hyperreal",
     mainClass := Some("xyz.hyperreal.suit.Main"),
     Test / mainClass := Some("xyz.hyperreal.suit.Main"),  // comment out for unit testing
+    Test / run / fork := true,
     libraryDependencies += "org.scalatest" %%% "scalatest" % "3.2.5" % "test",
     publishMavenStyle := true,
     publishArtifact in Test := false,

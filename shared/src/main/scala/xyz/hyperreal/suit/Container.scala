@@ -26,9 +26,9 @@ abstract class Container extends Component {
       within.get.mouse publish MouseExit
       within = None
     case MouseMove(mx, my) =>
-      contents.find(_.contains(mx, my)) match {
+      contents.find(c => c.contains(mx - c.x, my - c.y)) match {
         case None if within.isDefined =>
-          println(s"exit $mx, $my - $name[$x, $y]")
+//          println(s"exit $mx, $my - $name$screen")
           within.get.mouse publish MouseExit
           within = None
         case None =>
@@ -42,16 +42,14 @@ abstract class Container extends Component {
               }
             case None =>
               within = Some(c)
-              println(s"enter $mx, $my - $name[$x, $y]")
+//              println(s"enter $mx, $my - $name$screen")
               c.mouse publish MouseEnter
           }
 
-          val (sx, sy) = c.screen
-
-          c.mouse publish MouseMove(mx - sx, my - sy)
+          c.mouse publish MouseMove(mx - c.x, my - c.y)
       }
     case e: MouseButtonEvent =>
-      contents.find(_.contains(e.x, e.y)) match {
+      contents.find(c => c.contains(e.x - c.x, e.y - c.y)) match {
         case None    =>
         case Some(c) => c.mouse publish e(e.x - c.x, e.y - c.y)
       }

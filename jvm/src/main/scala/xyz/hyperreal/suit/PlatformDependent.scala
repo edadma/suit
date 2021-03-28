@@ -16,7 +16,7 @@ object PlatformDependent {
       typeface match {
         case "Nimbus Sans L" => "NimbusSans-Regular"
       }
-    val ttf = new FileInputStream(s"jvm/$filename.ttf")
+    val ttf = new FileInputStream(s"/home/ed/dev/suit/jvm/$filename.ttf")
     val res = JFont.createFont(JFont.TRUETYPE_FONT, ttf).deriveFont(STYLE_MAP(style), size.toFloat)
 
     ttf.close()
