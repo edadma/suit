@@ -1,5 +1,13 @@
 package xyz.hyperreal.suit
 
+object VerticalLayout {
+
+  def apply(cs: Component*): VerticalLayout = new VerticalLayout() { contents ++= cs }
+
+  def apply(space: Double, cs: Component*): VerticalLayout = new VerticalLayout(space) { contents ++= cs }
+
+}
+
 class VerticalLayout(space: Double = 10) extends Container {
 
   val name: String = "VerticalLayout"

@@ -12,3 +12,9 @@ class Window extends Box {
 
 //  override val screen: (Double, Double) = (x, y)
 }
+
+object Window {
+
+  def apply(cs: Component*): Window = new Window { contents ++= cs }
+
+}

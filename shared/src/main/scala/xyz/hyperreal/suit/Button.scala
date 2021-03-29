@@ -4,7 +4,11 @@ import xyz.hyperreal.hsl.HSL
 
 import math.exp
 
-// y=1/(1+exp(-(70*x - 5)))
+object Button {
+
+  def apply(text: String)(action: => Unit) = new Button(text)(action)
+
+}
 
 class Button(text: String)(action: => Unit) extends Component {
 
@@ -65,8 +69,6 @@ class Button(text: String)(action: => Unit) extends Component {
   override def paint(g: Graphics): Unit = {
     super.paint(g)
     g.drawGlyphString(gs, 0, 0, TextPosition.BELOW_RIGHT)
-//    g.drawGlyphString(gs, padding, padding, TextPosition.BELOW_RIGHT)
-//    g.drawRectangle(0, 0, width - thickness, height - thickness)
   }
 
   override def layout(): Unit = {

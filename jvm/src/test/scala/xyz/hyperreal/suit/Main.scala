@@ -4,9 +4,7 @@ import scala.swing.{Frame, MainFrame, SimpleSwingApplication}
 
 object Main extends SimpleSwingApplication {
   val w: Window =
-    new Window {
-      contents += new Button("Button")(println("click"))
-    }
+    Window(HorizontalLayout(Button("[Start")(println("start")), Button("Stop")(println("stop"))))
 
   def top: Frame =
     new MainFrame {
