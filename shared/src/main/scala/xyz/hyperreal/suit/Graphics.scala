@@ -33,7 +33,7 @@ class Graphics(gx: Double, gy: Double, val gc: GraphicsContext) {
 
   def drawGlyphString(gs: GlyphString, x: Double, y: Double, pos: TextPosition): Unit = {
     gc.drawGlyphString(gs, gx + x, gy + y, pos)
-//    gc.drawRectangle(gx + x, gy + y, gs.width, gs.height)
+//    gc.drawRectangle(gx + x, gy + y, gs.width, gs.font.height)
   }
 
   override def toString: String = s"graphics[$gx, $gy]"

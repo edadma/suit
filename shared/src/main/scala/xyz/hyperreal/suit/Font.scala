@@ -2,6 +2,10 @@ package xyz.hyperreal.suit
 
 trait Font {
 
+  val ascent: Double
+  val descent: Double
+  val height: Double
+
   def getGlyphString(s: String): GlyphString
 
 }

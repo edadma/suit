@@ -33,9 +33,9 @@ class JVMGraphicsContext extends GraphicsContext {
     val (xp, yp) =
       pos match {
         case TextPosition.ABOVE       => (x - jgs.vb.getCenterX, y)
-        case TextPosition.BELOW       => (x - jgs.vb.getCenterX, y + jgs.vb.getHeight)
+        case TextPosition.BELOW       => (x - jgs.vb.getCenterX, y + jgs.font.ascent)
         case TextPosition.RIGHT       => (x - jgs.vb.getX, y - jgs.vb.getCenterY)
-        case TextPosition.BELOW_RIGHT => (x - jgs.vb.getX, y + jgs.vb.getHeight)
+        case TextPosition.BELOW_RIGHT => (x - jgs.vb.getX, y + jgs.font.ascent)
         case TextPosition.LEFT        => (x - jgs.vb.getWidth - jgs.vb.getX, y - jgs.vb.getCenterY)
       }
 

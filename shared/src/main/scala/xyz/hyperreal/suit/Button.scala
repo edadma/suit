@@ -74,7 +74,7 @@ class Button(text: String)(action: => Unit) extends Component {
   override def layout(): Unit = {
     super.layout()
     width += gs.width
-    height += gs.height
+    height += gs.font.height
   }
 
 }
