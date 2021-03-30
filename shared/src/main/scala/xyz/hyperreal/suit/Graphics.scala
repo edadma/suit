@@ -17,18 +17,19 @@ class Graphics(gx: Double, gy: Double, val gc: GraphicsContext) {
   def drawRectangle(x: Double, y: Double, w: Double, h: Double): Unit =
     gc.drawRectangle(gx + x, gy + y, w, h)
 
-  def drawRoundRectangle(x: Double, y: Double, w: Double, h: Double): Unit =
-    gc.drawRoundRectangle(gx + x, gy + y, w, h)
+  def drawRoundRectangle(x: Double, y: Double, w: Double, h: Double, arcw: Double, arch: Double): Unit =
+    gc.drawRoundRectangle(gx + x, gy + y, w, h, arcw, arch)
 
   def drawRectangleThin(x: Double, y: Double, w: Double, h: Double): Unit =
     gc.drawRectangle((gx + x).floor + 0.5, (gy + y).floor + 0.5, w.floor, h.floor)
 
-  def drawRoundRectangleThin(x: Double, y: Double, w: Double, h: Double): Unit =
-    gc.drawRoundRectangle((gx + x).floor + 0.5, (gy + y).floor + 0.5, w.floor, h.floor)
+  def drawRoundRectangleThin(x: Double, y: Double, w: Double, h: Double, arcw: Double, arch: Double): Unit =
+    gc.drawRoundRectangle((gx + x).floor + 0.5, (gy + y).floor + 0.5, w.floor, h.floor, arcw, arch)
 
   def fillRectangle(x: Double, y: Double, w: Double, h: Double): Unit = gc.fillRectangle(gx + x, gy + y, w, h)
 
-  def fillRoundRectangle(x: Double, y: Double, w: Double, h: Double): Unit = gc.fillRoundRectangle(gx + x, gy + y, w, h)
+  def fillRoundRectangle(x: Double, y: Double, w: Double, h: Double, arcw: Double, arch: Double): Unit =
+    gc.fillRoundRectangle(gx + x, gy + y, w, h, arcw, arch)
 
 //  def drawArc(x: Double, y: Double, r: Double, start: Double, end: Double): Unit
 //

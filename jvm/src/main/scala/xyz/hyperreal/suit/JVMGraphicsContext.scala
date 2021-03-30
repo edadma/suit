@@ -23,14 +23,14 @@ class JVMGraphicsContext extends GraphicsContext {
   def drawRectangle(x: Double, y: Double, w: Double, h: Double): Unit =
     graphics2D.draw(new Rectangle2D.Double(x, y, w, h))
 
-  def drawRoundRectangle(x: Double, y: Double, w: Double, h: Double): Unit =
-    graphics2D.draw(new RoundRectangle2D.Double(x, y, w, h, 5, 5))
+  def drawRoundRectangle(x: Double, y: Double, w: Double, h: Double, arcw: Double, arch: Double): Unit =
+    graphics2D.draw(new RoundRectangle2D.Double(x, y, w, h, arcw, arch))
 
   def fillRectangle(x: Double, y: Double, w: Double, h: Double): Unit =
     graphics2D.fill(new Rectangle2D.Double(x, y, w, h))
 
-  def fillRoundRectangle(x: Double, y: Double, w: Double, h: Double): Unit =
-    graphics2D.fill(new RoundRectangle2D.Double(x, y, w, h, 5, 5))
+  def fillRoundRectangle(x: Double, y: Double, w: Double, h: Double, arcw: Double, arch: Double): Unit =
+    graphics2D.fill(new RoundRectangle2D.Double(x, y, w, h, arcw, arch))
 
   def drawGlyphString(gs: GlyphString, x: Double, y: Double, pos: TextPosition): Unit = {
     val jgs = gs.asInstanceOf[JVMGlyphString]

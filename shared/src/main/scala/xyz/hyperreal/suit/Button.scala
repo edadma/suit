@@ -6,20 +6,22 @@ import math.exp
 
 object Button {
 
-  def apply(text: String)(action: => Unit) = new Button(text)(action)
+  def apply(text: String)(action: => Unit): Button = new Button(text) { def click(): Unit = action }
 
 }
 
-class Button(text: String)(action: => Unit) extends Component {
+abstract class Button(text: String) extends Component {
 
   val name: String = "Button"
 
   private val gs = font.getGlyphString(text)
 
   protected val mouseEnterBorderColor: Int = Color.GREEN
-  protected val mouseDownBackgroundColor: Int = Color.GREEN
+  protected val mouseEnterBackgroundColor: Int = Color.GRAY
 
-  val solidBorder = new SolidBorder(1, foregroundColor)
+  val solidBorder = new SolidRoundBorder(1, foregroundColor)
+
+  def click(): Unit
 
   padding = 5
   border = solidBorder
@@ -69,7 +71,7 @@ class Button(text: String)(action: => Unit) extends Component {
 //      solidBorder.color = r << 16 | g << 8 | b
 //      hsl = hsl.luminosity(1 / (1 + exp(-(50 * (.3 - t) - 5))) * .5)
 //      repaint()
-    case MouseClick(_, _) => action
+    case MouseClick(_, _) => click()
   }
 
   override def paint(g: Graphics): Unit = {
