@@ -14,7 +14,11 @@ trait GraphicsContext {
 
   def drawRectangle(x: Double, y: Double, w: Double, h: Double): Unit
 
+  def drawRoundRectangle(x: Double, y: Double, w: Double, h: Double): Unit
+
   def fillRectangle(x: Double, y: Double, w: Double, h: Double): Unit
+
+  def fillRoundRectangle(x: Double, y: Double, w: Double, h: Double): Unit
 
   def drawGlyphString(gs: GlyphString, x: Double, y: Double, pos: TextPosition): Unit
 

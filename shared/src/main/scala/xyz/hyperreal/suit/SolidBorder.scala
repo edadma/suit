@@ -10,6 +10,10 @@ class SolidBorder(thickness: Double, var color: Int) extends Border {
     super.paint(g, c)
     g.setColor(color)
     g.setLineWidth(thickness)
-    g.drawRectangle(0, 0, c.width, c.height)
+
+    if (thickness == 1.0)
+      g.drawRectangleThin(0, 0, c.width, c.height)
+    else
+      g.drawRectangle(0, 0, c.width, c.height)
   }
 }
