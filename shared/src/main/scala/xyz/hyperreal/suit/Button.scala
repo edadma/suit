@@ -10,11 +10,9 @@ object Button {
 
 }
 
-abstract class Button(text: String) extends Component {
+abstract class Button(s: String) extends Label(s) {
 
-  val name: String = "Button"
-
-  private val gs = font.getGlyphString(text)
+  override val name: String = "Button"
 
   protected val mouseEnterBorderColor: Int = Color.GREEN
   protected val mouseEnterBackgroundColor: Int = Color.GRAY
@@ -72,17 +70,6 @@ abstract class Button(text: String) extends Component {
 //      hsl = hsl.luminosity(1 / (1 + exp(-(50 * (.3 - t) - 5))) * .5)
 //      repaint()
     case MouseClick(_, _) => click()
-  }
-
-  override def paint(g: Graphics): Unit = {
-    super.paint(g)
-    g.drawGlyphString(gs, 0, 0, TextPosition.BELOW_RIGHT)
-  }
-
-  override def layout(): Unit = {
-    super.layout()
-    width += gs.width
-    height += gs.font.height
   }
 
 }

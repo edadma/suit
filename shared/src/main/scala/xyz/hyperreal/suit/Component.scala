@@ -26,7 +26,7 @@ abstract class Component extends Reactor {
 //    (px + x, py + y)
 //  }
 
-  def repaint(): Unit = container.repaint()
+  def repaint(): Unit = if (container ne null) container.repaint()
 
   def contains(px: Double, py: Double): Boolean = 0 <= px && px < width && 0 <= py && py < height
 
