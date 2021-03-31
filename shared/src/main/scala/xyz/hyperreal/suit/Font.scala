@@ -2,6 +2,7 @@ package xyz.hyperreal.suit
 
 trait Font {
 
+  val em: Double
   val ascent: Double
   val descent: Double
   val height: Double

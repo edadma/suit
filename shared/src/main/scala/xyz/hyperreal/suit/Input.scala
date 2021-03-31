@@ -1,25 +1,14 @@
 package xyz.hyperreal.suit
 
-import xyz.hyperreal.hsl.HSL
+class Input(placeholder: String, chars: Int) extends Label("") {
 
-import math.exp
-
-object Button {
-
-  def apply(text: String)(action: => Unit): Button = new Button(text) { def click(): Unit = action }
-
-}
-
-abstract class Button(s: String) extends Label(s) {
-
-  override val name: String = "Button"
+  override val name: String = "Input"
 
   protected val mouseEnterBorderColor: Int = Color.GREEN
   protected val mouseEnterBackgroundColor: Int = Color.GRAY
 
-  private val solidBorder = new SolidRoundBorder(1, foregroundColor)
-
-  def click(): Unit
+  private val solidBorder = new SolidBorder(1, foregroundColor)
+  private val pgs = font.getGlyphString(placeholder)
 
   padding = 5
   border = solidBorder
@@ -69,7 +58,18 @@ abstract class Button(s: String) extends Label(s) {
 //      solidBorder.color = r << 16 | g << 8 | b
 //      hsl = hsl.luminosity(1 / (1 + exp(-(50 * (.3 - t) - 5))) * .5)
 //      repaint()
-    case MouseClick(_, _) => click()
+    case MouseClick(_, _) =>
+  }
+
+  override def paint(g: Graphics): Unit =
+    if (text.isEmpty) {
+      g.setColor(Color.GRAY)
+      g.drawGlyphString(pgs, 0, 0, TextPosition.BELOW_RIGHT)
+    } else super.paint(g)
+
+  override def layout(): Unit = {
+    super.layout()
+    width = 2 * padding + border.left + border.right + chars * font.em
   }
 
 }

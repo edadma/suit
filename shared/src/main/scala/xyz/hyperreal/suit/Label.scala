@@ -10,16 +10,18 @@ class Label(s: String) extends Component {
 
   val name: String = "Label"
 
-  private var gs: GlyphString = _
-  private var text: String = _
+  protected var gs: GlyphString = _
+  private var text0: String = _
 
-  setText(s)
+  text = s
 
-  def setText(s: String): Unit = {
-    text = s
-    gs = font.getGlyphString(s)
+  def text_=(t: String): Unit = {
+    text0 = t
+    gs = font.getGlyphString(t)
     repaint()
   }
+
+  def text: String = text0
 
   override def paint(g: Graphics): Unit = {
     super.paint(g)
