@@ -1,5 +1,6 @@
 package xyz.hyperreal.suit
 
+import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
 
 abstract class Container extends Component {
@@ -17,7 +18,12 @@ abstract class Container extends Component {
   val contents = new Contents
   var within: Option[Component] = None
 
-  listenTo(mouse)
+  private[suit] def changeFocus(f: Boolean): Unit = {
+    focussed = f
+    container.changeFocus(f)
+  }
+
+  listenTo(mouse, keyboard)
 
   reactions += {
     case MouseExit if within.isDefined =>
@@ -26,7 +32,6 @@ abstract class Container extends Component {
     case MouseMove(mx, my) =>
       contents.find(c => c.contains(mx - c.x, my - c.y)) match {
         case None if within.isDefined =>
-//          println(s"exit $mx, $my - $name$screen")
           within.get.mouse publish MouseExit
           within = None
         case None =>
@@ -40,7 +45,6 @@ abstract class Container extends Component {
               }
             case None =>
               within = Some(c)
-//              println(s"enter $mx, $my - $name$screen")
               c.mouse publish MouseEnter
           }
 
@@ -48,8 +52,14 @@ abstract class Container extends Component {
       }
     case e: MouseButtonEvent =>
       contents.find(c => c.contains(e.x - c.x, e.y - c.y)) match {
-        case None    =>
+        case None =>
+          if (e.isInstanceOf[MouseClick]) {} // todo: children that are focussed loose focus
         case Some(c) => c.mouse publish e(e.x - c.x, e.y - c.y)
+      }
+    case k: Keystroke =>
+      contents.find(c => c.focussed) match {
+        case Some(c) => c.keyboard publish k
+        case None    =>
       }
   }
 

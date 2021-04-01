@@ -10,6 +10,8 @@ class Window extends Box {
 
   override def repaint(): Unit = repaintWindow()
 
+  override private[suit] def changeFocus(f: Boolean): Unit = focussed = f
+
 //  override val screen: (Double, Double) = (x, y)
 }
 

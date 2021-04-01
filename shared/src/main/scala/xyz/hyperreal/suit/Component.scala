@@ -16,6 +16,9 @@ abstract class Component extends Reactor {
   var foregroundColor: Int = Color.LIGHT_GRAY
   var font: Font = Font.default
 
+  val focusable: Boolean = false
+  var focussed: Boolean = false
+
   val mouse: Publisher = new Publisher
   val keyboard: Publisher = new Publisher
   val timer: TimerPublisher = new TimerPublisher
@@ -25,6 +28,12 @@ abstract class Component extends Reactor {
 //
 //    (px + x, py + y)
 //  }
+
+  def focus(f: Boolean): Unit =
+    if (focusable) {
+      focussed = f
+      container.changeFocus(f)
+    }
 
   def repaint(): Unit = if (container ne null) container.repaint()
 
