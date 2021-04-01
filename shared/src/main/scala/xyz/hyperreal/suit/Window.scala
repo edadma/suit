@@ -5,12 +5,11 @@ class Window extends Box {
   override val name: String = "Window"
 
   padding = 5
+  focusable = true
 
   var repaintWindow: () => Unit = () => sys.error("can't repaint")
 
   override def repaint(): Unit = repaintWindow()
-
-  override private[suit] def changeFocus(f: Boolean): Unit = focussed = f
 
 //  override val screen: (Double, Double) = (x, y)
 }

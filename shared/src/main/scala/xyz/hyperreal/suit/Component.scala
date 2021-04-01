@@ -16,7 +16,7 @@ abstract class Component extends Reactor {
   var foregroundColor: Int = Color.LIGHT_GRAY
   var font: Font = Font.default
 
-  val focusable: Boolean = false
+  var focusable: Boolean = false
   var focussed: Boolean = false
 
   val mouse: Publisher = new Publisher
