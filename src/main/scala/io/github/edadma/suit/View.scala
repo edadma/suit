@@ -68,6 +68,47 @@ final case class Stack(
 
 final case class Spacer(flex: Int = 1) extends View
 
+// A bitmap image drawn at fixed `width` × `height`. `source` is a string
+// identifier — the host's `Renderer` decides how to resolve it (classpath
+// resource → filesystem path → fallback). The fixed-size shape means
+// layout doesn't need to wait for the image to finish loading.
+final case class Image(
+    source: String,
+    width:  Int,
+    height: Int,
+) extends View
+
+// A horizontal slider with a draggable thumb. `value` is constrained to
+// `[min, max]`. Clicks anywhere on the track jump the thumb; mouse drags
+// while held update continuously; arrow keys nudge by one when focused.
+final case class Slider(
+    value:    Int,
+    min:      Int            = 0,
+    max:      Int            = 100,
+    onChange: Int => Unit    = Slider.noop,
+    width:    Int            = 200,
+    enabled:  Boolean        = true,
+) extends View
+
+object Slider:
+  val noop: Int => Unit = noopImpl
+  private def noopImpl(i: Int): Unit = ()
+
+// A radio-style single-select control. Visually identical to Checkbox but
+// with a circular indicator. `selected` is owned by the caller (typically a
+// Stack of Radios sharing one `useState[Int]`); clicking fires `onSelect`,
+// at which point the caller re-renders with the new selection.
+final case class Radio(
+    label:    String,
+    selected: Boolean,
+    onSelect: () => Unit    = Radio.noop,
+    enabled:  Boolean       = true,
+) extends View
+
+object Radio:
+  val noop: () => Unit = noopImpl
+  private def noopImpl(): Unit = ()
+
 // A vertically-scrolling viewport. The viewport occupies `height` pixels of
 // vertical space; the child is given as much height as it asks for. When
 // the child's natural height exceeds the viewport, the mouse wheel scrolls
@@ -85,6 +126,13 @@ final case class Portal(child: View) extends View
 // at its natural measured size. Combined with Portal, this gives "anywhere
 // on the screen" positioning for tooltips and menus.
 final case class AbsolutePosition(x: Int, y: Int, child: View) extends View
+
+// Centers its child within the parent's bounds at the child's natural
+// measured size. Like AbsolutePosition, the centered node overrides its own
+// bounds to match the child's positioned rect, so a Backdrop wrapping a
+// Center can correctly distinguish "click inside child" from "click on the
+// surrounding empty space". The primary use is `modal()`.
+final case class Center(child: View) extends View
 
 // Stretches its child to fill the engine's whole viewport. Useful as a
 // modal backdrop inside a Portal — also handy for fade overlays. Captures

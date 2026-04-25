@@ -18,6 +18,7 @@ trait Renderer:
   def strokeRoundRect(rect: Rect, radius: Int, color: Color): Unit
   def drawShadow(rect: Rect, radius: Int, shadow: Shadow): Unit
   def drawText(x: Int, y: Int, text: String, color: Color): Unit
+  def drawImage(rect: Rect, source: String): Unit
   def pushClip(rect: Rect): Unit
   def popClip(): Unit
 
@@ -34,5 +35,6 @@ object Renderer:
     case StrokeRoundRect(rect, radius, color)=> r.strokeRoundRect(rect, radius, color)
     case DrawShadow(rect, radius, shadow)    => r.drawShadow(rect, radius, shadow)
     case DrawText(x, y, text, color)         => r.drawText(x, y, text, color)
+    case DrawImage(rect, source)             => r.drawImage(rect, source)
     case PushClip(rect)                      => r.pushClip(rect)
     case PopClip                             => r.popClip()

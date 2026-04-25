@@ -72,6 +72,24 @@ object Reconciler:
         n.view = v
         n
 
+      case (n: ImageNode, v: Image) =>
+        if n.view.source != v.source || n.view.width != v.width
+          || n.view.height != v.height then eng.markDirty()
+        n.view = v
+        n
+
+      case (n: SliderNode, v: Slider) =>
+        if n.view.value != v.value || n.view.min != v.min || n.view.max != v.max
+          || n.view.width != v.width || n.view.enabled != v.enabled then eng.markDirty()
+        n.view = v
+        n
+
+      case (n: RadioNode, v: Radio) =>
+        if n.view.selected != v.selected || n.view.label != v.label
+          || n.view.enabled != v.enabled then eng.markDirty()
+        n.view = v
+        n
+
       case (n: StackNode, v: Stack) =>
         if n.view.axis != v.axis then
           unmount(n, eng)
@@ -142,6 +160,11 @@ object Reconciler:
         n.child = reconcile(n.child, v.child, eng)
         n
 
+      case (n: CenterNode, v: Center) =>
+        n.view = v
+        n.child = reconcile(n.child, v.child, eng)
+        n
+
       case (n: BackdropNode, v: Backdrop) =>
         if n.view.color != v.color then eng.markDirty()
         n.view = v
@@ -171,6 +194,9 @@ object Reconciler:
     case i: Input    => new InputNode(i)
     case c: Checkbox => new CheckboxNode(c)
     case s: Spacer   => new SpacerNode(s)
+    case i: Image    => new ImageNode(i)
+    case s: Slider   => new SliderNode(s)
+    case r: Radio    => new RadioNode(r)
     case Empty       => new SpacerNode(Spacer(0))
     case Fragment(_) =>
       // A bare Fragment outside a Stack collapses to nothing visible; it
@@ -223,6 +249,11 @@ object Reconciler:
       n.child = mount(ap.child, eng)
       n
 
+    case c: Center =>
+      val n = new CenterNode(c)
+      n.child = mount(c.child, eng)
+      n
+
     case b: Backdrop =>
       val n = new BackdropNode(b)
       n.child = mount(b.child, eng)
@@ -261,6 +292,9 @@ object Reconciler:
       eng.portalNodes -= p
     case ap: AbsolutePositionNode =>
       val ch = ap.child
+      if ch != null then unmount(ch, eng)
+    case c: CenterNode =>
+      val ch = c.child
       if ch != null then unmount(ch, eng)
     case b: BackdropNode =>
       val ch = b.child
@@ -304,6 +338,9 @@ object Reconciler:
       case ap: AbsolutePositionNode =>
         val ch = ap.child
         if ch != null then invalidateContextSubscribers(ch, ctx, eng)
+      case c: CenterNode =>
+        val ch = c.child
+        if ch != null then invalidateContextSubscribers(ch, ctx, eng)
       case b: BackdropNode =>
         val ch = b.child
         if ch != null then invalidateContextSubscribers(ch, ctx, eng)
@@ -340,6 +377,9 @@ object Reconciler:
       if ovl != null then visitForUpdates(ovl, eng)
     case ap: AbsolutePositionNode =>
       val ch = ap.child
+      if ch != null then visitForUpdates(ch, eng)
+    case c: CenterNode =>
+      val ch = c.child
       if ch != null then visitForUpdates(ch, eng)
     case b: BackdropNode =>
       val ch = b.child

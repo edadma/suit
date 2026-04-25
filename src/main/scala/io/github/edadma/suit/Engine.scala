@@ -36,6 +36,12 @@ final class Engine:
   var dirty:     Boolean = true
   var animating: Boolean = false
 
+  // Counter of in-flight `useTransition` animations across the whole tree.
+  // While > 0 the engine keeps requesting frames so the eased value can
+  // step toward its target. Hooks increment on start and decrement when
+  // the transition reaches its target value (or its component unmounts).
+  private[suit] var animationCount: Int = 0
+
   // Wall-clock source. Tests override this to make caret-blink and any other
   // time-driven behaviour deterministic. Default reads the system clock.
   var clock: () => Long = () => System.currentTimeMillis()
@@ -203,8 +209,16 @@ final class Engine:
     input.clearFrameEdges()
     frame = frame + 1
     dirty = false
-    // Caret-blink keeps the host ticking only while a text field is focused.
-    animating = focused.isInstanceOf[InputNode]
+    // Caret-blink keeps the host ticking only while a text field is focused;
+    // active useTransitions also keep frames coming until they settle.
+    animating = focused.isInstanceOf[InputNode] || animationCount > 0
+    // Active transitions need each next frame to actually re-reconcile so
+    // their hook bodies re-run and step the eased value. requestRender()
+    // can't reliably do this from inside a render (pendingView is still the
+    // pre-commit view), so the engine seeds pendingView itself at end of
+    // frame whenever animations are in flight.
+    if animationCount > 0 && pendingView == null && rootView != null then
+      pendingView = rootView
 
   private def dispatchOverlays(): Unit =
     var i = portalNodes.length - 1
@@ -248,6 +262,9 @@ object Engine:
     case i: InputNode    => measureInput(eng, i)
     case c: CheckboxNode => measureCheckbox(eng, c)
     case _: SpacerNode   => Size(0, 0)
+    case i: ImageNode    => Size(i.view.width, i.view.height)
+    case s: SliderNode   => Size(s.view.width, eng.theme.lineHeight + 4)
+    case r: RadioNode    => measureRadio(eng, r)
     case s: StackNode    => measureStack(eng, s)
     case c: ComponentNode =>
       val ch = c.child
@@ -268,6 +285,9 @@ object Engine:
     case _: PortalNode => Size(0, 0)   // portals have no in-flow size
     case ap: AbsolutePositionNode =>
       val ch = ap.child
+      if ch == null then Size(0, 0) else measure(eng, ch)
+    case c: CenterNode =>
+      val ch = c.child
       if ch == null then Size(0, 0) else measure(eng, ch)
     case b: BackdropNode =>
       val ch = b.child
@@ -291,6 +311,10 @@ object Engine:
   private def measureCheckbox(eng: Engine, c: CheckboxNode): Size =
     val box = eng.theme.lineHeight
     Size(box + 6 + textWidth(eng, c.view.label), eng.theme.lineHeight)
+
+  private def measureRadio(eng: Engine, r: RadioNode): Size =
+    val box = eng.theme.lineHeight
+    Size(box + 6 + textWidth(eng, r.view.label), eng.theme.lineHeight)
 
   private def measureStack(eng: Engine, s: StackNode): Size =
     val v = s.view
@@ -352,6 +376,18 @@ object Engine:
           // hit-testing (e.g. Backdrop's "click inside child?" check) sees
           // the right area instead of inheriting the parent's frame.
           ap.bounds = childRect
+          layout(eng, ch, childRect)
+      case cn: CenterNode =>
+        val ch = cn.child
+        if ch != null then
+          val cs        = measure(eng, ch)
+          val cx        = frame.x + (frame.w - cs.w) / 2
+          val cy        = frame.y + (frame.h - cs.h) / 2
+          val childRect = Rect(cx, cy, cs.w, cs.h)
+          // Override our own bounds to the centered child rect (mirrors
+          // AbsolutePositionNode) so a wrapping Backdrop's "click inside
+          // child?" check sees the actual rendered area, not the full frame.
+          cn.bounds = childRect
           layout(eng, ch, childRect)
       case b: BackdropNode =>
         val ch = b.child
@@ -438,6 +474,8 @@ object Engine:
   private def collectFocusables(n: Node, out: scala.collection.mutable.ArrayBuffer[Node]): Unit = n match
     case _: InputNode    => out += n
     case _: CheckboxNode => out += n
+    case _: RadioNode    => out += n
+    case _: SliderNode   => out += n
     case s: StackNode =>
       var i = 0
       while i < s.children.length do
@@ -455,6 +493,8 @@ object Engine:
       val ovl = p.overlay; if ovl != null then collectFocusables(ovl, out)
     case ap: AbsolutePositionNode =>
       val ch = ap.child; if ch != null then collectFocusables(ch, out)
+    case c: CenterNode =>
+      val ch = c.child; if ch != null then collectFocusables(ch, out)
     case b: BackdropNode =>
       val ch = b.child; if ch != null then collectFocusables(ch, out)
     case _ => ()
@@ -463,6 +503,8 @@ object Engine:
   def dispatchEvents(eng: Engine, n: Node): Unit = n match
     case b: ButtonNode    => dispatchButton(eng, b)
     case c: CheckboxNode  => dispatchCheckbox(eng, c)
+    case r: RadioNode     => dispatchRadio(eng, r)
+    case s: SliderNode    => dispatchSlider(eng, s)
     case i: InputNode     => dispatchInput(eng, i)
     case s: StackNode =>
       var k = 0
@@ -496,6 +538,9 @@ object Engine:
     case _: PortalNode => ()        // dispatched separately
     case ap: AbsolutePositionNode =>
       val ch = ap.child
+      if ch != null then dispatchEvents(eng, ch)
+    case c: CenterNode =>
+      val ch = c.child
       if ch != null then dispatchEvents(eng, ch)
     case b: BackdropNode =>
       val ch = b.child
@@ -534,6 +579,59 @@ object Engine:
         if eng.focused == c then eng.focused = null
     if c.focused && c.view.enabled && (eng.input.keySpace || eng.input.keyEnter) then
       c.view.onToggle(!c.view.checked)
+
+  private def dispatchRadio(eng: Engine, r: RadioNode): Unit =
+    val inside = r.bounds.contains(eng.input.mouseX, eng.input.mouseY)
+    r.hover = inside && r.view.enabled
+    if eng.input.mousePressed then
+      if inside && r.view.enabled then
+        focusWidget(eng, r)
+        if !r.view.selected then r.view.onSelect()
+      else if r.focused then
+        r.focused = false
+        if eng.focused == r then eng.focused = null
+    if r.focused && r.view.enabled && (eng.input.keySpace || eng.input.keyEnter) then
+      if !r.view.selected then r.view.onSelect()
+
+  private def dispatchSlider(eng: Engine, s: SliderNode): Unit =
+    val inside = s.bounds.contains(eng.input.mouseX, eng.input.mouseY)
+    s.hover = inside && s.view.enabled
+
+    if eng.input.mousePressed then
+      if inside && s.view.enabled then
+        focusWidget(eng, s)
+        s.dragging = true
+        emitSliderValue(eng, s)
+      else if s.focused then
+        s.focused = false
+        if eng.focused == s then eng.focused = null
+
+    if s.dragging && eng.input.mouseDown && s.view.enabled then
+      emitSliderValue(eng, s)
+
+    if eng.input.mouseReleased then s.dragging = false
+
+    if s.focused && s.view.enabled then
+      if eng.input.keyLeft then
+        eng.input.keyLeft = false
+        if s.view.value > s.view.min then s.view.onChange(s.view.value - 1)
+      if eng.input.keyRight then
+        eng.input.keyRight = false
+        if s.view.value < s.view.max then s.view.onChange(s.view.value + 1)
+      if eng.input.keyHome then
+        eng.input.keyHome = false
+        if s.view.value != s.view.min then s.view.onChange(s.view.min)
+      if eng.input.keyEnd then
+        eng.input.keyEnd = false
+        if s.view.value != s.view.max then s.view.onChange(s.view.max)
+
+  private def emitSliderValue(eng: Engine, s: SliderNode): Unit =
+    val range = s.view.max - s.view.min
+    if range <= 0 || s.bounds.w <= 0 then return
+    val rel0 = (eng.input.mouseX - s.bounds.x).toDouble / s.bounds.w.toDouble
+    val rel  = if rel0 < 0.0 then 0.0 else if rel0 > 1.0 then 1.0 else rel0
+    val v    = s.view.min + math.round(rel * range).toInt
+    if v != s.view.value then s.view.onChange(v)
 
   private def dispatchInput(eng: Engine, n: InputNode): Unit =
     val inside = n.bounds.contains(eng.input.mouseX, eng.input.mouseY)
@@ -597,6 +695,8 @@ object Engine:
   private def setFocus(n: Node, on: Boolean): Unit = n match
     case x: InputNode    => x.focused = on
     case x: CheckboxNode => x.focused = on
+    case x: RadioNode    => x.focused = on
+    case x: SliderNode   => x.focused = on
     case _               => ()
 
   private def stringInsert(s: String, pos: Int, ch: String): String =
@@ -613,6 +713,9 @@ object Engine:
     case b: ButtonNode   => renderButton(eng, b)
     case i: InputNode    => renderInput(eng, i)
     case c: CheckboxNode => renderCheckbox(eng, c)
+    case r: RadioNode    => renderRadio(eng, r)
+    case s: SliderNode   => renderSlider(eng, s)
+    case i: ImageNode    => eng.drawList += DrawImage(i.bounds, i.view.source)
     case _: SpacerNode   => ()
     case s: StackNode =>
       var i = 0
@@ -636,6 +739,9 @@ object Engine:
     case _: PortalNode => ()   // rendered later by renderOverlays
     case ap: AbsolutePositionNode =>
       val ch = ap.child
+      if ch != null then render(eng, ch)
+    case c: CenterNode =>
+      val ch = c.child
       if ch != null then render(eng, ch)
     case b: BackdropNode =>
       eng.drawList += FillRect(b.bounds, b.view.color)
@@ -739,3 +845,69 @@ object Engine:
     val ty = c.bounds.y + (c.bounds.h + eng.theme.fontSize) / 2 - 2
     val fg = if c.view.enabled then eng.theme.fg else eng.theme.muted
     eng.drawList += DrawText(tx, ty, c.view.label, fg)
+
+  private def renderRadio(eng: Engine, r: RadioNode): Unit =
+    val box  = eng.theme.lineHeight
+    val bx   = r.bounds.x
+    val by   = r.bounds.y + (r.bounds.h - box) / 2
+    val rect = Rect(bx, by, box, box)
+    val ra   = box / 2     // full radius → circle
+
+    if r.focused then
+      eng.drawList += DrawShadow(rect, ra, Shadow.focusRing(eng.theme.focusBorder))
+
+    val bg = if r.view.selected then eng.theme.accent else eng.theme.inputBg
+    val border =
+      if r.focused    then eng.theme.focusBorder
+      else if r.hover then eng.theme.inputHoverBorder
+      else                 eng.theme.inputBorder
+
+    eng.drawList += FillRoundRect(rect, ra, bg)
+    eng.drawList += StrokeRoundRect(rect, ra, border)
+    if r.view.selected then
+      // Inner dot (concentric, half size).
+      val inner = box / 3
+      val ix = bx + (box - inner) / 2
+      val iy = by + (box - inner) / 2
+      eng.drawList += FillRoundRect(Rect(ix, iy, inner, inner), inner / 2, eng.theme.accentText)
+
+    val tx = bx + box + 6
+    val ty = r.bounds.y + (r.bounds.h + eng.theme.fontSize) / 2 - 2
+    val fg = if r.view.enabled then eng.theme.fg else eng.theme.muted
+    eng.drawList += DrawText(tx, ty, r.view.label, fg)
+
+  private def renderSlider(eng: Engine, s: SliderNode): Unit =
+    val trackH = 4
+    val tx     = s.bounds.x
+    val ty     = s.bounds.y + (s.bounds.h - trackH) / 2
+    val track  = Rect(tx, ty, s.bounds.w, trackH)
+    val ra     = trackH / 2
+
+    if s.focused then
+      eng.drawList += DrawShadow(track, ra, Shadow.focusRing(eng.theme.focusBorder))
+
+    eng.drawList += FillRoundRect(track, ra, eng.theme.inputBg)
+    eng.drawList += StrokeRoundRect(track, ra, eng.theme.inputBorder)
+
+    val range = s.view.max - s.view.min
+    val rel   =
+      if range <= 0 then 0.0
+      else (s.view.value - s.view.min).toDouble / range.toDouble
+    val thumbW = 12
+    val thumbH = eng.theme.lineHeight
+    val px     = tx + ((s.bounds.w - thumbW).toDouble * rel).round.toInt
+    val py     = s.bounds.y + (s.bounds.h - thumbH) / 2
+    val thumb  = Rect(px, py, thumbW, thumbH)
+
+    // Filled track from start to thumb center.
+    if rel > 0.0 then
+      val fillW = px - tx + thumbW / 2
+      eng.drawList += FillRoundRect(Rect(tx, ty, fillW, trackH), ra, eng.theme.accent)
+
+    val thumbBg =
+      if !s.view.enabled then eng.theme.btnDisabledBg
+      else if s.dragging then eng.theme.btnPressedBg
+      else if s.hover    then eng.theme.btnHoverBg
+      else                    eng.theme.btnBg
+    eng.drawList += FillRoundRect(thumb, eng.theme.btnRadius, thumbBg)
+    eng.drawList += StrokeRoundRect(thumb, eng.theme.btnRadius, eng.theme.border)

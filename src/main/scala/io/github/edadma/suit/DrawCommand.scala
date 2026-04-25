@@ -21,5 +21,6 @@ final case class FillRoundRect(rect: Rect, radius: Int, color: Color)   extends 
 final case class StrokeRoundRect(rect: Rect, radius: Int, color: Color) extends DrawCommand
 final case class DrawShadow(rect: Rect, radius: Int, shadow: Shadow)    extends DrawCommand
 final case class DrawText(x: Int, y: Int, text: String, color: Color)   extends DrawCommand
+final case class DrawImage(rect: Rect, source: String)            extends DrawCommand
 final case class PushClip(rect: Rect)                            extends DrawCommand
 case object PopClip                                              extends DrawCommand

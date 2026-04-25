@@ -22,6 +22,21 @@ object Hooks:
 
   private val noopChange: () => Unit = () => ()
 
+  // Compute the current eased value of an in-flight transition. Lives in
+  // the companion so the cell shape is private to this file.
+  private[suit] def transitionCurrent(cell: TransitionCell, now: Long): Double =
+    if cell.durationMs <= 0 then cell.target
+    else
+      val elapsed = (now - cell.startMs).toDouble
+      val raw     = elapsed / cell.durationMs.toDouble
+      if raw >= 1.0 then cell.target
+      else
+        val t  = if raw < 0.0 then 0.0 else raw
+        val u  = 1.0 - t
+        // easeOutCubic: 1 - (1 - t)^3
+        val k  = 1.0 - u * u * u
+        cell.startValue + (cell.target - cell.startValue) * k
+
 // Anything that owns a Hooks instance — both FunctionComponent and
 // MemoComponent today. The reconciler's unmount path runs cleanups on any
 // node whose widget is a HookCarrier.
@@ -62,6 +77,7 @@ final class Hooks:
   // Run all effect cleanups stored in this Hooks instance. Called by the
   // reconciler when the owning ComponentNode is unmounted.
   private[suit] def runUnmountCleanups(): Unit =
+    val e = engine
     var i = 0
     while i < cells.length do
       cells(i) match
@@ -70,6 +86,12 @@ final class Hooks:
           if cleanup != null then
             rec.cleanup = null
             cleanup()
+        case t: TransitionCell =>
+          // If the transition was still in flight, release its slot in the
+          // engine's animationCount so we don't leave the host spinning.
+          if t.active && e != null then
+            t.active = false
+            e.animationCount = e.animationCount - 1
         case _ => ()
       i = i + 1
 
@@ -200,6 +222,44 @@ final class Hooks:
     id
 
 
+  // -- useTransition ------------------------------------------------------
+
+  // Drives a value toward `target` over `durationMs`, returning the eased
+  // current value on every render. When `target` changes, the transition
+  // restarts from wherever the value was at that moment. While in flight
+  // the hook holds a slot in the engine's `animationCount`, which keeps the
+  // host's lazy frame loop ticking until the value settles.
+  //
+  // `easeOutCubic` is hard-coded as a sensible default; a richer API can
+  // take an `easing: Double => Double` parameter once it's needed.
+  def useTransition(target: Double, durationMs: Int): Double =
+    val i = index
+    index = i + 1
+    val e = engine
+    val now: Long = if e == null then 0L else e.nowMs
+    if i >= cells.length then
+      cells += new TransitionCell(target, target, now, durationMs, false)
+      return target
+
+    val cell = cells(i).asInstanceOf[TransitionCell]
+
+    if cell.target != target then
+      val curr = Hooks.transitionCurrent(cell, now)
+      cell.startValue = curr
+      cell.target     = target
+      cell.startMs    = now
+      cell.durationMs = durationMs
+      if !cell.active then
+        cell.active = true
+        if e != null then e.animationCount = e.animationCount + 1
+
+    val current = Hooks.transitionCurrent(cell, now)
+    if current == cell.target && cell.active then
+      cell.active = false
+      if e != null then e.animationCount = e.animationCount - 1
+    current
+
+
   // -- useContext ---------------------------------------------------------
 
   def useContext[T](ctx: Context[T]): T =
@@ -238,4 +298,15 @@ private[suit] final class EffectCell(
 private final class MemoCell(
     var deps:  Array[Any],
     var value: Any,
+)
+
+
+// Internal record for one useTransition call. `active` tracks whether the
+// hook is currently holding a slot in the engine's animation counter.
+private[suit] final class TransitionCell(
+    var startValue: Double,
+    var target:     Double,
+    var startMs:    Long,
+    var durationMs: Int,
+    var active:     Boolean,
 )

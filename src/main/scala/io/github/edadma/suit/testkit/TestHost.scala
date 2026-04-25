@@ -157,6 +157,9 @@ final class TestHost(viewportW: Int = 800, viewportH: Int = 600):
       case ap: AbsolutePositionNode =>
         val ch = ap.child
         if ch != null then walk(ch, pred, out)
+      case c: CenterNode =>
+        val ch = c.child
+        if ch != null then walk(ch, pred, out)
       case b: BackdropNode =>
         val ch = b.child
         if ch != null then walk(ch, pred, out)
@@ -168,6 +171,9 @@ final class TestHost(viewportW: Int = 800, viewportH: Int = 600):
   def buttons:    Seq[ButtonNode]   = findAllOfType[ButtonNode]
   def inputs:     Seq[InputNode]    = findAllOfType[InputNode]
   def checkboxes: Seq[CheckboxNode] = findAllOfType[CheckboxNode]
+  def radios:     Seq[RadioNode]    = findAllOfType[RadioNode]
+  def sliders:    Seq[SliderNode]   = findAllOfType[SliderNode]
+  def images:     Seq[ImageNode]    = findAllOfType[ImageNode]
 
   def findText(content: String): Option[TextNode] =
     texts.find(_.view.content == content)
@@ -183,6 +189,9 @@ final class TestHost(viewportW: Int = 800, viewportH: Int = 600):
 
   def findCheckbox(label: String): Option[CheckboxNode] =
     checkboxes.find(_.view.label == label)
+
+  def findRadio(label: String): Option[RadioNode] =
+    radios.find(_.view.label == label)
 
 
   // ---- inspection ---------------------------------------------------------

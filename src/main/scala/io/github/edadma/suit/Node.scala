@@ -51,6 +51,17 @@ final class CheckboxNode(var view: Checkbox) extends Node:
 
 final class SpacerNode(var view: Spacer) extends Node
 
+final class ImageNode(var view: Image) extends Node
+
+final class SliderNode(var view: Slider) extends Node:
+  var hover:    Boolean = false
+  var focused:  Boolean = false
+  var dragging: Boolean = false
+
+final class RadioNode(var view: Radio) extends Node:
+  var hover:   Boolean = false
+  var focused: Boolean = false
+
 
 // --- Containers -------------------------------------------------------------
 
@@ -98,6 +109,14 @@ final class PortalNode extends Node:
 // Anchored-position node. Layout ignores parent flow and places child at
 // (view.x, view.y) at its measured size.
 final class AbsolutePositionNode(var view: AbsolutePosition) extends Node:
+  var child: Node | Null = null
+
+
+// Centers its child within the parent's frame at the child's natural size.
+// Bounds are overridden during layout to match the child's positioned rect
+// (mirrors AbsolutePositionNode) so hit-testing of an enclosing Backdrop
+// behaves the same way for Center as for AbsolutePosition.
+final class CenterNode(var view: Center) extends Node:
   var child: Node | Null = null
 
 

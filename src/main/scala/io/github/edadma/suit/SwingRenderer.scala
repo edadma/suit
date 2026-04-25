@@ -1,6 +1,9 @@
 package io.github.edadma.suit
 
 import java.awt.{BasicStroke, Color as AwtColor, Graphics2D, Shape}
+import java.awt.image.BufferedImage
+import java.io.File
+import javax.imageio.ImageIO
 
 // AWT/Swing implementation of Renderer — wraps a Graphics2D handed in by
 // JPanel.paintComponent each frame. Self-contained: nothing else in the
@@ -53,6 +56,18 @@ final class SwingRenderer(g2: Graphics2D) extends Renderer:
     g2.setColor(toAwt(color))
     g2.drawString(text, x, y)
 
+  // Lazy load + cache. Sources are resolved as classpath resources first
+  // (matches sysl's "embedded asset" model), then as filesystem paths. A
+  // failed load draws a magenta placeholder rectangle so the layout slot
+  // is visible during development.
+  def drawImage(rect: Rect, source: String): Unit =
+    val img = SwingRenderer.loadImage(source)
+    if img != null then
+      g2.drawImage(img, rect.x, rect.y, rect.w, rect.h, null)
+    else
+      g2.setColor(new AwtColor(255, 0, 255, 96))
+      g2.fillRect(rect.x, rect.y, rect.w, rect.h)
+
   def pushClip(rect: Rect): Unit =
     clipStack.push(g2.getClip)
     g2.clipRect(rect.x, rect.y, rect.w, rect.h)   // intersects with current clip
@@ -62,3 +77,32 @@ final class SwingRenderer(g2: Graphics2D) extends Renderer:
     else g2.setClip(null)
 
   private def toAwt(c: Color): AwtColor = new AwtColor(c.r, c.g, c.b, c.a)
+
+
+object SwingRenderer:
+
+  // Process-wide image cache. Keyed by source string so the same image used
+  // many times is loaded once. Null entries mark known-failed loads so we
+  // don't retry on every frame.
+  private val cache: scala.collection.mutable.HashMap[String, BufferedImage | Null] =
+    scala.collection.mutable.HashMap.empty
+
+  private[suit] def loadImage(source: String): BufferedImage | Null =
+    cache.get(source) match
+      case Some(img) => img
+      case None =>
+        val loaded = tryLoad(source)
+        cache.update(source, loaded)
+        loaded
+
+  private def tryLoad(source: String): BufferedImage | Null =
+    try
+      val resource = getClass.getResourceAsStream("/" + source)
+      if resource != null then
+        try ImageIO.read(resource)
+        finally resource.close()
+      else
+        val f = new File(source)
+        if f.exists() then ImageIO.read(f) else null
+    catch
+      case _: Throwable => null

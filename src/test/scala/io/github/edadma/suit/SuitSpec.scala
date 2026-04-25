@@ -540,6 +540,334 @@ class SuitSpec extends AnyFreeSpec with Matchers:
   }
 
   // -------------------------------------------------------------------------
+  // useTransition
+  // -------------------------------------------------------------------------
+
+  "useTransition" - {
+    "returns the target unchanged when nothing has started transitioning" in {
+      val host = new TestHost
+      var observed = -1.0
+      val Comp = component("trans-init") { hooks =>
+        observed = hooks.useTransition(0.5, 200)
+        Text("v=" + observed)
+      }
+      host.render(Component(Comp))
+      observed shouldBe 0.5
+      host.engine.animationCount shouldBe 0
+    }
+
+    "begins animating to a new target and reaches it after the duration" in {
+      val host = new TestHost
+      // Caller-controlled target lives in test scope so re-renders pick it up.
+      var target  = 0.0
+      var lastVal = -1.0
+      val Comp = component("trans") { hooks =>
+        lastVal = hooks.useTransition(target, 100)
+        Text("v=" + lastVal)
+      }
+      // Initial render: target=0.0 → no transition.
+      host.render(Component(Comp))
+      lastVal shouldBe 0.0
+      host.engine.animationCount shouldBe 0
+
+      // Change target → animation starts.
+      target = 1.0
+      host.setTime(0)
+      host.render(Component(Comp))
+      host.engine.animationCount shouldBe 1
+      // Halfway through, value is between start and target (eased > 0.5).
+      host.advanceTime(50)
+      host.frame()
+      lastVal should (be > 0.0 and be < 1.0)
+      host.engine.animationCount shouldBe 1
+
+      // Past duration: settles exactly at target and releases its slot.
+      host.advanceTime(200)
+      host.frame()
+      lastVal shouldBe 1.0
+      host.engine.animationCount shouldBe 0
+    }
+
+    "drives the engine's animating flag while in flight" in {
+      val host = new TestHost
+      var target = 0.0
+      val Comp = component("trans-anim") { hooks =>
+        val _ = hooks.useTransition(target, 100)
+        Text("x")
+      }
+      host.render(Component(Comp))
+      target = 1.0
+      host.setTime(0)
+      host.render(Component(Comp))
+      host.engine.animating shouldBe true
+      host.advanceTime(500)
+      host.frame()
+      host.engine.animating shouldBe false
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Image
+  // -------------------------------------------------------------------------
+
+  "Image" - {
+    "measures to its declared (width, height)" in {
+      val host = new TestHost
+      // Wrap in AbsolutePosition so the bounds reflect the Image's natural
+      // size rather than Stack's cross-axis stretch.
+      host.render(Portal(AbsolutePosition(0, 0,
+        Image(source = "icon.png", width = 32, height = 32))))
+      val n = host.images.head
+      n.bounds.w shouldBe 32
+      n.bounds.h shouldBe 32
+    }
+
+    "emits a DrawImage command carrying the source string" in {
+      val host = new TestHost
+      host.render(Image(source = "logo.png", width = 64, height = 32))
+      host.drawList.collect { case di: DrawImage => di }.headOption match
+        case Some(DrawImage(_, src)) => src shouldBe "logo.png"
+        case None                    => fail("expected DrawImage command")
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Slider
+  // -------------------------------------------------------------------------
+
+  "Slider" - {
+    "emits onChange with a value computed from mouseX on press" in {
+      var current = 0
+      val host = new TestHost
+      host.render(Slider(value = 0, min = 0, max = 100, onChange = v => current = v, width = 100))
+      val s = host.sliders.head
+      // Press at the right edge → max value.
+      host.clickAt(s.bounds.x + s.bounds.w - 1, s.bounds.y + s.bounds.h / 2)
+      current shouldBe 100
+    }
+
+    "clamps emitted values to [min, max] when the drag goes off the track" in {
+      var current = 50
+      val host = new TestHost
+      host.render(Slider(value = current, min = 0, max = 100,
+        onChange = v => current = v, width = 100))
+      val s = host.sliders.head
+      // Press inside, then drag well past the left edge — value clamps to min.
+      host.engine.input.mouseX        = s.bounds.x + 10
+      host.engine.input.mouseY        = s.bounds.y + s.bounds.h / 2
+      host.engine.input.mouseDown     = true
+      host.engine.input.mousePressed  = true
+      host.engine.input.hadEvents     = true
+      host.frame()
+      // Now move the mouse far left while still held.
+      host.engine.input.mouseX        = s.bounds.x - 200
+      host.engine.input.hadEvents     = true
+      host.frame()
+      // Release.
+      host.engine.input.mouseDown     = false
+      host.engine.input.mouseReleased = true
+      host.engine.input.hadEvents     = true
+      host.settle()
+      current shouldBe 0
+    }
+
+    "becomes focused on click and responds to arrow keys" in {
+      var current = 50
+      val host = new TestHost
+      host.render(Slider(value = current, min = 0, max = 100,
+        onChange = v => current = v, width = 200))
+      val s = host.sliders.head
+      host.click(s)
+      s.focused shouldBe true
+      // Re-render with the freshly-emitted value so keyboard nudge is from 50.
+      host.render(Slider(value = 50, min = 0, max = 100,
+        onChange = v => current = v, width = 200))
+      host.press(host.Key.Right)
+      current shouldBe 51
+      host.render(Slider(value = 51, min = 0, max = 100,
+        onChange = v => current = v, width = 200))
+      host.press(host.Key.Left)
+      current shouldBe 50
+    }
+
+    "ignores clicks when disabled" in {
+      var current = 25
+      val host = new TestHost
+      host.render(Slider(value = current, min = 0, max = 100,
+        onChange = v => current = v, width = 100, enabled = false))
+      val s = host.sliders.head
+      host.clickAt(s.bounds.x + s.bounds.w - 1, s.bounds.y + s.bounds.h / 2)
+      current shouldBe 25
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Radio
+  // -------------------------------------------------------------------------
+
+  "Radio" - {
+    "fires onSelect when an unselected radio is clicked" in {
+      var picked = -1
+      val host = new TestHost
+      host.render(Stack(Axis.Vertical, Array(
+        Radio("a", selected = false, onSelect = () => picked = 0),
+        Radio("b", selected = false, onSelect = () => picked = 1),
+      )))
+      host.click(host.findRadio("b").get)
+      picked shouldBe 1
+    }
+
+    "does NOT fire onSelect when an already-selected radio is clicked" in {
+      var fires = 0
+      val host = new TestHost
+      host.render(Radio("only", selected = true, onSelect = () => fires = fires + 1))
+      host.click(host.findRadio("only").get)
+      fires shouldBe 0
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Tabs helper
+  // -------------------------------------------------------------------------
+
+  "tabs" - {
+    "renders a button per label and a content panel" in {
+      val host = new TestHost
+      host.render(tabs(
+        labels   = Array("One", "Two", "Three"),
+        selected = 0,
+        onSelect = _ => (),
+        content  = Text("body0"),
+      ))
+      host.findText("body0") should not be empty
+      host.buttons.size shouldBe 3
+    }
+
+    "fires onSelect with the clicked tab's index" in {
+      var picked = -1
+      val host = new TestHost
+      host.render(tabs(
+        labels   = Array("One", "Two", "Three"),
+        selected = 0,
+        onSelect = i => picked = i,
+        content  = Text("body0"),
+      ))
+      host.click(host.findButton("Two").get)
+      picked shouldBe 1
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Dropdown helper
+  // -------------------------------------------------------------------------
+
+  "dropdown" - {
+    "starts closed (no menu portal)" in {
+      val host = new TestHost
+      host.render(dropdown("Apple", Array("Apple", "Banana"), _ => ()))
+      host.engine.portalNodes.size shouldBe 0
+    }
+
+    "opens on trigger click and closes after selection" in {
+      var chosen = ""
+      val host = new TestHost
+      host.render(dropdown("Apple", Array("Apple", "Banana"),
+        onChange = s => chosen = s))
+      host.click(host.findButton("Apple ▾").get)
+      host.engine.portalNodes.size shouldBe 1
+      host.click(host.findButton("Banana").get)
+      chosen shouldBe "Banana"
+      host.engine.portalNodes.size shouldBe 0
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Overlays — modal / tooltip / contextMenu helpers
+  // -------------------------------------------------------------------------
+
+  "modal" - {
+    "renders nothing when open=false" in {
+      val host = new TestHost
+      host.render(modal(open = false, onClose = () => (), child = Text("hidden")))
+      host.engine.portalNodes.size shouldBe 0
+      host.findText("hidden") shouldBe empty
+    }
+
+    "centers its child in the viewport when open=true" in {
+      val host = new TestHost   // default 800x600 viewport in TestHost
+      host.render(modal(open = true, onClose = () => (), child = Text("dialog")))
+      host.engine.portalNodes.size shouldBe 1
+      val txt = host.findText("dialog").get
+      // Centered: text width should sit on the viewport's vertical centerline
+      // (within a few px of slack since the centerline math is integer).
+      val cx = txt.bounds.x + txt.bounds.w / 2
+      val cy = txt.bounds.y + txt.bounds.h / 2
+      math.abs(cx - host.engine.width  / 2) should be < 4
+      math.abs(cy - host.engine.height / 2) should be < 4
+    }
+
+    "fires onClose when its backdrop is clicked outside the child" in {
+      var closed = false
+      val host = new TestHost
+      host.render(modal(open = true,
+        onClose = () => closed = true, child = Button("inside", () => ())))
+      host.clickAt(2, 2)   // far from the centered dialog
+      closed shouldBe true
+    }
+  }
+
+  "tooltip" - {
+    "renders nothing when open=false" in {
+      val host = new TestHost
+      host.render(tooltip(open = false, x = 10, y = 10, Text("tip")))
+      host.engine.portalNodes.size shouldBe 0
+      host.findText("tip") shouldBe empty
+    }
+
+    "places its child at the requested coordinates when open=true" in {
+      val host = new TestHost
+      host.render(tooltip(open = true, x = 50, y = 75, Text("tip")))
+      val txt = host.findText("tip").get
+      txt.bounds.x shouldBe 50
+      txt.bounds.y shouldBe 75
+    }
+
+    "does NOT swallow clicks — the underlying UI still receives them" in {
+      var hit = 0
+      val host = new TestHost
+      host.render(Stack(Axis.Vertical, Array(
+        Button("under", () => hit = hit + 1),
+        tooltip(open = true, x = 300, y = 300, Text("tip")),
+      )))
+      host.click(host.findButton("under").get)
+      hit shouldBe 1
+    }
+  }
+
+  "contextMenu" - {
+    "renders nothing when open=false" in {
+      val host = new TestHost
+      host.render(contextMenu(open = false, x = 0, y = 0,
+        onClose = () => (), child = Text("menu")))
+      host.engine.portalNodes.size shouldBe 0
+    }
+
+    "fires onClose on outside click and does NOT propagate to the underlying UI" in {
+      var closed = false
+      var under  = 0
+      val host = new TestHost
+      host.render(Stack(Axis.Vertical, Array(
+        Button("under", () => under = under + 1),
+        contextMenu(open = true, x = 300, y = 300,
+          onClose = () => closed = true, child = Text("menu")),
+      )))
+      host.clickAt(2, 2)
+      closed shouldBe true
+      under shouldBe 0           // backdrop swallowed the click
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // ErrorBoundary
   // -------------------------------------------------------------------------
 
