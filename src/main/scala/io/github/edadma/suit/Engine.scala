@@ -161,6 +161,7 @@ final class Engine:
     val root0 = rootNode
     if root0 != null then
 
+      Engine.handleTabKey(this, root0)
       Engine.dispatchEvents(this, root0)
 
       // Phase 2 — onClick handlers may have called setRoot during dispatch.
@@ -214,6 +215,16 @@ object Engine:
     case cp: ContextProviderNode =>
       val ch = cp.child
       if ch == null then Size(0, 0) else measure(eng, ch)
+    case eb: ErrorBoundaryNode =>
+      val ch = eb.child
+      if ch == null then Size(0, 0) else measure(eng, ch)
+    case sn: ScrollNode =>
+      // Scroll's preferred size is its declared viewport height with the
+      // child's natural width. The full content height shows through only
+      // during layout/render.
+      val ch = sn.child
+      val cw = if ch == null then 0 else measure(eng, ch).w
+      Size(cw, sn.view.height)
 
   private def textWidth(eng: Engine, s: String): Int =
     s.length * eng.theme.charWidth
@@ -266,6 +277,24 @@ object Engine:
       case cp: ContextProviderNode =>
         val ch = cp.child
         if ch != null then layout(eng, ch, frame)
+      case eb: ErrorBoundaryNode =>
+        val ch = eb.child
+        if ch != null then layout(eng, ch, frame)
+      case sn: ScrollNode =>
+        // Honor the declared viewport height: even if the parent allocates
+        // more space, our viewport stays at view.height. Bounds were set by
+        // the outer `layout` call above; override the height here.
+        val viewportH = math.min(frame.h, sn.view.height)
+        sn.bounds = Rect(frame.x, frame.y, frame.w, viewportH)
+        val ch = sn.child
+        if ch != null then
+          val cs = measure(eng, ch)
+          sn.contentHeight = cs.h
+          val maxScroll = (cs.h - viewportH).max(0)
+          if sn.scrollY > maxScroll then sn.scrollY = maxScroll
+          if sn.scrollY < 0           then sn.scrollY = 0
+          // Child laid out at its full natural height, offset upward by scrollY.
+          layout(eng, ch, Rect(frame.x, frame.y - sn.scrollY, frame.w, cs.h))
       case _ => ()
 
   private def layoutStack(eng: Engine, s: StackNode, frame: Rect): Unit =
@@ -327,6 +356,43 @@ object Engine:
 
   // ----- event dispatch ---------------------------------------------------
 
+  // Top-of-frame: handle Tab/Shift-Tab focus cycling before any per-widget
+  // dispatch, so focusables don't intercept the Tab key for their own use.
+  // Consumes the keyTab edge if a focusable is found.
+  private[suit] def handleTabKey(eng: Engine, root: Node): Unit =
+    if !eng.input.keyTab then return
+    val list = scala.collection.mutable.ArrayBuffer.empty[Node]
+    collectFocusables(root, list)
+    if list.isEmpty then return
+    val current = eng.focused
+    val idx     = if current != null then list.indexOf(current) else -1
+    val next =
+      if eng.input.keyShiftDown then
+        if idx <= 0 then list.length - 1 else idx - 1
+      else
+        if idx == list.length - 1 then 0 else idx + 1
+    eng.focusNode(list(next))
+    eng.input.keyTab = false   // consume — don't bubble to text fields etc.
+
+  private def collectFocusables(n: Node, out: scala.collection.mutable.ArrayBuffer[Node]): Unit = n match
+    case _: InputNode    => out += n
+    case _: CheckboxNode => out += n
+    case s: StackNode =>
+      var i = 0
+      while i < s.children.length do
+        collectFocusables(s.children(i), out)
+        i = i + 1
+    case c: ComponentNode =>
+      val ch = c.child; if ch != null then collectFocusables(ch, out)
+    case cp: ContextProviderNode =>
+      val ch = cp.child; if ch != null then collectFocusables(ch, out)
+    case eb: ErrorBoundaryNode =>
+      val ch = eb.child; if ch != null then collectFocusables(ch, out)
+    case sn: ScrollNode =>
+      val ch = sn.child; if ch != null then collectFocusables(ch, out)
+    case _ => ()
+
+
   def dispatchEvents(eng: Engine, n: Node): Unit = n match
     case b: ButtonNode    => dispatchButton(eng, b)
     case c: CheckboxNode  => dispatchCheckbox(eng, c)
@@ -342,6 +408,24 @@ object Engine:
     case cp: ContextProviderNode =>
       val ch = cp.child
       if ch != null then dispatchEvents(eng, ch)
+    case eb: ErrorBoundaryNode =>
+      val ch = eb.child
+      if ch != null then dispatchEvents(eng, ch)
+    case sn: ScrollNode =>
+      // Recurse first so an inner Scroll consumes the wheel before us.
+      val ch = sn.child
+      if ch != null then dispatchEvents(eng, ch)
+      if eng.input.wheelDeltaY != 0f
+        && sn.bounds.contains(eng.input.mouseX, eng.input.mouseY) then
+        val before = sn.scrollY
+        val maxScroll = (sn.contentHeight - sn.bounds.h).max(0)
+        var next = sn.scrollY + eng.input.wheelDeltaY.toInt
+        if next < 0           then next = 0
+        if next > maxScroll   then next = maxScroll
+        if next != before then
+          sn.scrollY = next
+          eng.markDirty()
+        eng.input.wheelDeltaY = 0f   // consume
     case _ => ()
 
   private def dispatchButton(eng: Engine, b: ButtonNode): Unit =
@@ -458,6 +542,14 @@ object Engine:
     case cp: ContextProviderNode =>
       val ch = cp.child
       if ch != null then render(eng, ch)
+    case eb: ErrorBoundaryNode =>
+      val ch = eb.child
+      if ch != null then render(eng, ch)
+    case sn: ScrollNode =>
+      eng.drawList += PushClip(sn.bounds)
+      val ch = sn.child
+      if ch != null then render(eng, ch)
+      eng.drawList += PopClip
 
   private def renderText(eng: Engine, t: TextNode): Unit =
     val ty = t.bounds.y + (t.bounds.h + eng.theme.fontSize) / 2 - 2

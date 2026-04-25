@@ -71,3 +71,18 @@ final class ComponentNode(var widget: Widget) extends Node:
 // Pushes a context value during reconciliation/render of its child subtree.
 final class ContextProviderNode(var ctx: Context[?], var value: Any) extends Node:
   var child: Node | Null = null
+
+
+// Holds the rendered subtree of an ErrorBoundary — either the child or, if
+// rendering threw, the fallback view.
+final class ErrorBoundaryNode(var view: ErrorBoundary) extends Node:
+  var child: Node | Null = null
+
+
+// A vertical scroll viewport. `scrollY` is the top of the visible window
+// (in content coordinates); `contentHeight` is set during layout from the
+// child's measured height and used to clamp scrollY.
+final class ScrollNode(var view: Scroll) extends Node:
+  var child:         Node | Null = null
+  var scrollY:       Int         = 0
+  var contentHeight: Int         = 0

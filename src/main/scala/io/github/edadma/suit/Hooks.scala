@@ -39,6 +39,20 @@ final class Hooks:
   // genuine internal-state change. Default no-op for plain components.
   private[suit] var onStateChange: () => Unit = Hooks.noopChange
 
+  // Contexts this fiber has read via useContext. Tracked so that when a
+  // provider's value changes, the reconciler can invalidate subscribers
+  // (necessary for memoized consumers, harmless for everyone else).
+  private[suit] val subscribedContexts: scala.collection.mutable.HashSet[Context[?]] =
+    scala.collection.mutable.HashSet.empty
+
+  // Mark the owning component dirty without going through a state setter.
+  // Used by the reconciler to wake up memoized consumers when a context
+  // value changes.
+  private[suit] def invalidate(): Unit =
+    onStateChange()
+    val e = engine
+    if e != null then e.requestRender()
+
   private val cells: ArrayBuffer[Any] = ArrayBuffer.empty
   private var index: Int = 0
 
@@ -189,6 +203,7 @@ final class Hooks:
   // -- useContext ---------------------------------------------------------
 
   def useContext[T](ctx: Context[T]): T =
+    subscribedContexts += ctx
     val e = engine
     if e == null then ctx.default
     else e.contextValue(ctx)

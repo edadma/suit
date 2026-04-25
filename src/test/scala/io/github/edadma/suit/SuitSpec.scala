@@ -470,6 +470,160 @@ class SuitSpec extends AnyFreeSpec with Matchers:
   }
 
   // -------------------------------------------------------------------------
+  // ErrorBoundary
+  // -------------------------------------------------------------------------
+
+  "ErrorBoundary" - {
+    "shows the fallback when its child throws on mount" in {
+      val host = new TestHost
+      val Boomer = component("Boomer") { _ =>
+        throw new RuntimeException("boom")
+      }
+      host.render(ErrorBoundary(
+        fallback = t => Text("caught: " + t.getMessage),
+        child    = Component(Boomer),
+      ))
+      host.findText("caught: boom") should not be empty
+    }
+
+    "renders the child when nothing throws" in {
+      val host = new TestHost
+      host.render(ErrorBoundary(
+        fallback = _ => Text("fallback"),
+        child    = Text("happy"),
+      ))
+      host.findText("happy")    should not be empty
+      host.findText("fallback") shouldBe empty
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Tab cycling
+  // -------------------------------------------------------------------------
+
+  "Tab cycling" - {
+    "moves focus to the first focusable when nothing is focused" in {
+      val host = new TestHost
+      host.render(Stack(Axis.Vertical, Array(
+        Input(value = ""),
+        Checkbox("c", false),
+      )))
+      host.press(host.Key.Tab)
+      host.focusedNode shouldBe a[InputNode]
+    }
+
+    "moves to the next focusable on subsequent Tab presses" in {
+      val host = new TestHost
+      host.render(Stack(Axis.Vertical, Array(
+        Input(value = ""),
+        Checkbox("c", false),
+      )))
+      host.press(host.Key.Tab)
+      host.press(host.Key.Tab)
+      host.focusedNode shouldBe a[CheckboxNode]
+    }
+
+    "wraps around to the first when the last is focused" in {
+      val host = new TestHost
+      host.render(Stack(Axis.Vertical, Array(
+        Input(value = ""),
+        Checkbox("c", false),
+      )))
+      host.press(host.Key.Tab)
+      host.press(host.Key.Tab)
+      host.press(host.Key.Tab)
+      host.focusedNode shouldBe a[InputNode]
+    }
+
+    "moves backwards with Shift+Tab" in {
+      val host = new TestHost
+      host.render(Stack(Axis.Vertical, Array(
+        Input(value = ""),
+        Checkbox("c", false),
+      )))
+      host.press(host.Key.Tab)         // focus first
+      host.engine.input.keyShiftDown = true
+      host.press(host.Key.Tab)         // shift-tab → wrap to last
+      host.engine.input.keyShiftDown = false
+      host.focusedNode shouldBe a[CheckboxNode]
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Scroll
+  // -------------------------------------------------------------------------
+
+  "Scroll" - {
+    "scrolls its child on mouse wheel" in {
+      val host = new TestHost
+      // Tall content (10 stacked Text rows) inside a 100-px viewport.
+      val rows = (0 until 10).map(i => Text("row " + i): View).toArray
+      host.render(Scroll(
+        child  = Stack(Axis.Vertical, gap = 0, children = rows),
+        height = 100,
+      ))
+      // Find the ScrollNode and remember its initial scrollY.
+      val sn = host.findAllOfType[ScrollNode].head
+      sn.scrollY shouldBe 0
+      // Wheel down with cursor over the scroll area.
+      val r = sn.bounds
+      host.engine.input.mouseX = r.x + 5
+      host.engine.input.mouseY = r.y + 5
+      host.engine.input.wheelDeltaY = 90f
+      host.engine.input.hadEvents   = true
+      host.settle()
+      sn.scrollY should be > 0
+    }
+
+    "clamps scrollY at the bottom of the content" in {
+      val host = new TestHost
+      val rows = (0 until 6).map(i => Text("row " + i): View).toArray
+      host.render(Scroll(
+        child  = Stack(Axis.Vertical, gap = 0, children = rows),
+        height = 100,
+      ))
+      val sn = host.findAllOfType[ScrollNode].head
+      val r = sn.bounds
+      host.engine.input.mouseX = r.x + 5
+      host.engine.input.mouseY = r.y + 5
+      // Try to scroll way past content end.
+      host.engine.input.wheelDeltaY = 99999f
+      host.engine.input.hadEvents   = true
+      host.settle()
+      val maxScroll = (sn.contentHeight - r.h).max(0)
+      sn.scrollY shouldBe maxScroll
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Context-aware memo
+  // -------------------------------------------------------------------------
+
+  "context-aware memo" - {
+    "memoized consumer re-renders when its context value changes" in {
+      val Theme = createContext("light")
+      var renderCount = 0
+      var seen = ""
+
+      case class P()
+      val Consumer = memo[P]("Consumer") { (_, hooks) =>
+        renderCount = renderCount + 1
+        seen = hooks.useContext(Theme)
+        Text(seen)
+      }
+
+      val host = new TestHost
+      host.render(Theme.provide("light", Component(Consumer(P()))))
+      val afterFirst = renderCount
+      seen shouldBe "light"
+
+      host.render(Theme.provide("dark",  Component(Consumer(P()))))
+      renderCount should be > afterFirst    // memo bailout was bypassed
+      seen shouldBe "dark"
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // memo — prop-bailout
   // -------------------------------------------------------------------------
 

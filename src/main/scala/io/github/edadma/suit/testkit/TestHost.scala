@@ -145,6 +145,12 @@ final class TestHost(viewportW: Int = 800, viewportH: Int = 600):
       case cp: ContextProviderNode =>
         val ch = cp.child
         if ch != null then walk(ch, pred, out)
+      case eb: ErrorBoundaryNode =>
+        val ch = eb.child
+        if ch != null then walk(ch, pred, out)
+      case sn: ScrollNode =>
+        val ch = sn.child
+        if ch != null then walk(ch, pred, out)
       case _ => ()
 
 

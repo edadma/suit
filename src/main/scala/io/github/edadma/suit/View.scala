@@ -68,6 +68,12 @@ final case class Stack(
 
 final case class Spacer(flex: Int = 1) extends View
 
+// A vertically-scrolling viewport. The viewport occupies `height` pixels of
+// vertical space; the child is given as much height as it asks for. When
+// the child's natural height exceeds the viewport, the mouse wheel scrolls
+// it. Scroll position persists on the corresponding ScrollNode.
+final case class Scroll(child: View, height: Int) extends View
+
 // Wraps a stateful, user-defined Widget.
 final case class Component(widget: Widget) extends View
 
@@ -95,6 +101,13 @@ final case class WithRef(ref: Ref[Node | Null], child: View) extends View
 // parameter through the View enum; the typed wrapper `Context.provide`
 // constructs this.
 final case class ContextProvider(ctx: Context[?], value: Any, child: View) extends View
+
+// Catches any throwable raised while reconciling/rendering `child` and
+// substitutes `fallback(t)` in its place. Without an enclosing
+// ErrorBoundary, an exception bubbles up and the host crashes — same as
+// React's behaviour. The fallback view itself is *not* protected; throw
+// from there at your peril.
+final case class ErrorBoundary(fallback: Throwable => View, child: View) extends View
 
 case object Empty extends View
 

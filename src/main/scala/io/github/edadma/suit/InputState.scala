@@ -32,6 +32,14 @@ final class InputState:
   var keyTab: Boolean       = false
   var keySpace: Boolean     = false
 
+  // Modifier states — held across frames (not edge-cleared like keyTab).
+  var keyShiftDown: Boolean = false
+
+  // Mouse wheel pixel delta accumulated this frame (positive = scroll down).
+  // Cleared in clearFrameEdges; consumed by the innermost ScrollNode under
+  // the cursor.
+  var wheelDeltaY: Float    = 0f
+
   def pushChar(ch: Int): Unit =
     if typedLen < 16 then
       typedChars(typedLen) = ch
@@ -50,4 +58,5 @@ final class InputState:
     keyEnter      = false
     keyTab        = false
     keySpace      = false
+    wheelDeltaY   = 0f
     hadEvents     = false

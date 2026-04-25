@@ -9,6 +9,8 @@ import java.awt.event.{
   MouseAdapter,
   MouseEvent,
   MouseMotionAdapter,
+  MouseWheelEvent,
+  MouseWheelListener,
 }
 import javax.swing.{JFrame, JPanel, SwingUtilities, Timer, WindowConstants}
 
@@ -41,6 +43,10 @@ private final class SuitPanel(engine: Engine) extends JPanel:
 
   setFocusable(true)
   setBackground(AwtColor.BLACK)
+
+  // Per-paint clip stack for nested PushClip/PopClip pairs.
+  private val clipStack: scala.collection.mutable.Stack[java.awt.Shape] =
+    scala.collection.mutable.Stack.empty
 
   // Tab is consumed by Swing for focus traversal by default — disable so we
   // see VK_TAB in our key listener.
@@ -97,7 +103,13 @@ private final class SuitPanel(engine: Engine) extends JPanel:
         case KeyEvent.VK_ENTER      => engine.input.keyEnter     = true
         case KeyEvent.VK_TAB        => engine.input.keyTab       = true
         case KeyEvent.VK_SPACE      => engine.input.keySpace     = true
+        case KeyEvent.VK_SHIFT      => engine.input.keyShiftDown = true
         case _                      => ()
+      fireEvent()
+    override def keyReleased(e: KeyEvent): Unit =
+      e.getKeyCode match
+        case KeyEvent.VK_SHIFT => engine.input.keyShiftDown = false
+        case _                 => ()
       fireEvent()
     override def keyTyped(e: KeyEvent): Unit =
       val ch = e.getKeyChar
@@ -110,6 +122,14 @@ private final class SuitPanel(engine: Engine) extends JPanel:
     override def componentResized(e: ComponentEvent): Unit =
       engine.markDirty()
       repaint()
+  )
+
+  addMouseWheelListener(new MouseWheelListener:
+    override def mouseWheelMoved(e: MouseWheelEvent): Unit =
+      val pixelsPerTick = 30f
+      engine.input.wheelDeltaY = engine.input.wheelDeltaY +
+        (e.getPreciseWheelRotation.toFloat * pixelsPerTick)
+      fireEvent()
   )
 
   // ----- paint -----
@@ -156,9 +176,11 @@ private final class SuitPanel(engine: Engine) extends JPanel:
       g2.setColor(toAwt(c))
       g2.drawString(text, x, y)
     case PushClip(r) =>
-      g2.setClip(r.x, r.y, r.w, r.h)
+      clipStack.push(g2.getClip)
+      g2.clipRect(r.x, r.y, r.w, r.h)   // intersects with current clip
     case PopClip =>
-      g2.setClip(null)
+      if clipStack.nonEmpty then g2.setClip(clipStack.pop())
+      else g2.setClip(null)
 
   // Cheap approximation of a Gaussian-blurred drop shadow: paint several
   // outward-expanding rounded strokes whose alpha falls off linearly. The

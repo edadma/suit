@@ -104,11 +104,32 @@ object Reconciler:
       case (n: ContextProviderNode, v: ContextProvider) if n.ctx eq v.ctx =>
         // Same context — push, recurse, pop. The previous child is reused
         // when its kind matches the new one.
-        if n.value != v.value then eng.markDirty()
+        if n.value != v.value then
+          eng.markDirty()
+          val ch = n.child
+          if ch != null then invalidateContextSubscribers(ch, v.ctx, eng)
         n.value = v.value
         eng.pushContext(v.ctx.asInstanceOf[Context[Any]], v.value)
         n.child = reconcile(n.child, v.child, eng)
         eng.popContext(v.ctx.asInstanceOf[Context[Any]])
+        n
+
+      case (n: ErrorBoundaryNode, v: ErrorBoundary) =>
+        n.view = v
+        try
+          n.child = reconcile(n.child, v.child, eng)
+        catch
+          case t: Throwable =>
+            val ch = n.child
+            if ch != null then unmount(ch, eng)
+            n.child = mount(v.fallback(t), eng)
+            eng.markDirty()
+        n
+
+      case (n: ScrollNode, v: Scroll) =>
+        if n.view.height != v.height then eng.markDirty()
+        n.view = v
+        n.child = reconcile(n.child, v.child, eng)
         n
 
       case (_, v) =>
@@ -161,6 +182,20 @@ object Reconciler:
       eng.popContext(cp.ctx.asInstanceOf[Context[Any]])
       n
 
+    case eb: ErrorBoundary =>
+      val n = new ErrorBoundaryNode(eb)
+      try
+        n.child = mount(eb.child, eng)
+      catch
+        case t: Throwable =>
+          n.child = mount(eb.fallback(t), eng)
+      n
+
+    case s: Scroll =>
+      val n = new ScrollNode(s)
+      n.child = mount(s.child, eng)
+      n
+
 
   // Walk a node tree being torn down and run any hook cleanups stored
   // beneath. Called when the reconciler discards a subtree (kind mismatch,
@@ -182,7 +217,46 @@ object Reconciler:
     case cp: ContextProviderNode =>
       val ch = cp.child
       if ch != null then unmount(ch, eng)
+    case eb: ErrorBoundaryNode =>
+      val ch = eb.child
+      if ch != null then unmount(ch, eng)
+    case sn: ScrollNode =>
+      val ch = sn.child
+      if ch != null then unmount(ch, eng)
     case _ => ()
+
+
+  // Walks an existing subtree marking all components whose hooks subscribe
+  // to the given context as dirty. Called when a ContextProvider's value
+  // changes so that memoized consumers (which would otherwise bail out
+  // because their props are unchanged) re-render with the new value.
+  // Stops at any nested ContextProvider for the same context — that
+  // sub-subtree is shielded by its own provider value.
+  def invalidateContextSubscribers(node: Node, ctx: Context[?], eng: Engine): Unit =
+    node match
+      case c: ComponentNode =>
+        c.widget match
+          case h: HookCarrier =>
+            if h.hooks.subscribedContexts.contains(ctx) then h.hooks.invalidate()
+          case _ => ()
+        val ch = c.child
+        if ch != null then invalidateContextSubscribers(ch, ctx, eng)
+      case s: StackNode =>
+        var i = 0
+        while i < s.children.length do
+          invalidateContextSubscribers(s.children(i), ctx, eng)
+          i = i + 1
+      case cp: ContextProviderNode =>
+        if cp.ctx ne ctx then
+          val ch = cp.child
+          if ch != null then invalidateContextSubscribers(ch, ctx, eng)
+      case eb: ErrorBoundaryNode =>
+        val ch = eb.child
+        if ch != null then invalidateContextSubscribers(ch, ctx, eng)
+      case sn: ScrollNode =>
+        val ch = sn.child
+        if ch != null then invalidateContextSubscribers(ch, ctx, eng)
+      case _ => ()
 
 
   // After a memoized parent bails out, this helper walks its existing child
@@ -203,6 +277,12 @@ object Reconciler:
         i = i + 1
     case cp: ContextProviderNode =>
       val ch = cp.child
+      if ch != null then visitForUpdates(ch, eng)
+    case eb: ErrorBoundaryNode =>
+      val ch = eb.child
+      if ch != null then visitForUpdates(ch, eng)
+    case sn: ScrollNode =>
+      val ch = sn.child
       if ch != null then visitForUpdates(ch, eng)
     case _ => ()
 
