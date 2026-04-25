@@ -8,9 +8,9 @@
 // gives us `state.view = v` (struct field assignment, well-trodden in
 // std/) while preserving the per-variant field shapes.
 //
-// Subset: Text, Button, Spacer, Stack2. Layout mutates bounds in place;
-// reconcile reuses kind-matching Nodes (preserving identity) and remounts
-// on kind mismatch.
+// Subset: Text, Button, Spacer, Stack(gap, children: []View) — the
+// variable-arity vertical Stack, with flex distribution across Spacer
+// children (matches `Engine.layoutStack`'s vertical branch in suit/).
 
 extern host_fill_rect(x: int, y: int, w: int, h: int, r: int, g: int, b: int, a: int) -> int
 extern host_draw_text(x: int, y: int, text: string, r: int, g: int, b: int, a: int) -> int
@@ -33,7 +33,7 @@ enum View
     Text(content: string)
     Button(label: string)
     Spacer(flex: int)
-    Stack2(left: View, right: View)
+    Stack(gap: int, children: []View)
 
 struct TextNodeState
     view: View
@@ -49,17 +49,17 @@ struct SpacerNodeState
     view: View
     bounds: Rect
 
-struct Stack2NodeState
+struct StackNodeState
     view: View
     bounds: Rect
-    left: Node
-    right: Node
+    gap: int
+    children: []Node
 
 enum Node
     TextNode(s: TextNodeState)
     ButtonNode(s: ButtonNodeState)
     SpacerNode(s: SpacerNodeState)
-    Stack2Node(s: Stack2NodeState)
+    StackNode(s: StackNodeState)
 
 // ---- Theme constants ------------------------------------------------------
 
@@ -67,21 +67,34 @@ const FONT_W: int    = 8
 const LINE_H: int    = 18
 const BTN_PAD_X: int = 12
 const BTN_PAD_Y: int = 6
-const STACK_GAP: int = 6
 
 // ---- mount: View tree → Node tree -----------------------------------------
 
 mount(v: View) -> Node
     v match
-        Text(_)             -> TextNode(TextNodeState(v, Rect(0, 0, 0, 0)))
-        Button(_)           -> ButtonNode(ButtonNodeState(v, Rect(0, 0, 0, 0), false, false))
-        Spacer(_)           -> SpacerNode(SpacerNodeState(v, Rect(0, 0, 0, 0)))
-        Stack2(left, right) -> Stack2Node(Stack2NodeState(v, Rect(0, 0, 0, 0),
-                                                          mount(left), mount(right)))
+        Text(_)   -> TextNode(TextNodeState(v, Rect(0, 0, 0, 0)))
+        Button(_) -> ButtonNode(ButtonNodeState(v, Rect(0, 0, 0, 0), false, false))
+        Spacer(_) -> SpacerNode(SpacerNodeState(v, Rect(0, 0, 0, 0)))
+        Stack(g, kids) ->
+            val n = len(kids)
+            val nodes = (new [n]Node)[:]
+            var i = 0
+            while i < n do
+                nodes[i] = mount(kids[i])
+                i = i + 1
+            StackNode(StackNodeState(v, Rect(0, 0, 0, 0), g, nodes))
 
 // ---- measure: natural size ------------------------------------------------
 
 text_w(s: string) -> int = len(s) * FONT_W
+
+flex_of(n: Node) -> int
+    n match
+        SpacerNode(s) ->
+            s.view match
+                Spacer(f) -> f
+                _         -> 0
+        _ -> 0
 
 measure(n: Node) -> Size
     n match
@@ -94,11 +107,17 @@ measure(n: Node) -> Size
                 Button(l) -> Size(text_w(l) + BTN_PAD_X * 2, LINE_H + BTN_PAD_Y * 2)
                 _         -> Size(0, 0)
         SpacerNode(_) -> Size(0, 0)
-        Stack2Node(s) ->
-            val ls = measure(s.left)
-            val rs = measure(s.right)
-            val w  = if ls.w > rs.w then ls.w else rs.w
-            Size(w, ls.h + rs.h + STACK_GAP)
+        StackNode(s)  ->
+            var w = 0
+            var h = 0
+            var i = 0
+            while i < len(s.children) do
+                val cs = measure(s.children[i])
+                if cs.w > w then w = cs.w
+                h = h + cs.h
+                if i > 0 then h = h + s.gap
+                i = i + 1
+            Size(w, h)
 
 // ---- layout: mutate bounds in place ---------------------------------------
 
@@ -111,23 +130,43 @@ set_rect(b: Rect, frame: Rect) -> int
 
 layout(n: Node, frame: Rect) -> int
     n match
-        TextNode(s)    -> set_rect(s.bounds, frame)
-        ButtonNode(s)  -> set_rect(s.bounds, frame)
-        SpacerNode(s)  -> set_rect(s.bounds, frame)
-        Stack2Node(s)  ->
+        TextNode(s)   -> set_rect(s.bounds, frame)
+        ButtonNode(s) -> set_rect(s.bounds, frame)
+        SpacerNode(s) -> set_rect(s.bounds, frame)
+        StackNode(s)  ->
             set_rect(s.bounds, frame)
-            val ls = measure(s.left)
-            val rs = measure(s.right)
-            layout(s.left,  Rect(frame.x, frame.y, frame.w, ls.h))
-            layout(s.right, Rect(frame.x, frame.y + ls.h + STACK_GAP, frame.w, rs.h))
+            var fixed_total = 0
+            var flex_total  = 0
+            var i = 0
+            while i < len(s.children) do
+                val f = flex_of(s.children[i])
+                if f > 0 then
+                    flex_total = flex_total + f
+                else
+                    val sz = measure(s.children[i])
+                    fixed_total = fixed_total + sz.h
+                i = i + 1
+            val n_kids = len(s.children)
+            val gaps   = if n_kids > 1 then (n_kids - 1) * s.gap else 0
+            val avail0 = frame.h - fixed_total - gaps
+            val flex_pool = if avail0 > 0 then avail0 else 0
+            var pos = frame.y
+            i = 0
+            while i < len(s.children) do
+                val child = s.children[i]
+                val f     = flex_of(child)
+                val ch    = if f > 0 && flex_total > 0 then flex_pool * f / flex_total else measure(child).h
+                layout(child, Rect(frame.x, pos, frame.w, ch))
+                pos = pos + ch
+                if i < n_kids - 1 then pos = pos + s.gap
+                i = i + 1
             0
 
 // ---- reconcile: diff existing Node tree against a new View ---------------
 
 // Reuse the old Node when its kind matches the new View's kind — update
-// view-bearing fields in place. On kind mismatch, mount fresh. The new
-// reference may differ from the old (mount path) so callers that hold a
-// parent slot must overwrite with the returned Node.
+// view-bearing fields in place. On kind mismatch, mount fresh. For Stack,
+// only the matched-arity case reuses; mismatched arity remounts.
 reconcile(old: Node, v: View) -> Node
     old match
         TextNode(state) ->
@@ -148,13 +187,18 @@ reconcile(old: Node, v: View) -> Node
                     state.view = v
                     old
                 _ -> mount(v)
-        Stack2Node(state) ->
+        StackNode(state) ->
             v match
-                Stack2(nl, nr) ->
-                    state.view  = v
-                    state.left  = reconcile(state.left,  nl)
-                    state.right = reconcile(state.right, nr)
-                    old
+                Stack(g, kids) ->
+                    if len(kids) == len(state.children) then
+                        state.view = v
+                        state.gap  = g
+                        var i = 0
+                        while i < len(kids) do
+                            state.children[i] = reconcile(state.children[i], kids[i])
+                            i = i + 1
+                        old
+                    else mount(v)
                 _ -> mount(v)
 
 // ---- render: walk and emit draw commands ----------------------------------
@@ -177,20 +221,28 @@ render(n: Node) -> int
                     0
                 _ -> 0
         SpacerNode(_) -> 0
-        Stack2Node(s) ->
-            render(s.left)
-            render(s.right)
+        StackNode(s) ->
+            var i = 0
+            while i < len(s.children) do
+                render(s.children[i])
+                i = i + 1
             0
 
 // ---- driver entry ---------------------------------------------------------
 
 main() -> int
-    val v1 = Stack2(Text("Hello, sysl!"), Button("Click me"))
+    val kids1 = (new [2]View)[:]
+    kids1[0] = Text("Hello, sysl!")
+    kids1[1] = Button("Click me")
+    val v1 = Stack(6, kids1)
     val n  = mount(v1)
     layout(n, Rect(0, 0, 200, 100))
     render(n)
 
-    val v2 = Stack2(Text("Hello, AGAIN!"), Button("Click me too"))
+    val kids2 = (new [2]View)[:]
+    kids2[0] = Text("Hello, AGAIN!")
+    kids2[1] = Button("Click me too")
+    val v2 = Stack(6, kids2)
     reconcile(n, v2)
     layout(n, Rect(0, 0, 200, 100))
     render(n)

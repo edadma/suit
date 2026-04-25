@@ -1,0 +1,172 @@
+// Variable-arity Stack with flex distribution. Exercises the layoutStack
+// algorithm: a top-of-frame Text, a flex=1 Spacer that swallows remaining
+// vertical space, and a bottom-of-frame Button. Verifies frame.h - fixed -
+// gaps lands in the Spacer, pushing the Button to the far edge.
+//
+// Layout for Stack(gap=4, [Text(18), Spacer(flex=1), Button(30)]) inside
+// frame Rect(0,0,200,100):
+//   fixed_total = 18 + 30 = 48; gaps = 2 * 4 = 8; flex_pool = 100 - 48 - 8 = 44
+//   pos=0:  Text   → Rect(0,  0, 200, 18); pos -> 18 + 4 = 22
+//   pos=22: Spacer → Rect(0, 22, 200, 44); pos -> 22 + 44 + 4 = 70
+//   pos=70: Button → Rect(0, 70, 200, 30)
+
+extern host_fill_rect(x: int, y: int, w: int, h: int, r: int, g: int, b: int, a: int) -> int
+extern host_draw_text(x: int, y: int, text: string, r: int, g: int, b: int, a: int) -> int
+
+struct Rect
+    x: int
+    y: int
+    w: int
+    h: int
+
+struct Size
+    w: int
+    h: int
+
+enum View
+    Text(content: string)
+    Button(label: string)
+    Spacer(flex: int)
+    Stack(gap: int, children: []View)
+
+struct TextNodeState
+    view: View
+    bounds: Rect
+
+struct ButtonNodeState
+    view: View
+    bounds: Rect
+
+struct SpacerNodeState
+    view: View
+    bounds: Rect
+
+struct StackNodeState
+    view: View
+    bounds: Rect
+    gap: int
+    children: []Node
+
+enum Node
+    TextNode(s: TextNodeState)
+    ButtonNode(s: ButtonNodeState)
+    SpacerNode(s: SpacerNodeState)
+    StackNode(s: StackNodeState)
+
+const FONT_W: int    = 8
+const LINE_H: int    = 18
+const BTN_PAD_Y: int = 6
+
+mount(v: View) -> Node
+    v match
+        Text(_)   -> TextNode(TextNodeState(v, Rect(0, 0, 0, 0)))
+        Button(_) -> ButtonNode(ButtonNodeState(v, Rect(0, 0, 0, 0)))
+        Spacer(_) -> SpacerNode(SpacerNodeState(v, Rect(0, 0, 0, 0)))
+        Stack(g, kids) ->
+            val n = len(kids)
+            val nodes = (new [n]Node)[:]
+            var i = 0
+            while i < n do
+                nodes[i] = mount(kids[i])
+                i = i + 1
+            StackNode(StackNodeState(v, Rect(0, 0, 0, 0), g, nodes))
+
+text_w(s: string) -> int = len(s) * FONT_W
+
+flex_of(n: Node) -> int
+    n match
+        SpacerNode(s) ->
+            s.view match
+                Spacer(f) -> f
+                _         -> 0
+        _ -> 0
+
+measure(n: Node) -> Size
+    n match
+        TextNode(s) ->
+            s.view match
+                Text(c) -> Size(text_w(c), LINE_H)
+                _       -> Size(0, 0)
+        ButtonNode(s) ->
+            s.view match
+                Button(l) -> Size(text_w(l), LINE_H + BTN_PAD_Y * 2)
+                _         -> Size(0, 0)
+        SpacerNode(_) -> Size(0, 0)
+        StackNode(s)  ->
+            var w = 0
+            var h = 0
+            var i = 0
+            while i < len(s.children) do
+                val cs = measure(s.children[i])
+                if cs.w > w then w = cs.w
+                h = h + cs.h
+                if i > 0 then h = h + s.gap
+                i = i + 1
+            Size(w, h)
+
+set_rect(b: Rect, frame: Rect) -> int
+    b.x = frame.x
+    b.y = frame.y
+    b.w = frame.w
+    b.h = frame.h
+    0
+
+layout(n: Node, frame: Rect) -> int
+    n match
+        TextNode(s)   -> set_rect(s.bounds, frame)
+        ButtonNode(s) -> set_rect(s.bounds, frame)
+        SpacerNode(s) -> set_rect(s.bounds, frame)
+        StackNode(s)  ->
+            set_rect(s.bounds, frame)
+            var fixed_total = 0
+            var flex_total  = 0
+            var i = 0
+            while i < len(s.children) do
+                val f = flex_of(s.children[i])
+                if f > 0 then
+                    flex_total = flex_total + f
+                else
+                    val sz = measure(s.children[i])
+                    fixed_total = fixed_total + sz.h
+                i = i + 1
+            val n_kids = len(s.children)
+            val gaps   = if n_kids > 1 then (n_kids - 1) * s.gap else 0
+            val avail0 = frame.h - fixed_total - gaps
+            val flex_pool = if avail0 > 0 then avail0 else 0
+            var pos = frame.y
+            i = 0
+            while i < len(s.children) do
+                val child = s.children[i]
+                val f     = flex_of(child)
+                val ch    = if f > 0 && flex_total > 0 then flex_pool * f / flex_total else measure(child).h
+                layout(child, Rect(frame.x, pos, frame.w, ch))
+                pos = pos + ch
+                if i < n_kids - 1 then pos = pos + s.gap
+                i = i + 1
+            0
+
+// Emit the y-coordinate of each child so the test can verify the flex
+// pool actually landed in the Spacer. host_fill_rect doubles as a
+// "publish (label, y)" channel — w/h convey "kind tag".
+render_pos(n: Node) -> int
+    n match
+        TextNode(s)   -> host_fill_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, 1, 0, 0, 0)
+        ButtonNode(s) -> host_fill_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, 2, 0, 0, 0)
+        SpacerNode(s) -> host_fill_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, 3, 0, 0, 0)
+        StackNode(s)  ->
+            var i = 0
+            while i < len(s.children) do
+                render_pos(s.children[i])
+                i = i + 1
+            0
+
+main() -> int
+    val kids = (new [3]View)[:]
+    kids[0] = Text("top")
+    kids[1] = Spacer(1)
+    kids[2] = Button("bot")
+    val v = Stack(4, kids)
+    val n = mount(v)
+    layout(n, Rect(0, 0, 200, 100))
+    render_pos(n)
+    0

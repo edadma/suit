@@ -217,6 +217,36 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       cmds(5) should include ("'Click me too'")
     }
 
+    // Variable-arity Stack with flex distribution: a top Text, a flex=1
+    // Spacer, a bottom Button inside a 100-tall frame (gap=4) should pin
+    // the Button to the bottom edge — the Spacer absorbs the leftover
+    // 44px of vertical space.
+    "lays out Stack with a flex Spacer (variable arity)" in {
+      val frames = mutable.ArrayBuffer.empty[(Int, Int, Int, Int, Int)]
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_fill_rect", {
+        case List(x, y, w, h, kind, _, _, _) =>
+          frames += ((SyslHost.asLong(x).toInt, SyslHost.asLong(y).toInt,
+                      SyslHost.asLong(w).toInt, SyslHost.asLong(h).toInt,
+                      SyslHost.asLong(kind).toInt))
+          SyslHost.unit
+        case other => fail(s"host_fill_rect: bad args $other")
+      })
+      host.register("host_draw_text", {
+        case _ => SyslHost.unit
+      })
+
+      host.run(host.compileFile("engine-flex.sysl"))
+
+      // kind: 1=Text, 2=Button, 3=Spacer
+      frames.toList shouldBe List(
+        (0,  0,  200, 18, 1),  // Text top, natural height 18
+        (0,  22, 200, 44, 3),  // Spacer absorbs flex_pool = 100 - 48 - 8 = 44
+        (0,  70, 200, 30, 2),  // Button pinned to bottom
+      )
+    }
+
     // Test 3 (reconcile): pattern-match on (Node-kind, View-kind) to
     // decide reuse vs update vs remount — the reconciler's central
     // decision shape, ported in 30 lines of sysl.
