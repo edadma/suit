@@ -247,6 +247,52 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       )
     }
 
+    // Full Scope 2.E variant set: Stack of Sized/Center+Image/Box+Checkbox.
+    // Verifies measure + layout + render across single-child wrappers
+    // (Sized/Center/Box) and the new leaf widgets (Image/Checkbox), all
+    // composed through the variable-arity Stack.
+    "drives every variant — Image, Sized, Center, Box, Checkbox" in {
+      val cmds = mutable.ArrayBuffer.empty[String]
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_fill_rect", {
+        case List(x, y, w, h, r, g, b, a) =>
+          cmds += f"fill ${SyslHost.asLong(x)},${SyslHost.asLong(y)} " +
+                  f"${SyslHost.asLong(w)}x${SyslHost.asLong(h)} " +
+                  f"rgba(${SyslHost.asLong(r)},${SyslHost.asLong(g)},${SyslHost.asLong(b)},${SyslHost.asLong(a)})"
+          SyslHost.unit
+        case other => fail(s"host_fill_rect: bad args $other")
+      })
+      host.register("host_draw_text", {
+        case List(x, y, text, _, _, _, _) =>
+          cmds += s"text ${SyslHost.asLong(x)},${SyslHost.asLong(y)} '${SyslHost.asString(text)}'"
+          SyslHost.unit
+        case other => fail(s"host_draw_text: bad args $other")
+      })
+      host.register("host_draw_image", {
+        case List(x, y, w, h, src) =>
+          cmds += s"image ${SyslHost.asLong(x)},${SyslHost.asLong(y)} " +
+                  s"${SyslHost.asLong(w)}x${SyslHost.asLong(h)} '${SyslHost.asString(src)}'"
+          SyslHost.unit
+        case other => fail(s"host_draw_image: bad args $other")
+      })
+
+      host.run(host.compileFile("engine-full.sysl"))
+
+      cmds.toList shouldBe List(
+        // Sized(Text "title", 200, 24) at row 0 (y=0): Text baseline at y+14
+        "text 0,14 'title'",
+        // Center(Image 32x32) at row 1 (y=24): centered at x=(200-32)/2=84
+        "image 84,24 32x32 'icon.png'",
+        // Box at row 2 (y=56): full-frame fill, then padding(4) → child at (4, 60)
+        "fill 0,56 200x26 rgba(80,120,200,255)",
+        // Checkbox at (4, 60): box LINE_H², checkmark inset by 4, label at x=4+18+6=28
+        "fill 4,60 18x18 rgba(60,60,80,255)",
+        "fill 8,64 10x10 rgba(220,220,240,255)",
+        "text 28,74 'agree'",
+      )
+    }
+
     // Test 3 (reconcile): pattern-match on (Node-kind, View-kind) to
     // decide reuse vs update vs remount — the reconciler's central
     // decision shape, ported in 30 lines of sysl.

@@ -1,23 +1,22 @@
-// Scope 2 milestone — a sysl-side render pipeline that mirrors the
-// suit toolkit's core. Sysl owns View, Node, mount, measure, layout,
-// reconcile, and render; the JVM exposes only draw-emit builtins.
+// Exercises every Scope 2.E variant in a single tree:
+//   Stack [
+//     Sized(Text "title", w=200, h=24)
+//     Center(Image "icon.png" 32x32)
+//     Box(Checkbox "agree" checked=true, color=violet, padding=4)
+//   ]
 //
-// Each Node variant wraps its mutable state in a struct: sysl analyzer
-// only supports field assignment on StructType, so `node.view = v` on a
-// raw enum-variant binding is rejected. Wrapping in `<Variant>State`
-// gives `state.view = v` (struct-field assignment, well-trodden in
-// std/) while preserving the per-variant field shapes.
-//
-// Variants: Text, Button, Spacer, Image, Checkbox (leaf), Sized, Center,
-// Box (single-child wrappers with optional struct-typed fields), and
-// Stack(gap, children: []View) (variable-arity vertical with flex
-// distribution across Spacer children).
+// Layout against Rect(0, 0, 200, 200), gap=0 — exact positions:
+//   row 0 (y=0):  Sized 0..200 × 0..24 ; child Text drawn at baseline (0, 14)
+//   row 1 (y=24): Center frame Rect(0, 24, 200, 32) → child Image centered
+//                 at Rect(84, 24, 32, 32) — (200 - 32) / 2 = 84
+//   row 2 (y=56): Box frame Rect(0, 56, 200, 26); padding(4) → child
+//                 Checkbox at Rect(4, 60, 192, 18). Checkbox renders the
+//                 18×18 box from (4, 60), the inner mark from (8, 64) at
+//                 10×10 (LINE_H - 8), and the label at (28, 74).
 
 extern host_fill_rect(x: int, y: int, w: int, h: int, r: int, g: int, b: int, a: int) -> int
 extern host_draw_text(x: int, y: int, text: string, r: int, g: int, b: int, a: int) -> int
 extern host_draw_image(x: int, y: int, w: int, h: int, source: string) -> int
-
-// ---- value types ----------------------------------------------------------
 
 struct Rect
     x: int
@@ -41,8 +40,6 @@ struct Insets
     bottom: int
     left: int
 
-// ---- View / Node ----------------------------------------------------------
-
 enum View
     Text(content: string)
     Button(label: string)
@@ -61,8 +58,6 @@ struct TextNodeState
 struct ButtonNodeState
     view: View
     bounds: Rect
-    hover: bool
-    pressed: bool
 
 struct SpacerNodeState
     view: View
@@ -108,20 +103,16 @@ enum Node
     BoxNode(s: BoxNodeState)
     StackNode(s: StackNodeState)
 
-// ---- Theme constants ------------------------------------------------------
-
 const FONT_W: int    = 8
 const LINE_H: int    = 18
 const BTN_PAD_X: int = 12
 const BTN_PAD_Y: int = 6
 const CHK_GAP: int   = 6
 
-// ---- mount: View tree → Node tree -----------------------------------------
-
 mount(v: View) -> Node
     v match
         Text(_)        -> TextNode(TextNodeState(v, Rect(0, 0, 0, 0)))
-        Button(_)      -> ButtonNode(ButtonNodeState(v, Rect(0, 0, 0, 0), false, false))
+        Button(_)      -> ButtonNode(ButtonNodeState(v, Rect(0, 0, 0, 0)))
         Spacer(_)      -> SpacerNode(SpacerNodeState(v, Rect(0, 0, 0, 0)))
         Image(_, _, _) -> ImageNode(ImageNodeState(v, Rect(0, 0, 0, 0)))
         Checkbox(_, _) -> CheckboxNode(CheckboxNodeState(v, Rect(0, 0, 0, 0)))
@@ -136,8 +127,6 @@ mount(v: View) -> Node
                 nodes[i] = mount(kids[i])
                 i = i + 1
             StackNode(StackNodeState(v, Rect(0, 0, 0, 0), g, nodes))
-
-// ---- measure: natural size ------------------------------------------------
 
 text_w(s: string) -> int = len(s) * FONT_W
 
@@ -194,8 +183,6 @@ measure(n: Node) -> Size
                 i = i + 1
             Size(w, h)
 
-// ---- layout: mutate bounds in place ---------------------------------------
-
 set_rect(b: Rect, frame: Rect) -> int
     b.x = frame.x
     b.y = frame.y
@@ -218,8 +205,6 @@ layout(n: Node, frame: Rect) -> int
             val cx    = frame.x + (frame.w - cs.w) / 2
             val cy    = frame.y + (frame.h - cs.h) / 2
             val inner = Rect(cx, cy, cs.w, cs.h)
-            // Mirror suit's CenterNode: own bounds = centered child rect so
-            // hit-testing sees the rendered area, not the parent frame.
             set_rect(s.bounds, inner)
             layout(s.child, inner)
         BoxNode(s) ->
@@ -261,81 +246,6 @@ layout(n: Node, frame: Rect) -> int
                 i = i + 1
             0
 
-// ---- reconcile: diff existing Node tree against a new View ---------------
-
-// Reuse the old Node when its kind matches the new View's kind, updating
-// view-bearing fields in place. Single-child wrappers (Sized/Center/Box)
-// recurse on their child, possibly overwriting it with a remount. Stack
-// reuses positionally only when arity matches; Stack arity-change remounts.
-reconcile(old: Node, v: View) -> Node
-    old match
-        TextNode(state) ->
-            v match
-                Text(_) ->
-                    state.view = v
-                    old
-                _ -> mount(v)
-        ButtonNode(state) ->
-            v match
-                Button(_) ->
-                    state.view = v
-                    old
-                _ -> mount(v)
-        SpacerNode(state) ->
-            v match
-                Spacer(_) ->
-                    state.view = v
-                    old
-                _ -> mount(v)
-        ImageNode(state) ->
-            v match
-                Image(_, _, _) ->
-                    state.view = v
-                    old
-                _ -> mount(v)
-        CheckboxNode(state) ->
-            v match
-                Checkbox(_, _) ->
-                    state.view = v
-                    old
-                _ -> mount(v)
-        SizedNode(state) ->
-            v match
-                Sized(c, _, _) ->
-                    state.view  = v
-                    state.child = reconcile(state.child, c)
-                    old
-                _ -> mount(v)
-        CenterNode(state) ->
-            v match
-                Center(c) ->
-                    state.view  = v
-                    state.child = reconcile(state.child, c)
-                    old
-                _ -> mount(v)
-        BoxNode(state) ->
-            v match
-                Box(c, _, _) ->
-                    state.view  = v
-                    state.child = reconcile(state.child, c)
-                    old
-                _ -> mount(v)
-        StackNode(state) ->
-            v match
-                Stack(g, kids) ->
-                    if len(kids) == len(state.children) then
-                        state.view = v
-                        state.gap  = g
-                        var i = 0
-                        while i < len(kids) do
-                            state.children[i] = reconcile(state.children[i], kids[i])
-                            i = i + 1
-                        old
-                    else mount(v)
-                _ -> mount(v)
-
-// ---- render: walk and emit draw commands ----------------------------------
-
 render(n: Node) -> int
     n match
         TextNode(s) ->
@@ -347,10 +257,8 @@ render(n: Node) -> int
         ButtonNode(s) ->
             s.view match
                 Button(l) ->
-                    host_fill_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h,
-                                   40, 40, 55, 255)
-                    host_draw_text(s.bounds.x + BTN_PAD_X, s.bounds.y + BTN_PAD_Y + 14, l,
-                                   220, 220, 240, 255)
+                    host_fill_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, 40, 40, 55, 255)
+                    host_draw_text(s.bounds.x + BTN_PAD_X, s.bounds.y + BTN_PAD_Y + 14, l, 220, 220, 240, 255)
                     0
                 _ -> 0
         SpacerNode(_) -> 0
@@ -374,8 +282,7 @@ render(n: Node) -> int
         BoxNode(s) ->
             s.view match
                 Box(_, c, _) ->
-                    host_fill_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h,
-                                   c.r, c.g, c.b, c.a)
+                    host_fill_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, c.r, c.g, c.b, c.a)
                     render(s.child)
                     0
                 _ -> render(s.child)
@@ -386,22 +293,13 @@ render(n: Node) -> int
                 i = i + 1
             0
 
-// ---- driver entry ---------------------------------------------------------
-
 main() -> int
-    val kids1 = (new [2]View)[:]
-    kids1[0] = Text("Hello, sysl!")
-    kids1[1] = Button("Click me")
-    val v1 = Stack(6, kids1)
-    val n  = mount(v1)
-    layout(n, Rect(0, 0, 200, 100))
-    render(n)
-
-    val kids2 = (new [2]View)[:]
-    kids2[0] = Text("Hello, AGAIN!")
-    kids2[1] = Button("Click me too")
-    val v2 = Stack(6, kids2)
-    reconcile(n, v2)
-    layout(n, Rect(0, 0, 200, 100))
+    val kids = (new [3]View)[:]
+    kids[0] = Sized(Text("title"), 200, 24)
+    kids[1] = Center(Image("icon.png", 32, 32))
+    kids[2] = Box(Checkbox("agree", true), Color(80, 120, 200, 255), Insets(4, 4, 4, 4))
+    val v = Stack(0, kids)
+    val n = mount(v)
+    layout(n, Rect(0, 0, 200, 200))
     render(n)
     0
