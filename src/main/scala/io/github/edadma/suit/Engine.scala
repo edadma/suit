@@ -40,6 +40,13 @@ final class Engine:
   // time-driven behaviour deterministic. Default reads the system clock.
   var clock: () => Long = () => System.currentTimeMillis()
 
+  // Pluggable text-measurement function. Default is a hard-coded monospaced
+  // estimate (`length * theme.charWidth`); the host overrides this with a
+  // platform-native FontMetrics-style call so layout sees real glyph widths
+  // and variable-width fonts work. Signature: (text, fontSize) → pixels.
+  // Sysl analog: a function pointer set by the platform layer.
+  var textMeasure: (String, Int) => Int = (s, _) => s.length * theme.charWidth
+
   // Re-entry guard. An event handler that calls back into runFrame during its
   // own dispatch would otherwise blow the stack; instead we no-op and let the
   // outer frame's phase-2 commit pick up whatever pendingView the handler set.
@@ -267,7 +274,7 @@ object Engine:
       if ch == null then Size(0, 0) else measure(eng, ch)
 
   private def textWidth(eng: Engine, s: String): Int =
-    s.length * eng.theme.charWidth
+    eng.textMeasure(s, eng.theme.fontSize)
 
   private def measureText(eng: Engine, t: TextNode): Size =
     Size(textWidth(eng, t.view.content), eng.theme.lineHeight)

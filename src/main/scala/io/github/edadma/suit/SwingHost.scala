@@ -1,6 +1,6 @@
 package io.github.edadma.suit
 
-import java.awt.{BasicStroke, Color as AwtColor, Dimension, Font, Graphics, Graphics2D, RenderingHints}
+import java.awt.{Color as AwtColor, Dimension, Font, Graphics, Graphics2D, RenderingHints}
 import java.awt.event.{
   ComponentAdapter,
   ComponentEvent,
@@ -15,11 +15,11 @@ import java.awt.event.{
 import javax.swing.{JFrame, JPanel, SwingUtilities, Timer, WindowConstants}
 
 // ----------------------------------------------------------------------------
-// SwingHost is the platform layer: it owns the JFrame, paints the Engine's
-// draw list onto a JPanel, and translates AWT events into InputState mutations.
-// Nothing inside `package suit` other than this file imports javax.swing or
-// java.awt — when porting to sysl, this whole file is replaced by a SLIX
-// DrawEngine + display-server bridge.
+// SwingHost is the platform layer: it owns the JFrame, drains the engine's
+// draw list through a SwingRenderer onto a JPanel, and translates AWT events
+// into InputState mutations. Painting itself lives in SwingRenderer; this
+// file is only window/event glue. A future SkiaHost replaces both files
+// (window via GLFW, painting via SkiaRenderer) without touching the engine.
 // ----------------------------------------------------------------------------
 final class SwingHost(title: String, width: Int, height: Int, val engine: Engine):
 
@@ -32,6 +32,13 @@ final class SwingHost(title: String, width: Int, height: Int, val engine: Engine
   frame.pack()
   frame.setLocationRelativeTo(null)
 
+  // Wire the engine's text-measurement up to AWT FontMetrics so layout sees
+  // real glyph widths instead of the hard-coded monospaced fallback. Done
+  // here (not in the engine) because FontMetrics requires a Component.
+  engine.textMeasure = (s, sz) =>
+    val font = new Font(Font.MONOSPACED, Font.PLAIN, sz)
+    panel.getFontMetrics(font).stringWidth(s)
+
   def show(): Unit =
     SwingUtilities.invokeLater(() => {
       frame.setVisible(true)
@@ -43,10 +50,6 @@ private final class SuitPanel(engine: Engine) extends JPanel:
 
   setFocusable(true)
   setBackground(AwtColor.BLACK)
-
-  // Per-paint clip stack for nested PushClip/PopClip pairs.
-  private val clipStack: scala.collection.mutable.Stack[java.awt.Shape] =
-    scala.collection.mutable.Stack.empty
 
   // Tab is consumed by Swing for focus traversal by default — disable so we
   // see VK_TAB in our key listener.
@@ -156,59 +159,12 @@ private final class SuitPanel(engine: Engine) extends JPanel:
     if engine.needsFrame then
       engine.runFrame(getWidth, getHeight)
 
+    val renderer = new SwingRenderer(g2)
     var i = 0
     while i < engine.drawList.length do
-      paintCommand(g2, engine.drawList(i))
+      Renderer.paint(renderer, engine.drawList(i))
       i = i + 1
 
     // If the frame left an animation pending, kick the lazy timer. It stops
     // itself once needsFrame goes back to false.
     if engine.animating && !animTimer.isRunning then animTimer.start()
-
-  private def paintCommand(g2: Graphics2D, cmd: DrawCommand): Unit = cmd match
-    case FillRect(r, c) =>
-      g2.setColor(toAwt(c))
-      g2.fillRect(r.x, r.y, r.w, r.h)
-    case StrokeRect(r, c) =>
-      g2.setColor(toAwt(c))
-      g2.setStroke(new BasicStroke(1f))
-      g2.drawRect(r.x, r.y, r.w - 1, r.h - 1)
-    case FillRoundRect(r, radius, c) =>
-      g2.setColor(toAwt(c))
-      g2.fillRoundRect(r.x, r.y, r.w, r.h, radius * 2, radius * 2)
-    case StrokeRoundRect(r, radius, c) =>
-      g2.setColor(toAwt(c))
-      g2.setStroke(new BasicStroke(1f))
-      g2.drawRoundRect(r.x, r.y, r.w - 1, r.h - 1, radius * 2, radius * 2)
-    case DrawShadow(r, radius, shadow) =>
-      paintShadow(g2, r, radius, shadow)
-    case DrawText(x, y, text, c) =>
-      g2.setColor(toAwt(c))
-      g2.drawString(text, x, y)
-    case PushClip(r) =>
-      clipStack.push(g2.getClip)
-      g2.clipRect(r.x, r.y, r.w, r.h)   // intersects with current clip
-    case PopClip =>
-      if clipStack.nonEmpty then g2.setClip(clipStack.pop())
-      else g2.setClip(null)
-
-  // Cheap approximation of a Gaussian-blurred drop shadow: paint several
-  // outward-expanding rounded strokes whose alpha falls off linearly. The
-  // sysl/DrawEngine port replaces this with a real blurred sprite.
-  private def paintShadow(g2: Graphics2D, r: Rect, radius: Int, sh: Shadow): Unit =
-    val layers = if sh.blur < 1 then 1 else sh.blur
-    val baseAlpha = sh.color.a
-    var i = 0
-    while i < layers do
-      // i goes 0..layers-1 ; outer rings get fainter alpha.
-      val falloff = 1f - (i.toFloat / layers.toFloat)
-      val alpha   = (baseAlpha.toFloat * falloff * 0.6f).toInt
-      val ring    = Color(sh.color.r, sh.color.g, sh.color.b, if alpha < 0 then 0 else alpha)
-      val out     = sh.spread + i
-      val rr      = Rect(r.x + sh.offsetX - out, r.y + sh.offsetY - out, r.w + out * 2, r.h + out * 2)
-      g2.setColor(toAwt(ring))
-      g2.setStroke(new BasicStroke(1f))
-      g2.drawRoundRect(rr.x, rr.y, rr.w - 1, rr.h - 1, (radius + out) * 2, (radius + out) * 2)
-      i = i + 1
-
-  private def toAwt(c: Color): AwtColor = new AwtColor(c.r, c.g, c.b, c.a)
