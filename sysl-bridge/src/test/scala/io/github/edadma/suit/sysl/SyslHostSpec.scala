@@ -1,0 +1,276 @@
+package io.github.edadma.suit.sysl
+
+import io.github.edadma.trisc.Value
+import io.github.edadma.trisc.Value.ClosureVal
+import org.scalatest.freespec.AnyFreeSpec
+import org.scalatest.matchers.should.Matchers
+
+import scala.collection.mutable
+
+class SyslHostSpec extends AnyFreeSpec with Matchers:
+
+  // Resolve the test-resources directory at runtime — sbt's classloader
+  // exposes it via getResource, but the SyslDriver needs a filesystem path
+  // because it reads transitive imports off disk.
+  private def resourcesDir: String =
+    val url = getClass.getClassLoader.getResource("hello.sysl")
+    require(url != null, "hello.sysl not on the test classpath")
+    val path = java.nio.file.Paths.get(url.toURI).getParent
+    path.toString
+
+  "SyslHost" - {
+    "executes a sysl program that calls a JVM-installed builtin" in {
+      val host = new SyslHost(resourcesDir)
+      val log  = mutable.ArrayBuffer.empty[String]
+
+      host.register("host_log", {
+        case List(msg) =>
+          log += SyslHost.asString(msg)
+          SyslHost.unit
+        case other => fail(s"host_log: bad args $other")
+      })
+      host.register("host_now_ms", {
+        case Nil   => SyslHost.long(System.currentTimeMillis())
+        case other => fail(s"host_now_ms: bad args $other")
+      })
+
+      val program = host.compileFile("hello.sysl")
+      val result  = host.run(program)
+
+      result shouldBe 56L                                // compute(7, 8) = 56
+      log should contain ("hello from sysl")
+      log should contain ("starting work")
+      log.exists(_.startsWith("result = 56")) shouldBe true
+      log.exists(_.startsWith("elapsed ="))   shouldBe true
+    }
+
+    "round-trips a closure: sysl hands a handler to the host, host invokes it back" in {
+      val host = new SyslHost(resourcesDir)
+
+      // Slot for the closure the sysl program hands us, and a slot for the
+      // most recently published count.
+      var handler: ClosureVal = null
+      var lastPublished: Long = -1L
+
+      host.register("host_register_handler", {
+        case List(c: ClosureVal) =>
+          handler = c
+          SyslHost.unit
+        case other => fail(s"host_register_handler: bad args $other")
+      })
+      host.register("host_publish_count", {
+        case List(n) =>
+          lastPublished = SyslHost.asLong(n)
+          SyslHost.unit
+        case other => fail(s"host_publish_count: bad args $other")
+      })
+
+      val program = host.compileFile("click.sysl")
+      host.run(program)
+      handler should not be null
+      lastPublished shouldBe -1L                // closure not invoked yet
+
+      // "Click" three times — host fires the handler, sysl-side counter
+      // advances, host gets a published value each time.
+      val r1 = host.interpreter.invokeClosure(handler, Nil)
+      SyslHost.asLong(r1) shouldBe 1L
+      lastPublished       shouldBe 1L
+
+      val r2 = host.interpreter.invokeClosure(handler, Nil)
+      SyslHost.asLong(r2) shouldBe 2L
+      lastPublished       shouldBe 2L
+
+      val r3 = host.interpreter.invokeClosure(handler, Nil)
+      SyslHost.asLong(r3) shouldBe 3L
+      lastPublished       shouldBe 3L
+    }
+
+    "marshals a sysl-built View tree into Scala suit Views, closures intact" in {
+      val host = new SyslHost(resourcesDir)
+      var captured: io.github.edadma.suit.View = io.github.edadma.suit.Empty
+
+      host.register("host_set_root", {
+        case List(v) =>
+          captured = SyslView.marshal(v, host.interpreter)
+          SyslHost.unit
+        case other => fail(s"host_set_root: bad args $other")
+      })
+
+      val program = host.compileFile("suit/view.sysl")
+      host.run(program)
+
+      // sysl returned `Stack([Text, Text, Button])` — variable-arity slice.
+      captured match
+        case io.github.edadma.suit.Stack(io.github.edadma.suit.Axis.Horizontal, children, _, _) =>
+          children.length shouldBe 3
+          children(0) match
+            case io.github.edadma.suit.Text("first")  => succeed
+            case other => fail(s"children(0): got $other")
+          children(1) match
+            case io.github.edadma.suit.Text("second") => succeed
+            case other => fail(s"children(1): got $other")
+          children(2) match
+            case io.github.edadma.suit.Button(label, onClick, _) =>
+              label shouldBe "Click"
+              // Round-trip the closure: each Scala-side click must
+              // increment the sysl-side `click_count` global.
+              onClick()
+              onClick()
+              onClick()
+            case other => fail(s"children(2): got $other")
+        case other =>
+          fail(s"expected Stack(Horizontal, …), got $other")
+    }
+
+    "marshals Sized / Center / Spacer / Image / Stack2 / Stack3 / Checkbox" in {
+      val host = new SyslHost(resourcesDir)
+      var captured: io.github.edadma.suit.View = io.github.edadma.suit.Empty
+
+      host.register("host_set_root", {
+        case List(v) =>
+          captured = SyslView.marshal(v, host.interpreter)
+          SyslHost.unit
+        case other => fail(s"host_set_root: bad args $other")
+      })
+
+      val program = host.compileFile("suit/view2.sysl")
+      host.run(program)
+
+      // Top-level: Stack3 → suit Stack(Horizontal, 3 children).
+      captured match
+        case io.github.edadma.suit.Stack(io.github.edadma.suit.Axis.Horizontal, kids, _, _) =>
+          kids.length shouldBe 3
+
+          // kids(0): Sized(Text("title"), 200, 24)
+          kids(0) match
+            case io.github.edadma.suit.Sized(child, 200, 24) =>
+              child match
+                case io.github.edadma.suit.Text("title") => succeed
+                case other => fail(s"Sized child should be Text(title), got $other")
+            case other => fail(s"kids(0): expected Sized, got $other")
+
+          // kids(1): Center(Image("icon.png", 32, 32))
+          kids(1) match
+            case io.github.edadma.suit.Center(child) =>
+              child match
+                case io.github.edadma.suit.Image("icon.png", 32, 32) => succeed
+                case other => fail(s"Center child: expected Image, got $other")
+            case other => fail(s"kids(1): expected Center, got $other")
+
+          // kids(2): Stack2(Checkbox, Button)
+          kids(2) match
+            case io.github.edadma.suit.Stack(io.github.edadma.suit.Axis.Horizontal, inner, _, _) =>
+              inner.length shouldBe 2
+              val checkbox = inner(0).asInstanceOf[io.github.edadma.suit.Checkbox]
+              checkbox.label shouldBe "agree"
+              checkbox.checked shouldBe false
+              // Toggle closure with a bool arg — round-trip true and false.
+              checkbox.onToggle(true)
+              checkbox.onToggle(false)
+
+              val button = inner(1).asInstanceOf[io.github.edadma.suit.Button]
+              button.label shouldBe "Submit"
+              button.onClick()
+              button.onClick()
+            case other => fail(s"kids(2): expected Stack2, got $other")
+
+        case other =>
+          fail(s"expected outer Stack3 → Stack(Horizontal, 3), got $other")
+    }
+
+    // Test 3 (reconcile): pattern-match on (Node-kind, View-kind) to
+    // decide reuse vs update vs remount — the reconciler's central
+    // decision shape, ported in 30 lines of sysl.
+    "pattern-matches a (Node, View) reconcile decision tree" in {
+      val host = new SyslHost(resourcesDir)
+      var published: Long = -1L
+
+      host.register("host_publish", {
+        case List(n) => published = SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"host_publish: bad args $other")
+      })
+
+      val ret = host.run(host.compileFile("reconcile.sysl"))
+      // Expected:
+      //   a=0  TextNode/Text same content  → 0
+      //   b=1  TextNode/Text new content   → 1*10
+      //   c=2  TextNode/Button             → 2*100
+      //   d=0  ButtonNode/Button same      → 0
+      //   e=2  ButtonNode/Text             → 2*10000
+      //   f=0  StackNode/Stack             → 0
+      //   g=2  StackNode/Text              → 2*1000000
+      // Total = 10 + 200 + 20000 + 2000000 = 2020210
+      val expected = 0 * 1 + 1 * 10 + 2 * 100 + 0 * 1000 + 2 * 10000 + 0 * 100000 + 2 * 1000000
+      ret       shouldBe expected.toLong
+      published shouldBe expected.toLong
+    }
+
+    // Test 2 (state): do struct mutations through a captured closure
+    // propagate to the enclosing scope? Probes whether a hooks-style
+    // API (each setter writing to a shared cell) is viable in sysl.
+    "propagates struct-field mutations through a captured closure" in {
+      val host = new SyslHost(resourcesDir)
+      var published: Long = -1L
+
+      host.register("host_publish", {
+        case List(n) => published = SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"host_publish: bad args $other")
+      })
+
+      val program = host.compileFile("state.sysl")
+      val ret = host.run(program)
+      ret       shouldBe 3L
+      published shouldBe 3L
+    }
+
+    // Test 1 (out of three): can sysl structs reach the JVM intact?
+    "marshals a struct-typed field on an enum variant (Box with Color + Insets)" in {
+      import io.github.edadma.trisc.Value.{EnumVal, ArrVal, IntVal, StringVal}
+      import io.github.edadma.trisc.Cell
+      val host = new SyslHost(resourcesDir)
+      var captured: Value = Value.IntVal(-1)
+
+      host.register("host_set_root", {
+        case List(v) => captured = v; SyslHost.unit
+        case other   => fail(s"host_set_root: bad args $other")
+      })
+
+      host.run(host.compileFile("suit/box.sysl"))
+
+      // Outer: Box (tag 2) with three fields: child, color, padding.
+      captured match
+        case e: EnumVal =>
+          e.tag shouldBe 2
+
+          // field 0 — child View, expected EnumVal(tag=1, "inside box")
+          e.fields(0).value match
+            case child: EnumVal =>
+              child.tag shouldBe 1
+              child.fields(0).value match
+                case StringVal(bytes) =>
+                  new String(bytes, "UTF-8") shouldBe "inside box"
+                case other => fail(s"Text content: $other")
+            case other => fail(s"Box.child: $other")
+
+          def cellAt(arr: ArrVal, i: Int): Value = arr.cells(arr.offset + i).value
+
+          // field 1 — Color struct, ArrVal with 4 int cells
+          e.fields(1).value match
+            case arr: ArrVal =>
+              cellAt(arr, 0) shouldBe IntVal(120)   // r
+              cellAt(arr, 1) shouldBe IntVal(60)    // g
+              cellAt(arr, 2) shouldBe IntVal(200)   // b
+              cellAt(arr, 3) shouldBe IntVal(255)   // a
+            case other => fail(s"Box.color: $other")
+
+          // field 2 — Insets struct, ArrVal with 4 int cells
+          e.fields(2).value match
+            case arr: ArrVal =>
+              cellAt(arr, 0) shouldBe IntVal(8)     // top
+              cellAt(arr, 1) shouldBe IntVal(12)    // right
+              cellAt(arr, 2) shouldBe IntVal(8)     // bottom
+              cellAt(arr, 3) shouldBe IntVal(12)    // left
+            case other => fail(s"Box.padding: $other")
+        case other => fail(s"expected EnumVal, got $other")
+    }
+  }

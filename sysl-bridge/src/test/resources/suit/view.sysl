@@ -1,0 +1,40 @@
+// Sysl translation of the suit View algebra. Canonical variant order —
+// the JVM-side `SyslView` marshaler positionally maps tags to variants
+// against this declaration, and other test fixtures (view2.sysl,
+// counter.sysl) keep this order so a single marshaler covers them all.
+//
+// `Stack(children: []View)` is the real variable-arity container. The
+// `Stack2` / `Stack3` siblings are kept around for cases where the
+// fixed-arity shape is more convenient (no slice allocation) — both
+// shapes coexist; nothing forces a chosen one.
+
+extern host_set_root(v: View) -> int
+
+enum View
+    Empty
+    Text(content: string)
+    Button(label: string, on_click: () -> int)
+    Spacer(flex: int)
+    Image(source: string, width: int, height: int)
+    Sized(child: View, width: int, height: int)
+    Center(child: View)
+    Checkbox(label: string, checked: bool, on_toggle: (bool) -> int)
+    Stack2(left: View, right: View)
+    Stack3(a: View, b: View, c: View)
+    Stack(children: []View)
+
+var click_count: int = 0
+
+build_root() -> View
+    on_click = () ->
+        click_count = click_count + 1
+        click_count
+    val children = (new [3]View)[:]
+    children[0] = Text("first")
+    children[1] = Text("second")
+    children[2] = Button("Click", on_click)
+    Stack(children)
+
+main() -> int
+    host_set_root(build_root())
+    0

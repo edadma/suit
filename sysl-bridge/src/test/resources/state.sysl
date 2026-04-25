@@ -1,0 +1,23 @@
+// Test 2: do struct-field mutations through a captured closure propagate
+// back to the enclosing scope?
+//
+// This is the make-or-break for a hook-style API. `useState` needs each
+// setter to write to a shared cell that successive renders observe — if
+// sysl makes a copy on capture, hooks need a different design (e.g. a
+// global state arena keyed by fiber id).
+
+extern host_publish(n: int) -> int
+
+struct Cell
+    value: int
+
+main() -> int
+    var cell = Cell(0)
+    bump = () ->
+        cell.value = cell.value + 1
+        cell.value
+    bump()
+    bump()
+    bump()
+    host_publish(cell.value)
+    cell.value

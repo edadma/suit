@@ -1,0 +1,36 @@
+// Test 1: View enum with a struct-typed field. Validates that sysl
+// structs marshal cleanly across the bridge as `RefVal` with positional
+// field cells.
+//
+// Color is RGBA ints (rather than bytes) so we don't pull in byte/cast
+// noise — the marshaler tests struct-field destructuring, not numeric
+// representation.
+
+extern host_set_root(v: View) -> int
+
+struct Color
+    r: int
+    g: int
+    b: int
+    a: int
+
+struct Insets
+    top: int
+    right: int
+    bottom: int
+    left: int
+
+enum View
+    Empty
+    Text(content: string)
+    Box(child: View, color: Color, padding: Insets)
+
+build_root() -> View
+    Box(
+        Text("inside box"),
+        Color(120, 60, 200, 255),
+        Insets(8, 12, 8, 12))
+
+main() -> int
+    host_set_root(build_root())
+    0

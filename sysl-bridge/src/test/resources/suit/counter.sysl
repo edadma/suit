@@ -1,0 +1,43 @@
+// A live counter UI defined entirely in sysl, rendered by the suit
+// SwingHost via the sysl-bridge. State (`count`) lives at module scope on
+// the sysl side; the on_inc / on_dec closures mutate it, then re-publish a
+// freshly-built View to the host so the engine reconciles.
+//
+// Uses the canonical variable-arity `Stack(children: []View)` — the
+// recursive-enum slice-field analyzer bug was fixed at sysl@9ee727db.
+
+extern host_set_root(v: View) -> int
+
+enum View
+    Empty
+    Text(content: string)
+    Button(label: string, on_click: () -> int)
+    Spacer(flex: int)
+    Image(source: string, width: int, height: int)
+    Sized(child: View, width: int, height: int)
+    Center(child: View)
+    Checkbox(label: string, checked: bool, on_toggle: (bool) -> int)
+    Stack2(left: View, right: View)
+    Stack3(a: View, b: View, c: View)
+    Stack(children: []View)
+
+var count: int = 0
+
+build_root() -> View
+    on_inc = () ->
+        count = count + 1
+        host_set_root(build_root())
+        count
+    on_dec = () ->
+        count = count - 1
+        host_set_root(build_root())
+        count
+    val children = (new [3]View)[:]
+    children[0] = Text(s"Count: $count")
+    children[1] = Button("+", on_inc)
+    children[2] = Button("-", on_dec)
+    Stack(children)
+
+main() -> int
+    host_set_root(build_root())
+    0

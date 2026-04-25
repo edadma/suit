@@ -1,0 +1,17 @@
+// Round-trip smoke test: sysl hands a closure to the JVM via a builtin,
+// the JVM stashes it, and later invokes it back into the interpreter
+// (simulating "user clicked the button"). The closure increments a
+// module-level counter and reports the new value to the host.
+
+extern host_register_handler(handler: () -> int) -> int
+extern host_publish_count(n: int) -> int
+
+var count: int = 0
+
+main() -> int
+    handler = () ->
+        count = count + 1
+        host_publish_count(count)
+        count
+    host_register_handler(handler)
+    0

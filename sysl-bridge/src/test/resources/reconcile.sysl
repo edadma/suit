@@ -1,0 +1,48 @@
+// Test 3: pattern-match the suit reconciler's central decision shape —
+// "given a Node kind and a View kind, what do we do?". This is a 30-line
+// miniature of `Reconciler.reconcileBase`. No bridge calls; a pure smoke
+// test of nested matches over two enums plus field-equality checks.
+
+extern host_publish(n: int) -> int
+
+enum Node
+    TextNode(content: string)
+    ButtonNode(label: string)
+    StackNode
+
+enum View
+    TextV(content: string)
+    ButtonV(label: string)
+    StackV
+
+// Returns 0 = unchanged, 1 = same kind but data changed, 2 = kind mismatch (remount).
+reconcile(n: Node, v: View) -> int
+    n match
+        TextNode(c) ->
+            v match
+                TextV(nc) ->
+                    if c == nc then 0
+                    else 1
+                _ -> 2
+        ButtonNode(l) ->
+            v match
+                ButtonV(nl) ->
+                    if l == nl then 0
+                    else 1
+                _ -> 2
+        StackNode ->
+            v match
+                StackV -> 0
+                _ -> 2
+
+main() -> int
+    val a = reconcile(TextNode("hi"), TextV("hi"))
+    val b = reconcile(TextNode("hi"), TextV("hello"))
+    val c = reconcile(TextNode("hi"), ButtonV("click"))
+    val d = reconcile(ButtonNode("ok"), ButtonV("ok"))
+    val e = reconcile(ButtonNode("ok"), TextV("ok"))
+    val f = reconcile(StackNode, StackV)
+    val g = reconcile(StackNode, TextV("hi"))
+    val total = a * 1 + b * 10 + c * 100 + d * 1000 + e * 10000 + f * 100000 + g * 1000000
+    host_publish(total)
+    total

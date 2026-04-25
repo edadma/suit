@@ -1,0 +1,44 @@
+// Wider View translation, exercising more variants while staying clear of
+// the recursive-enum slice-field analyzer bug. Once that lands, this file
+// can be merged with view.sysl and the StackN stand-ins retired.
+//
+// Covers:
+//   * Single-field recursive variants (Sized, Center) — single child, no slice
+//   * Primitive variants (Spacer, Image)
+//   * Fixed-arity Stack siblings (Stack2, Stack3) as a stand-in for `[]View`
+//   * Closure with an argument (Checkbox.on_toggle takes a bool)
+
+extern host_set_root(v: View) -> int
+
+enum View
+    Empty
+    Text(content: string)
+    Button(label: string, on_click: () -> int)
+    Spacer(flex: int)
+    Image(source: string, width: int, height: int)
+    Sized(child: View, width: int, height: int)
+    Center(child: View)
+    Checkbox(label: string, checked: bool, on_toggle: (bool) -> int)
+    Stack2(left: View, right: View)
+    Stack3(a: View, b: View, c: View)
+
+var click_count: int = 0
+var last_toggle: bool = false
+
+build_root() -> View
+    on_click = () ->
+        click_count = click_count + 1
+        click_count
+    on_toggle = (b: bool) ->
+        last_toggle = b
+        if b then 1 else 0
+    Stack3(
+        Sized(Text("title"), 200, 24),
+        Center(Image("icon.png", 32, 32)),
+        Stack2(
+            Checkbox("agree", false, on_toggle),
+            Button("Submit", on_click)))
+
+main() -> int
+    host_set_root(build_root())
+    0

@@ -1,0 +1,21 @@
+// Smallest possible end-to-end smoke test for the suit-sysl bridge.
+//
+// The host installs `host_log` and `host_now_ms` as extern functions; this
+// Sysl program calls into both. If the bridge is wired correctly, the host
+// captures the log lines and the Sysl-side answer to `compute(7, 8)` flows
+// back as the program's return value.
+
+extern host_log(msg: string) -> int
+extern host_now_ms() -> int
+
+compute(a: int, b: int) -> int = a * b
+
+main() -> int
+    host_log("hello from sysl")
+    started = host_now_ms()
+    host_log("starting work")
+    result = compute(7, 8)
+    host_log(s"result = $result")
+    elapsed = host_now_ms() - started
+    host_log(s"elapsed = $elapsed ms")
+    result
