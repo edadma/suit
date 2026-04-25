@@ -132,6 +132,22 @@ object Reconciler:
         n.child = reconcile(n.child, v.child, eng)
         n
 
+      case (n: PortalNode, v: Portal) =>
+        n.overlay = reconcile(n.overlay, v.child, eng)
+        n
+
+      case (n: AbsolutePositionNode, v: AbsolutePosition) =>
+        if n.view.x != v.x || n.view.y != v.y then eng.markDirty()
+        n.view = v
+        n.child = reconcile(n.child, v.child, eng)
+        n
+
+      case (n: BackdropNode, v: Backdrop) =>
+        if n.view.color != v.color then eng.markDirty()
+        n.view = v
+        n.child = reconcile(n.child, v.child, eng)
+        n
+
       case (_, v) =>
         // Kind mismatch (or first mount). Unmount the old node so its hook
         // cleanups fire, then build fresh.
@@ -196,6 +212,22 @@ object Reconciler:
       n.child = mount(s.child, eng)
       n
 
+    case p: Portal =>
+      val n = new PortalNode
+      n.overlay = mount(p.child, eng)
+      eng.portalNodes += n
+      n
+
+    case ap: AbsolutePosition =>
+      val n = new AbsolutePositionNode(ap)
+      n.child = mount(ap.child, eng)
+      n
+
+    case b: Backdrop =>
+      val n = new BackdropNode(b)
+      n.child = mount(b.child, eng)
+      n
+
 
   // Walk a node tree being torn down and run any hook cleanups stored
   // beneath. Called when the reconciler discards a subtree (kind mismatch,
@@ -222,6 +254,16 @@ object Reconciler:
       if ch != null then unmount(ch, eng)
     case sn: ScrollNode =>
       val ch = sn.child
+      if ch != null then unmount(ch, eng)
+    case p: PortalNode =>
+      val ovl = p.overlay
+      if ovl != null then unmount(ovl, eng)
+      eng.portalNodes -= p
+    case ap: AbsolutePositionNode =>
+      val ch = ap.child
+      if ch != null then unmount(ch, eng)
+    case b: BackdropNode =>
+      val ch = b.child
       if ch != null then unmount(ch, eng)
     case _ => ()
 
@@ -256,6 +298,15 @@ object Reconciler:
       case sn: ScrollNode =>
         val ch = sn.child
         if ch != null then invalidateContextSubscribers(ch, ctx, eng)
+      case p: PortalNode =>
+        val ovl = p.overlay
+        if ovl != null then invalidateContextSubscribers(ovl, ctx, eng)
+      case ap: AbsolutePositionNode =>
+        val ch = ap.child
+        if ch != null then invalidateContextSubscribers(ch, ctx, eng)
+      case b: BackdropNode =>
+        val ch = b.child
+        if ch != null then invalidateContextSubscribers(ch, ctx, eng)
       case _ => ()
 
 
@@ -283,6 +334,15 @@ object Reconciler:
       if ch != null then visitForUpdates(ch, eng)
     case sn: ScrollNode =>
       val ch = sn.child
+      if ch != null then visitForUpdates(ch, eng)
+    case p: PortalNode =>
+      val ovl = p.overlay
+      if ovl != null then visitForUpdates(ovl, eng)
+    case ap: AbsolutePositionNode =>
+      val ch = ap.child
+      if ch != null then visitForUpdates(ch, eng)
+    case b: BackdropNode =>
+      val ch = b.child
       if ch != null then visitForUpdates(ch, eng)
     case _ => ()
 

@@ -62,6 +62,12 @@ final class Engine:
   private val contextStack: scala.collection.mutable.HashMap[Context[?], List[Any]] =
     scala.collection.mutable.HashMap.empty
 
+  // Portals registered against this engine. The list is maintained by the
+  // reconciler (mount appends, unmount removes). Order matters: layout and
+  // render iterate forward so later mounts paint on top; dispatch iterates
+  // in reverse so the topmost portal sees events first.
+  private[suit] val portalNodes: ArrayBuffer[PortalNode] = ArrayBuffer.empty
+
   // Application entry point — called once on mount and again whenever state
   // changes. The view is not reconciled immediately; reconciliation happens
   // at the start of the next runFrame so we don't mutate a tree mid-walk.
@@ -162,6 +168,9 @@ final class Engine:
     if root0 != null then
 
       Engine.handleTabKey(this, root0)
+      // Overlays go first so they get first dibs on input — a modal's
+      // backdrop or dialog can claim a click before main-tree widgets see it.
+      dispatchOverlays()
       Engine.dispatchEvents(this, root0)
 
       // Phase 2 — onClick handlers may have called setRoot during dispatch.
@@ -171,12 +180,14 @@ final class Engine:
       val root1 = rootNode
       if root1 != null then
         Engine.layout(this, root1, Rect(0, 0, viewportW, viewportH))
+        layoutOverlays(viewportW, viewportH)
         // Layout-effects fire after layout but before render — so they can
         // read measured bounds and adjust state before any pixels go out.
         flushLayoutEffects()
         drawList.clear()
         drawList += FillRect(Rect(0, 0, viewportW, viewportH), theme.bg)
         Engine.render(this, root1)
+        renderOverlays()
 
     // Commit phase finished — now safe to fire useEffect bodies. They may
     // call setState, which schedules another reconcile for the next frame.
@@ -187,6 +198,28 @@ final class Engine:
     dirty = false
     // Caret-blink keeps the host ticking only while a text field is focused.
     animating = focused.isInstanceOf[InputNode]
+
+  private def dispatchOverlays(): Unit =
+    var i = portalNodes.length - 1
+    while i >= 0 do
+      val ovl = portalNodes(i).overlay
+      if ovl != null then Engine.dispatchEvents(this, ovl)
+      i = i - 1
+
+  private def layoutOverlays(w: Int, h: Int): Unit =
+    val frame = Rect(0, 0, w, h)
+    var i = 0
+    while i < portalNodes.length do
+      val ovl = portalNodes(i).overlay
+      if ovl != null then Engine.layout(this, ovl, frame)
+      i = i + 1
+
+  private def renderOverlays(): Unit =
+    var i = 0
+    while i < portalNodes.length do
+      val ovl = portalNodes(i).overlay
+      if ovl != null then Engine.render(this, ovl)
+      i = i + 1
 
   private def commitPending(): Unit =
     val pv = pendingView
@@ -225,6 +258,13 @@ object Engine:
       val ch = sn.child
       val cw = if ch == null then 0 else measure(eng, ch).w
       Size(cw, sn.view.height)
+    case _: PortalNode => Size(0, 0)   // portals have no in-flow size
+    case ap: AbsolutePositionNode =>
+      val ch = ap.child
+      if ch == null then Size(0, 0) else measure(eng, ch)
+    case b: BackdropNode =>
+      val ch = b.child
+      if ch == null then Size(0, 0) else measure(eng, ch)
 
   private def textWidth(eng: Engine, s: String): Int =
     s.length * eng.theme.charWidth
@@ -295,6 +335,20 @@ object Engine:
           if sn.scrollY < 0           then sn.scrollY = 0
           // Child laid out at its full natural height, offset upward by scrollY.
           layout(eng, ch, Rect(frame.x, frame.y - sn.scrollY, frame.w, cs.h))
+      case _: PortalNode => ()    // child is laid out separately by layoutOverlays
+      case ap: AbsolutePositionNode =>
+        val ch = ap.child
+        if ch != null then
+          val cs        = measure(eng, ch)
+          val childRect = Rect(ap.view.x, ap.view.y, cs.w, cs.h)
+          // Override our own bounds to match the child's positioned rect so
+          // hit-testing (e.g. Backdrop's "click inside child?" check) sees
+          // the right area instead of inheriting the parent's frame.
+          ap.bounds = childRect
+          layout(eng, ch, childRect)
+      case b: BackdropNode =>
+        val ch = b.child
+        if ch != null then layout(eng, ch, frame)
       case _ => ()
 
   private def layoutStack(eng: Engine, s: StackNode, frame: Rect): Unit =
@@ -390,6 +444,12 @@ object Engine:
       val ch = eb.child; if ch != null then collectFocusables(ch, out)
     case sn: ScrollNode =>
       val ch = sn.child; if ch != null then collectFocusables(ch, out)
+    case p: PortalNode =>
+      val ovl = p.overlay; if ovl != null then collectFocusables(ovl, out)
+    case ap: AbsolutePositionNode =>
+      val ch = ap.child; if ch != null then collectFocusables(ch, out)
+    case b: BackdropNode =>
+      val ch = b.child; if ch != null then collectFocusables(ch, out)
     case _ => ()
 
 
@@ -426,6 +486,22 @@ object Engine:
           sn.scrollY = next
           eng.markDirty()
         eng.input.wheelDeltaY = 0f   // consume
+    case _: PortalNode => ()        // dispatched separately
+    case ap: AbsolutePositionNode =>
+      val ch = ap.child
+      if ch != null then dispatchEvents(eng, ch)
+    case b: BackdropNode =>
+      val ch = b.child
+      if ch != null then dispatchEvents(eng, ch)
+      // Outside-click → onBackdropClick. Either way, consume the press so it
+      // doesn't bleed through to the main tree below.
+      if eng.input.mousePressed
+        && b.bounds.contains(eng.input.mouseX, eng.input.mouseY) then
+        val childInside = ch != null
+          && ch.bounds.contains(eng.input.mouseX, eng.input.mouseY)
+        if !childInside then b.view.onBackdropClick()
+        eng.input.mousePressed  = false
+        eng.input.mouseReleased = false
     case _ => ()
 
   private def dispatchButton(eng: Engine, b: ButtonNode): Unit =
@@ -550,6 +626,14 @@ object Engine:
       val ch = sn.child
       if ch != null then render(eng, ch)
       eng.drawList += PopClip
+    case _: PortalNode => ()   // rendered later by renderOverlays
+    case ap: AbsolutePositionNode =>
+      val ch = ap.child
+      if ch != null then render(eng, ch)
+    case b: BackdropNode =>
+      eng.drawList += FillRect(b.bounds, b.view.color)
+      val ch = b.child
+      if ch != null then render(eng, ch)
 
   private def renderText(eng: Engine, t: TextNode): Unit =
     val ty = t.bounds.y + (t.bounds.h + eng.theme.fontSize) / 2 - 2

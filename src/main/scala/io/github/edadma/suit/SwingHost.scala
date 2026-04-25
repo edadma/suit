@@ -80,15 +80,25 @@ private final class SuitPanel(engine: Engine) extends JPanel:
 
   addMouseListener(new MouseAdapter:
     override def mousePressed(e: MouseEvent): Unit =
-      if e.getButton == MouseEvent.BUTTON1 then
-        engine.input.mouseDown    = true
-        engine.input.mousePressed = true
-        fireEvent()
+      e.getButton match
+        case MouseEvent.BUTTON1 =>
+          engine.input.mouseDown    = true
+          engine.input.mousePressed = true
+          fireEvent()
+        case MouseEvent.BUTTON3 =>
+          engine.input.mouseRightPressed = true
+          fireEvent()
+        case _ => ()
     override def mouseReleased(e: MouseEvent): Unit =
-      if e.getButton == MouseEvent.BUTTON1 then
-        engine.input.mouseDown     = false
-        engine.input.mouseReleased = true
-        fireEvent()
+      e.getButton match
+        case MouseEvent.BUTTON1 =>
+          engine.input.mouseDown     = false
+          engine.input.mouseReleased = true
+          fireEvent()
+        case MouseEvent.BUTTON3 =>
+          engine.input.mouseRightReleased = true
+          fireEvent()
+        case _ => ()
   )
 
   addKeyListener(new KeyAdapter:

@@ -10,6 +10,10 @@ final class InputState:
   var mousePressed: Boolean = false  // primary button pressed this frame (edge)
   var mouseReleased: Boolean = false // primary button released this frame (edge)
 
+  // Secondary (right) button.
+  var mouseRightPressed:  Boolean = false   // right-button pressed this frame (edge)
+  var mouseRightReleased: Boolean = false   // right-button released this frame (edge)
+
   // Set true by the platform layer whenever any AWT event arrives. Cleared by
   // Engine after dispatching. The host uses it to decide whether a frame is
   // worth running — at idle this stays false and CPU stays at zero.
@@ -46,8 +50,10 @@ final class InputState:
       typedLen = typedLen + 1
 
   def clearFrameEdges(): Unit =
-    mousePressed  = false
-    mouseReleased = false
+    mousePressed       = false
+    mouseReleased      = false
+    mouseRightPressed  = false
+    mouseRightReleased = false
     typedLen      = 0
     keyBackspace  = false
     keyDelete     = false

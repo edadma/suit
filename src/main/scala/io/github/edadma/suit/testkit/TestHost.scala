@@ -151,6 +151,15 @@ final class TestHost(viewportW: Int = 800, viewportH: Int = 600):
       case sn: ScrollNode =>
         val ch = sn.child
         if ch != null then walk(ch, pred, out)
+      case p: PortalNode =>
+        val ovl = p.overlay
+        if ovl != null then walk(ovl, pred, out)
+      case ap: AbsolutePositionNode =>
+        val ch = ap.child
+        if ch != null then walk(ch, pred, out)
+      case b: BackdropNode =>
+        val ch = b.child
+        if ch != null then walk(ch, pred, out)
       case _ => ()
 
 

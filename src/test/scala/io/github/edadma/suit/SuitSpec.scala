@@ -470,6 +470,76 @@ class SuitSpec extends AnyFreeSpec with Matchers:
   }
 
   // -------------------------------------------------------------------------
+  // Portals + AbsolutePosition + Backdrop
+  // -------------------------------------------------------------------------
+
+  "Portal" - {
+    "registers with the engine and renders its child via the overlay layer" in {
+      val host = new TestHost
+      host.render(Stack(Axis.Vertical, Array(
+        Text("base"),
+        Portal(Text("on-top")),
+      )))
+      host.engine.portalNodes.size shouldBe 1
+      // Both texts should be findable through the testkit walk.
+      host.findText("base")    should not be empty
+      host.findText("on-top")  should not be empty
+    }
+
+    "unregisters and tears down its overlay when removed from the tree" in {
+      val host = new TestHost
+      host.render(Stack(Axis.Vertical, Array(Portal(Text("o")))))
+      host.engine.portalNodes.size shouldBe 1
+      host.render(Stack(Axis.Vertical, Array(Text("just base"))))
+      host.engine.portalNodes.size shouldBe 0
+      host.findText("o") shouldBe empty
+    }
+  }
+
+  "AbsolutePosition" - {
+    "places its child at the declared coordinates regardless of layout flow" in {
+      val host = new TestHost
+      host.render(Portal(AbsolutePosition(50, 100, Text("anchor"))))
+      val txt = host.findText("anchor").get
+      txt.bounds.x shouldBe 50
+      txt.bounds.y shouldBe 100
+    }
+  }
+
+  "Backdrop" - {
+    "fires onBackdropClick when clicked outside its child" in {
+      var closed = false
+      val host = new TestHost
+      host.render(Portal(Backdrop(
+        onBackdropClick = () => closed = true,
+        child = AbsolutePosition(100, 100, Button("inside", () => ())),
+      )))
+      // Click far from the button.
+      host.clickAt(5, 5)
+      closed shouldBe true
+    }
+
+    "does NOT fire onBackdropClick when clicked inside its child, and consumes the click" in {
+      var closed = false
+      var inside = false
+      val host = new TestHost
+      host.render(Stack(Axis.Vertical, Array(
+        // Main-tree button at (0,0). It must NOT fire when the backdrop
+        // consumes the press.
+        Button("main", () => inside = true),
+        Portal(Backdrop(
+          onBackdropClick = () => closed = true,
+          child = AbsolutePosition(200, 200, Button("dialog", () => inside = true)),
+        )),
+      )))
+      val dialogBtn = host.findButton("dialog").get
+      host.click(dialogBtn)
+      closed shouldBe false   // click was inside the child
+      inside shouldBe true    // dialog button fired
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // ErrorBoundary
   // -------------------------------------------------------------------------
 

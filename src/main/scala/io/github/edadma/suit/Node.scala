@@ -86,3 +86,23 @@ final class ScrollNode(var view: Scroll) extends Node:
   var child:         Node | Null = null
   var scrollY:       Int         = 0
   var contentHeight: Int         = 0
+
+
+// Placeholder node for a Portal in the main tree — measures to zero so it
+// doesn't push siblings around. The actual content lives in `overlay`,
+// which the engine processes separately during layout/dispatch/render.
+final class PortalNode extends Node:
+  var overlay: Node | Null = null
+
+
+// Anchored-position node. Layout ignores parent flow and places child at
+// (view.x, view.y) at its measured size.
+final class AbsolutePositionNode(var view: AbsolutePosition) extends Node:
+  var child: Node | Null = null
+
+
+// Stretches its child to fill the viewport. Carries an onBackdropClick
+// callback that fires when the user clicks the backdrop *outside* the
+// child's bounds — typical close-on-outside-click pattern.
+final class BackdropNode(var view: Backdrop) extends Node:
+  var child: Node | Null = null

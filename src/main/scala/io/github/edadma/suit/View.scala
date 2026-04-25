@@ -74,6 +74,32 @@ final case class Spacer(flex: Int = 1) extends View
 // it. Scroll position persists on the corresponding ScrollNode.
 final case class Scroll(child: View, height: Int) extends View
 
+// "Teleports" `child` into the engine's overlay layer — an above-everything
+// layer rendered after the main tree. Portals escape any clipping, layout
+// constraints, and z-order of their original tree position. Used as the
+// primitive behind modals, tooltips, and context menus. The portal site in
+// the main tree itself measures to zero, so it doesn't push siblings around.
+final case class Portal(child: View) extends View
+
+// Places `child` at fixed coordinates (relative to the parent's bounds) and
+// at its natural measured size. Combined with Portal, this gives "anywhere
+// on the screen" positioning for tooltips and menus.
+final case class AbsolutePosition(x: Int, y: Int, child: View) extends View
+
+// Stretches its child to fill the engine's whole viewport. Useful as a
+// modal backdrop inside a Portal — also handy for fade overlays. Captures
+// clicks via its `onBackdropClick` handler (e.g. close-on-outside-click).
+final case class Backdrop(
+    child: View,
+    color: Color           = Backdrop.defaultColor,
+    onBackdropClick: () => Unit = Backdrop.noop,
+) extends View
+
+object Backdrop:
+  val defaultColor: Color    = Color(0, 0, 0, 96)
+  val noop:         () => Unit = noopImpl
+  private def noopImpl(): Unit = ()
+
 // Wraps a stateful, user-defined Widget.
 final case class Component(widget: Widget) extends View
 
