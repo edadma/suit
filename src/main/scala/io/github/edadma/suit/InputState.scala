@@ -10,6 +10,13 @@ final class InputState:
   var mousePressed: Boolean = false  // primary button pressed this frame (edge)
   var mouseReleased: Boolean = false // primary button released this frame (edge)
 
+  // Saved across-frame mouse position. Engine snapshots mouseX/mouseY at the
+  // start of each frame and restores them at the end so an overlay capturing
+  // input (e.g. a Backdrop parking the mouse off-screen for the rest of the
+  // frame) doesn't pollute the next frame's apparent cursor location.
+  private[suit] var savedMouseX: Int = 0
+  private[suit] var savedMouseY: Int = 0
+
   // Secondary (right) button.
   var mouseRightPressed:  Boolean = false   // right-button pressed this frame (edge)
   var mouseRightReleased: Boolean = false   // right-button released this frame (edge)

@@ -173,6 +173,11 @@ final class Engine:
     width  = viewportW
     height = viewportH
     nowMs  = clock()
+    // Snapshot the cursor so an overlay can park the mouse off-screen during
+    // dispatch (to suppress hover under it) without changing the position
+    // the next frame begins with.
+    input.savedMouseX = input.mouseX
+    input.savedMouseY = input.mouseY
 
     // Phase 1 — adopt any pending view from before this frame.
     commitPending()
@@ -206,6 +211,11 @@ final class Engine:
     // call setState, which schedules another reconcile for the next frame.
     flushEffects()
 
+    // Restore cursor position before clearing the per-frame edge flags so
+    // any next-frame dispatch sees where the mouse actually is, not the
+    // sentinel set by an overlay-capture this frame.
+    input.mouseX = input.savedMouseX
+    input.mouseY = input.savedMouseY
     input.clearFrameEdges()
     frame = frame + 1
     dirty = false
@@ -252,6 +262,12 @@ final class Engine:
 
 // --- Algorithms over the Node tree ------------------------------------------
 
+// Slider geometry constants shared between dispatch and render so the
+// click-to-value math and the visible track stay in lockstep.
+private object SliderRender:
+  val thumbW: Int = 12
+
+
 object Engine:
 
   // ----- measure ----------------------------------------------------------
@@ -262,7 +278,17 @@ object Engine:
     case i: InputNode    => measureInput(eng, i)
     case c: CheckboxNode => measureCheckbox(eng, c)
     case _: SpacerNode   => Size(0, 0)
+    case sz: SizedNode   =>
+      val ch = sz.child
+      val cs = if ch == null then Size(0, 0) else measure(eng, ch)
+      val w  = if sz.view.width  >= 0 then sz.view.width  else cs.w
+      val h  = if sz.view.height >= 0 then sz.view.height else cs.h
+      Size(w, h)
     case i: ImageNode    => Size(i.view.width, i.view.height)
+    case bx: BoxNode     =>
+      val ch = bx.child
+      val cs = if ch == null then Size(0, 0) else measure(eng, ch)
+      Size(cs.w + bx.view.padding.horizontal, cs.h + bx.view.padding.vertical)
     case s: SliderNode   => Size(s.view.width, eng.theme.lineHeight + 4)
     case r: RadioNode    => measureRadio(eng, r)
     case s: StackNode    => measureStack(eng, s)
@@ -352,10 +378,12 @@ object Engine:
         val ch = eb.child
         if ch != null then layout(eng, ch, frame)
       case sn: ScrollNode =>
-        // Honor the declared viewport height: even if the parent allocates
-        // more space, our viewport stays at view.height. Bounds were set by
-        // the outer `layout` call above; override the height here.
-        val viewportH = math.min(frame.h, sn.view.height)
+        // A positive declared height is honored; height <= 0 means "fill the
+        // frame the parent gave me" so a Scroll at the root (or as a flex
+        // child) takes the full available height instead of measuring zero.
+        val viewportH =
+          if sn.view.height > 0 then math.min(frame.h, sn.view.height)
+          else frame.h
         sn.bounds = Rect(frame.x, frame.y, frame.w, viewportH)
         val ch = sn.child
         if ch != null then
@@ -377,6 +405,20 @@ object Engine:
           // the right area instead of inheriting the parent's frame.
           ap.bounds = childRect
           layout(eng, ch, childRect)
+      case bx: BoxNode =>
+        val ch = bx.child
+        if ch != null then
+          val pad = bx.view.padding
+          val inner = Rect(
+            frame.x + pad.left,
+            frame.y + pad.top,
+            frame.w - pad.horizontal,
+            frame.h - pad.vertical,
+          )
+          layout(eng, ch, inner)
+      case sz: SizedNode =>
+        val ch = sz.child
+        if ch != null then layout(eng, ch, frame)
       case cn: CenterNode =>
         val ch = cn.child
         if ch != null then
@@ -495,6 +537,10 @@ object Engine:
       val ch = ap.child; if ch != null then collectFocusables(ch, out)
     case c: CenterNode =>
       val ch = c.child; if ch != null then collectFocusables(ch, out)
+    case bx: BoxNode =>
+      val ch = bx.child; if ch != null then collectFocusables(ch, out)
+    case sz: SizedNode =>
+      val ch = sz.child; if ch != null then collectFocusables(ch, out)
     case b: BackdropNode =>
       val ch = b.child; if ch != null then collectFocusables(ch, out)
     case _ => ()
@@ -542,16 +588,33 @@ object Engine:
     case c: CenterNode =>
       val ch = c.child
       if ch != null then dispatchEvents(eng, ch)
+    case bx: BoxNode =>
+      val ch = bx.child
+      if ch != null then dispatchEvents(eng, ch)
+    case sz: SizedNode =>
+      val ch = sz.child
+      if ch != null then dispatchEvents(eng, ch)
     case b: BackdropNode =>
       val ch = b.child
       if ch != null then dispatchEvents(eng, ch)
-      // Outside-click → onBackdropClick. Either way, consume the press so it
-      // doesn't bleed through to the main tree below.
-      if eng.input.mousePressed
-        && b.bounds.contains(eng.input.mouseX, eng.input.mouseY) then
-        val childInside = ch != null
-          && ch.bounds.contains(eng.input.mouseX, eng.input.mouseY)
-        if !childInside then b.view.onBackdropClick()
+      // Backdrop is modal: anything not handled by its child is captured
+      // here. We fire onBackdropClick for outside-clicks, then zero out the
+      // input state so the main tree (and any lower overlays processed
+      // after this one) see no hover, no press, and no release. Without
+      // this, opening a modal would leave underlying buttons hover-lit and
+      // still clickable through the dim.
+      if b.bounds.contains(eng.input.mouseX, eng.input.mouseY) then
+        if eng.input.mousePressed then
+          val childInside = ch != null
+            && ch.bounds.contains(eng.input.mouseX, eng.input.mouseY)
+          if !childInside then b.view.onBackdropClick()
+        eng.input.mousePressed       = false
+        eng.input.mouseReleased      = false
+        eng.input.mouseDown          = false
+        eng.input.mouseRightPressed  = false
+        eng.input.mouseRightReleased = false
+        eng.input.mouseX             = -1
+        eng.input.mouseY             = -1
         eng.input.mousePressed  = false
         eng.input.mouseReleased = false
     case _ => ()
@@ -627,8 +690,13 @@ object Engine:
 
   private def emitSliderValue(eng: Engine, s: SliderNode): Unit =
     val range = s.view.max - s.view.min
-    if range <= 0 || s.bounds.w <= 0 then return
-    val rel0 = (eng.input.mouseX - s.bounds.x).toDouble / s.bounds.w.toDouble
+    val tw    = s.bounds.w - SliderRender.thumbW
+    if range <= 0 || tw <= 0 then return
+    // Track starts half-a-thumb in from the left bound (matches renderSlider),
+    // so clicking at the visible track-start maps to value=min and clicking
+    // at the visible track-end maps to value=max.
+    val tx   = s.bounds.x + SliderRender.thumbW / 2
+    val rel0 = (eng.input.mouseX - tx).toDouble / tw.toDouble
     val rel  = if rel0 < 0.0 then 0.0 else if rel0 > 1.0 then 1.0 else rel0
     val v    = s.view.min + math.round(rel * range).toInt
     if v != s.view.value then s.view.onChange(v)
@@ -742,6 +810,20 @@ object Engine:
       if ch != null then render(eng, ch)
     case c: CenterNode =>
       val ch = c.child
+      if ch != null then render(eng, ch)
+    case sz: SizedNode =>
+      val ch = sz.child
+      if ch != null then render(eng, ch)
+    case bx: BoxNode =>
+      val r  = bx.bounds
+      val ra = bx.view.radius
+      if ra > 0 then eng.drawList += FillRoundRect(r, ra, bx.view.color)
+      else           eng.drawList += FillRect(r, bx.view.color)
+      val br = bx.view.border
+      if br != null then
+        if ra > 0 then eng.drawList += StrokeRoundRect(r, ra, br)
+        else           eng.drawList += StrokeRect(r, br)
+      val ch = bx.child
       if ch != null then render(eng, ch)
     case b: BackdropNode =>
       eng.drawList += FillRect(b.bounds, b.view.color)
@@ -878,10 +960,19 @@ object Engine:
 
   private def renderSlider(eng: Engine, s: SliderNode): Unit =
     val trackH = 4
-    val tx     = s.bounds.x
-    val ty     = s.bounds.y + (s.bounds.h - trackH) / 2
-    val track  = Rect(tx, ty, s.bounds.w, trackH)
+    val thumbW = SliderRender.thumbW
+    val thumbH = eng.theme.lineHeight
     val ra     = trackH / 2
+    val half   = thumbW / 2
+
+    // Track is *shorter* than the widget's bounds by half a thumb on each
+    // side, so the thumb-center stays on the track at both extremes. That
+    // way the fill (track-start → thumb-center) is exactly 0 at min and
+    // exactly track-width at max — no leftover slivers, no visual jump.
+    val tx     = s.bounds.x + half
+    val tw     = s.bounds.w - thumbW
+    val ty     = s.bounds.y + (s.bounds.h - trackH) / 2
+    val track  = Rect(tx, ty, tw, trackH)
 
     if s.focused then
       eng.drawList += DrawShadow(track, ra, Shadow.focusRing(eng.theme.focusBorder))
@@ -893,15 +984,15 @@ object Engine:
     val rel   =
       if range <= 0 then 0.0
       else (s.view.value - s.view.min).toDouble / range.toDouble
-    val thumbW = 12
-    val thumbH = eng.theme.lineHeight
-    val px     = tx + ((s.bounds.w - thumbW).toDouble * rel).round.toInt
-    val py     = s.bounds.y + (s.bounds.h - thumbH) / 2
-    val thumb  = Rect(px, py, thumbW, thumbH)
 
-    // Filled track from start to thumb center.
-    if rel > 0.0 then
-      val fillW = px - tx + thumbW / 2
+    // Thumb-center sweeps the track exactly. Thumb x is centered on that.
+    val centerX = tx + (tw.toDouble * rel).round.toInt
+    val px      = centerX - half
+    val py      = s.bounds.y + (s.bounds.h - thumbH) / 2
+    val thumb   = Rect(px, py, thumbW, thumbH)
+
+    val fillW = centerX - tx
+    if fillW > 0 then
       eng.drawList += FillRoundRect(Rect(tx, ty, fillW, trackH), ra, eng.theme.accent)
 
     val thumbBg =

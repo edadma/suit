@@ -51,7 +51,13 @@ final class CheckboxNode(var view: Checkbox) extends Node:
 
 final class SpacerNode(var view: Spacer) extends Node
 
+final class SizedNode(var view: Sized) extends Node:
+  var child: Node | Null = null
+
 final class ImageNode(var view: Image) extends Node
+
+final class BoxNode(var view: Box) extends Node:
+  var child: Node | Null = null
 
 final class SliderNode(var view: Slider) extends Node:
   var hover:    Boolean = false

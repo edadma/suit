@@ -27,6 +27,13 @@ object Demo:
   private var items:        ArrayBuffer[String] = ArrayBuffer("Alice", "Bob", "Carol", "Dave")
   private var nextId:       Int                 = 1
 
+  // Form-controls state for the new widget showcase.
+  private var sliderValue: Int    = 50
+  private var radioPick:   Int    = 0
+  private var dropdownVal: String = "Apple"
+  private var tabIndex:    Int    = 0
+  private var modalOpen:   Boolean = false
+
   private val engine: Engine = new Engine
 
   private val rerender: () => Unit = () => engine.setRoot(view())
@@ -224,6 +231,86 @@ object Demo:
     }
 
 
+  // A panel exercising all of the form controls (Slider, Radio, Dropdown,
+  // Tabs) plus the modal helper. Each control owns its state via the
+  // top-level vars so reassignment + rerender drives a normal React-style
+  // update flow.
+  private def FormPanel(): Widget =
+    component("FormPanel") { hooks =>
+      val tabLabels = Array("Form", "Modal", "Animate")
+
+      // Animated number that follows the slider via useTransition. When the
+      // slider value moves, the displayed bar smoothly catches up over 250ms.
+      val animatedValue = hooks.useTransition(sliderValue.toDouble, 250)
+      val barWidth      = (animatedValue * 3).toInt   // 0–300 px
+
+      tabs(
+        labels   = tabLabels,
+        selected = tabIndex,
+        onSelect = i =>
+          tabIndex = i
+          rerender(),
+        content = tabIndex match
+          case 0 =>
+            Stack(
+              axis = Axis.Vertical,
+              gap  = 8,
+              children = Array(
+                Stack(Axis.Horizontal, Array(
+                  // Pin the readout to a fixed measure so its varying digit
+                  // count ("0" → "100") doesn't push the slider around.
+                  Sized(width = 100, child = Text(s"Slider: $sliderValue")),
+                  Slider(
+                    value    = sliderValue,
+                    min      = 0,
+                    max      = 100,
+                    onChange = v => { sliderValue = v; rerender() },
+                    width    = 200,
+                  ),
+                ), gap = 12),
+                Text("Radio group:"),
+                Stack(Axis.Vertical, Array(
+                  Radio("Apple",  selected = radioPick == 0, onSelect = () => { radioPick = 0; rerender() }),
+                  Radio("Banana", selected = radioPick == 1, onSelect = () => { radioPick = 1; rerender() }),
+                  Radio("Cherry", selected = radioPick == 2, onSelect = () => { radioPick = 2; rerender() }),
+                ), gap = 4),
+                Stack(Axis.Horizontal, Array(
+                  Text("Dropdown:"),
+                  dropdown(
+                    value    = dropdownVal,
+                    options  = Array("Apple", "Banana", "Cherry", "Date"),
+                    onChange = s => { dropdownVal = s; rerender() },
+                  ),
+                ), gap = 8),
+              ),
+            )
+          case 1 =>
+            Stack(Axis.Vertical, Array(
+              Text("Click the button to open a centered modal dialog."),
+              Button("Open modal", () => { modalOpen = true; rerender() }),
+              modal(
+                open    = modalOpen,
+                onClose = () => { modalOpen = false; rerender() },
+                child   = Stack(Axis.Vertical, Array(
+                  Text("This is a modal."),
+                  Text("Click outside to dismiss."),
+                  Button("Close", () => { modalOpen = false; rerender() }),
+                ), gap = 8),
+              ),
+            ), gap = 8)
+          case _ =>
+            // Live readout of useTransition: the eased value catches up to
+            // the slider's target over 250ms each time you adjust the
+            // slider on the Form tab. Switch tabs back and forth to watch
+            // the animation pick up where it left off.
+            Stack(Axis.Vertical, Array(
+              Text(f"Slider target: $sliderValue   eased: $animatedValue%.2f"),
+              Text(s"(barWidth = ${barWidth}px — switch to the Form tab to drive it)"),
+            ), gap = 4),
+      )
+    }
+
+
   // A function component that reads from context — no prop drilling needed.
   private def ThemeIndicator(): Widget =
     component("ThemeIndicator") { hooks =>
@@ -239,7 +326,9 @@ object Demo:
 
   private def view(): View =
     ThemeCtx.provide(theme,
-      Stack(
+      // height=0 means "fill the layout frame" — the demo grows tall enough
+      // that without a scroll wrapper the bottom widgets fall off the window.
+      Scroll(height = 0, child = Stack(
         axis    = Axis.Vertical,
         padding = Insets.all(16),
         gap     = 10,
@@ -253,6 +342,9 @@ object Demo:
 
           // Context-reading component.
           Component(ThemeIndicator()),
+
+          // Showcase: form controls + modal + animation hook.
+          Component(FormPanel()),
 
           // Auto-focuses on mount via WithRef + useLayoutEffect.
           Component(AutoFocusInput()),
@@ -293,7 +385,7 @@ object Demo:
           Spacer(),
           Text("Try shuffle/remove and watch row click-counts follow the labels."),
         ),
-      ))
+      )))
 
   def main(args: Array[String]): Unit =
     applyTheme()

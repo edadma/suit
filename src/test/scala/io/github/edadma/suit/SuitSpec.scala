@@ -540,6 +540,64 @@ class SuitSpec extends AnyFreeSpec with Matchers:
   }
 
   // -------------------------------------------------------------------------
+  // Sized
+  // -------------------------------------------------------------------------
+
+  "Sized" - {
+    "pins the wrapped child's width regardless of content" in {
+      val host = new TestHost
+      // Two siblings both Sized to width=80 — the second's natural width
+      // ("longer text long long") differs but neither shifts the other.
+      host.render(Stack(Axis.Horizontal, Array(
+        Sized(width = 80, child = Text("a")),
+        Text("anchor"),
+      )))
+      val anchor = host.findText("anchor").get
+      // Re-render with the first child's content widened — anchor must not move.
+      val xBefore = anchor.bounds.x
+      host.render(Stack(Axis.Horizontal, Array(
+        Sized(width = 80, child = Text("aaaaaaaaaaaaa")),
+        Text("anchor"),
+      )))
+      host.findText("anchor").get.bounds.x shouldBe xBefore
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Box
+  // -------------------------------------------------------------------------
+
+  "Box" - {
+    "measures to its child plus padding on both axes" in {
+      val host = new TestHost
+      host.render(Portal(AbsolutePosition(0, 0,
+        Box(
+          child   = Image(source = "x", width = 40, height = 30),
+          color   = Color(255, 0, 0, 255),
+          padding = Insets.all(8),
+        ),
+      )))
+      host.findAllOfType[BoxNode].head.bounds.w shouldBe 56   // 40 + 8 + 8
+      host.findAllOfType[BoxNode].head.bounds.h shouldBe 46   // 30 + 8 + 8
+    }
+
+    "emits a FillRect (or FillRoundRect when radius>0) for its background" in {
+      val host = new TestHost
+      host.render(Portal(AbsolutePosition(0, 0,
+        Box(
+          child  = Text("hi"),
+          color  = Color(10, 20, 30, 200),
+          radius = 6,
+        ),
+      )))
+      host.drawList.exists {
+        case FillRoundRect(_, 6, c) => c == Color(10, 20, 30, 200)
+        case _                      => false
+      } shouldBe true
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // useTransition
   // -------------------------------------------------------------------------
 

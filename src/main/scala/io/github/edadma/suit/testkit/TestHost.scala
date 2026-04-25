@@ -160,6 +160,12 @@ final class TestHost(viewportW: Int = 800, viewportH: Int = 600):
       case c: CenterNode =>
         val ch = c.child
         if ch != null then walk(ch, pred, out)
+      case bx: BoxNode =>
+        val ch = bx.child
+        if ch != null then walk(ch, pred, out)
+      case sz: SizedNode =>
+        val ch = sz.child
+        if ch != null then walk(ch, pred, out)
       case b: BackdropNode =>
         val ch = b.child
         if ch != null then walk(ch, pred, out)

@@ -68,6 +68,30 @@ final case class Stack(
 
 final case class Spacer(flex: Int = 1) extends View
 
+// Pins a child to a fixed measured width and/or height, regardless of the
+// child's own content. A negative value (the default) leaves that axis
+// unconstrained — the child's natural measure is used. Useful for laying
+// out variable-content widgets (e.g. a numeric readout) so they don't
+// reflow their siblings as the content's width changes between renders.
+final case class Sized(
+    child:  View,
+    width:  Int = -1,
+    height: Int = -1,
+) extends View
+
+// A filled rounded-rectangle background with a child laid out inside its
+// (optionally padded) interior. The minimal "give my child a colored
+// surface" primitive — used for cards, dialog panels, dividers, animation
+// bars, and anywhere else a Stack alone wouldn't have a paintable
+// background.
+final case class Box(
+    child:   View,
+    color:   Color,
+    padding: Insets = Insets.Zero,
+    radius:  Int    = 0,
+    border:  Color | Null = null,
+) extends View
+
 // A bitmap image drawn at fixed `width` × `height`. `source` is a string
 // identifier — the host's `Renderer` decides how to resolve it (classpath
 // resource → filesystem path → fallback). The fixed-size shape means
@@ -144,7 +168,7 @@ final case class Backdrop(
 ) extends View
 
 object Backdrop:
-  val defaultColor: Color    = Color(0, 0, 0, 96)
+  val defaultColor: Color    = Color(0, 0, 0, 160)
   val noop:         () => Unit = noopImpl
   private def noopImpl(): Unit = ()
 

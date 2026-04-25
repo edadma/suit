@@ -72,10 +72,23 @@ object Reconciler:
         n.view = v
         n
 
+      case (n: SizedNode, v: Sized) =>
+        if n.view.width != v.width || n.view.height != v.height then eng.markDirty()
+        n.view = v
+        n.child = reconcile(n.child, v.child, eng)
+        n
+
       case (n: ImageNode, v: Image) =>
         if n.view.source != v.source || n.view.width != v.width
           || n.view.height != v.height then eng.markDirty()
         n.view = v
+        n
+
+      case (n: BoxNode, v: Box) =>
+        if n.view.color != v.color || n.view.padding != v.padding
+          || n.view.radius != v.radius || n.view.border != v.border then eng.markDirty()
+        n.view = v
+        n.child = reconcile(n.child, v.child, eng)
         n
 
       case (n: SliderNode, v: Slider) =>
@@ -194,7 +207,15 @@ object Reconciler:
     case i: Input    => new InputNode(i)
     case c: Checkbox => new CheckboxNode(c)
     case s: Spacer   => new SpacerNode(s)
+    case sz: Sized   =>
+      val n = new SizedNode(sz)
+      n.child = mount(sz.child, eng)
+      n
     case i: Image    => new ImageNode(i)
+    case b: Box      =>
+      val n = new BoxNode(b)
+      n.child = mount(b.child, eng)
+      n
     case s: Slider   => new SliderNode(s)
     case r: Radio    => new RadioNode(r)
     case Empty       => new SpacerNode(Spacer(0))
@@ -296,6 +317,12 @@ object Reconciler:
     case c: CenterNode =>
       val ch = c.child
       if ch != null then unmount(ch, eng)
+    case bx: BoxNode =>
+      val ch = bx.child
+      if ch != null then unmount(ch, eng)
+    case sz: SizedNode =>
+      val ch = sz.child
+      if ch != null then unmount(ch, eng)
     case b: BackdropNode =>
       val ch = b.child
       if ch != null then unmount(ch, eng)
@@ -341,6 +368,12 @@ object Reconciler:
       case c: CenterNode =>
         val ch = c.child
         if ch != null then invalidateContextSubscribers(ch, ctx, eng)
+      case bx: BoxNode =>
+        val ch = bx.child
+        if ch != null then invalidateContextSubscribers(ch, ctx, eng)
+      case sz: SizedNode =>
+        val ch = sz.child
+        if ch != null then invalidateContextSubscribers(ch, ctx, eng)
       case b: BackdropNode =>
         val ch = b.child
         if ch != null then invalidateContextSubscribers(ch, ctx, eng)
@@ -380,6 +413,12 @@ object Reconciler:
       if ch != null then visitForUpdates(ch, eng)
     case c: CenterNode =>
       val ch = c.child
+      if ch != null then visitForUpdates(ch, eng)
+    case bx: BoxNode =>
+      val ch = bx.child
+      if ch != null then visitForUpdates(ch, eng)
+    case sz: SizedNode =>
+      val ch = sz.child
       if ch != null then visitForUpdates(ch, eng)
     case b: BackdropNode =>
       val ch = b.child

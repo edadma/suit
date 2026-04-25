@@ -13,22 +13,39 @@ package io.github.edadma.suit
 // ----------------------------------------------------------------------------
 
 // A centered dialog with a click-to-dismiss backdrop. The dialog is centered
-// in the viewport via the `Center` primitive — Center overrides its bounds
-// to the centered child rect, so the surrounding Backdrop's "click outside
-// child" check sees the actual rendered area. When `open` is false the
-// helper returns `Empty` and the portal is torn down by the reconciler.
+// in the viewport via the `Center` primitive, and the child is wrapped in a
+// `Box` panel so it has a solid background distinct from the dimmed area
+// behind it. When `open` is false the helper returns `Empty` and the portal
+// is torn down by the reconciler.
 def modal(
     open:    Boolean,
     onClose: () => Unit,
     child:   View,
     backdropColor: Color = Backdrop.defaultColor,
+    panelColor:    Color = Modal.defaultPanelColor,
+    panelBorder:   Color = Modal.defaultPanelBorder,
+    padding:       Insets = Insets.all(16),
+    radius:        Int = 8,
 ): View =
   if !open then Empty
   else Portal(Backdrop(
     color           = backdropColor,
     onBackdropClick = onClose,
-    child           = Center(child),
+    child           = Center(Box(
+      child   = child,
+      color   = panelColor,
+      padding = padding,
+      radius  = radius,
+      border  = panelBorder,
+    )),
   ))
+
+private object Modal:
+  // Slightly lighter than the default theme bg so the panel reads as a
+  // distinct surface against a dimmed backdrop. Apps that want strict
+  // theme integration can pass their own panelColor.
+  val defaultPanelColor:  Color = Color(36, 36, 48)
+  val defaultPanelBorder: Color = Color(80, 80, 100)
 
 // ----------------------------------------------------------------------------
 // Tooltip
@@ -95,7 +112,26 @@ def dropdown(
     width:    Int = 160,
 ): View = Component(component("suit-dropdown") { hooks =>
   val (open, setOpen, _) = hooks.useState(false)
-  val rowH = 24
+
+  // Trigger-button ref, captured during layout so the popup can anchor under
+  // its actual screen position regardless of where the dropdown sits in the
+  // tree. The layout effect runs every render, but only mutates the ref —
+  // refs don't trigger re-renders, so there's no infinite loop. By the time
+  // the user clicks the trigger and the component re-renders with `open=true`,
+  // the ref has the latest bounds from the last laid-out frame.
+  val triggerRef = hooks.useRef[Node | Null](null)
+  val anchorRef  = hooks.useRef((0, 0))
+
+  hooks.useLayoutEffect(
+    () => {
+      val n = triggerRef.current
+      if n != null then
+        val r = n.bounds
+        anchorRef.current = (r.x, r.y + r.h + 4)
+      () => ()
+    },
+    deps = null,
+  )
 
   val items: Array[View] = options.map(opt =>
     Button(
@@ -105,30 +141,33 @@ def dropdown(
         setOpen(false),
     ),
   )
-  val menuStack = Stack(
-    axis     = Axis.Vertical,
-    children = items,
-    padding  = Insets.all(4),
-    gap      = 2,
+  val menuPanel = Box(
+    child   = Stack(
+      axis     = Axis.Vertical,
+      children = items,
+      gap      = 2,
+    ),
+    color   = Modal.defaultPanelColor,
+    border  = Modal.defaultPanelBorder,
+    padding = Insets.all(4),
+    radius  = 6,
   )
 
-  // The trigger button is the visible part; the contextMenu sits on top of
-  // it via a Portal when `open`. We don't have anchor-relative positioning,
-  // so the menu is drawn near the screen origin — good enough for the demo;
-  // a future revision can take a useLayoutEffect-measured anchor rect.
+  val (ax, ay) = anchorRef.current
+
   Stack(
     axis     = Axis.Vertical,
     children = Array(
-      Button(
+      WithRef(triggerRef, Button(
         label   = if value.nonEmpty then value + " ▾" else "Select… ▾",
         onClick = () => setOpen(!open),
-      ),
+      )),
       contextMenu(
         open    = open,
-        x       = 0,
-        y       = rowH + 4,
+        x       = ax,
+        y       = ay,
         onClose = () => setOpen(false),
-        child   = menuStack,
+        child   = menuPanel,
       ),
     ),
     gap = 0,
