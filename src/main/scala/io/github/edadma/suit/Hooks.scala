@@ -20,10 +20,24 @@ object Hooks:
     idSeq = idSeq + 1
     "suit-" + idSeq
 
+  private val noopChange: () => Unit = () => ()
+
+// Anything that owns a Hooks instance — both FunctionComponent and
+// MemoComponent today. The reconciler's unmount path runs cleanups on any
+// node whose widget is a HookCarrier.
+trait HookCarrier:
+  def hooks: Hooks
+
+
 final class Hooks:
 
   // Set by FunctionComponent.attach.
   private[suit] var engine: Engine | Null = null
+
+  // Optional hook fired by every state-cell write. Memoized components use
+  // it to mark themselves dirty so the reconciler doesn't bail past a
+  // genuine internal-state change. Default no-op for plain components.
+  private[suit] var onStateChange: () => Unit = Hooks.noopChange
 
   private val cells: ArrayBuffer[Any] = ArrayBuffer.empty
   private var index: Int = 0
@@ -72,6 +86,7 @@ final class Hooks:
     val prev = cells(slot)
     cells(slot) = value
     if prev != value then
+      onStateChange()
       val e = engine
       if e != null then e.requestRender()
 

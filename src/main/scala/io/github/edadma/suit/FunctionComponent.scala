@@ -8,10 +8,10 @@ package io.github.edadma.suit
 // `updateProps` swaps the closure in. The closure executes against the
 // kept-alive Hooks instance, so positional state cells line up across
 // renders and hooks behave like in React.
-final class FunctionComponent(val name: String) extends Widget:
+final class FunctionComponent(val name: String) extends Widget with HookCarrier:
 
-  private[suit] var fn:    Hooks => View = FunctionComponent.emptyFn
-  private[suit] val hooks: Hooks         = new Hooks
+  private[suit] var fn:  Hooks => View = FunctionComponent.emptyFn
+  val hooks: Hooks                     = new Hooks
   private val id: Long = name.hashCode.toLong
 
   def widgetId(): Long = id

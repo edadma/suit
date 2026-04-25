@@ -470,6 +470,96 @@ class SuitSpec extends AnyFreeSpec with Matchers:
   }
 
   // -------------------------------------------------------------------------
+  // memo — prop-bailout
+  // -------------------------------------------------------------------------
+
+  case class GreetProps(name: String)
+
+  "memo" - {
+    "skips render when props are unchanged" in {
+      var renderCount = 0
+      val Greet = memo[GreetProps]("Greet") { (props, _) =>
+        renderCount = renderCount + 1
+        Text("hi " + props.name)
+      }
+      val host = new TestHost
+      host.render(Component(Greet(GreetProps("ada"))))
+      val afterFirst = renderCount
+      host.render(Component(Greet(GreetProps("ada"))))   // same props
+      renderCount shouldBe afterFirst
+    }
+
+    "renders when props change" in {
+      var renderCount = 0
+      val Greet = memo[GreetProps]("Greet2") { (props, _) =>
+        renderCount = renderCount + 1
+        Text("hi " + props.name)
+      }
+      val host = new TestHost
+      host.render(Component(Greet(GreetProps("ada"))))
+      val afterFirst = renderCount
+      host.render(Component(Greet(GreetProps("alan"))))  // changed
+      renderCount shouldBe (afterFirst + 1)
+      host.findText("hi alan") should not be empty
+    }
+
+    "renders when its own state changes (even though props unchanged)" in {
+      var renderCount = 0
+      case class P()
+      val Inc = memo[P]("Inc") { (_, hooks) =>
+        renderCount = renderCount + 1
+        val (n, _, update) = hooks.useState(0)
+        Stack(Axis.Horizontal, Array(
+          Text(n.toString),
+          Button("+", () => update(_ + 1)),
+        ))
+      }
+      val host = new TestHost
+      host.render(Component(Inc(P())))
+      val afterMount = renderCount
+      host.click(host.findButton("+").get)
+      renderCount shouldBe (afterMount + 1)
+      host.findText("1") should not be empty
+    }
+
+    "lets a descendant render even when a memoized parent bails out" in {
+      // Parent is memoed and never gets new props. Child has its own state
+      // that changes via a button click. The child's render must still fire.
+      var parentRenders = 0
+      var childRenders  = 0
+      case class PP()
+
+      val Child = component("MemoChild") { hooks =>
+        childRenders = childRenders + 1
+        val (n, _, update) = hooks.useState(0)
+        Stack(Axis.Horizontal, Array(
+          Text("child=" + n),
+          Button("bump", () => update(_ + 1)),
+        ))
+      }
+
+      val Parent = memo[PP]("MemoParent") { (_, _) =>
+        parentRenders = parentRenders + 1
+        Stack(Axis.Vertical, Array(
+          Text("parent"),
+          Component(Child),
+        ))
+      }
+
+      val host = new TestHost
+      host.render(Component(Parent(PP())))
+      val parentAfterMount = parentRenders
+      val childAfterMount  = childRenders
+
+      host.click(host.findButton("bump").get)
+
+      parentRenders shouldBe parentAfterMount        // parent must NOT re-render
+      childRenders  shouldBe (childAfterMount + 1)   // child must re-render
+      host.findText("child=1") should not be empty
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Fragment
   // -------------------------------------------------------------------------
 

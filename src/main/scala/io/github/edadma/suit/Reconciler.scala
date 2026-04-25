@@ -83,12 +83,22 @@ object Reconciler:
           n
 
       case (n: ComponentNode, v: Component) if n.widget eq v.widget =>
-        n.child = reconcile(n.child, v.widget.render(), eng)
+        if n.widget.shouldRender then
+          n.child = reconcile(n.child, v.widget.render(), eng)
+        else
+          // Memo bailout: walk existing children to surface any dirty fibers
+          // deeper down (e.g. a child component whose own state changed).
+          val ch = n.child
+          if ch != null then visitForUpdates(ch, eng)
         n
 
       case (n: ComponentNode, v: Component) if n.widget.widgetId() == v.widget.widgetId() =>
         n.widget.updateProps(v.widget)
-        n.child = reconcile(n.child, n.widget.render(), eng)
+        if n.widget.shouldRender then
+          n.child = reconcile(n.child, n.widget.render(), eng)
+        else
+          val ch = n.child
+          if ch != null then visitForUpdates(ch, eng)
         n
 
       case (n: ContextProviderNode, v: ContextProvider) if n.ctx eq v.ctx =>
@@ -162,8 +172,8 @@ object Reconciler:
       val ch = c.child
       if ch != null then unmount(ch, eng)
       c.widget match
-        case fc: FunctionComponent => fc.hooks.runUnmountCleanups()
-        case _                     => ()
+        case h: HookCarrier => h.hooks.runUnmountCleanups()
+        case _              => ()
     case s: StackNode =>
       var i = 0
       while i < s.children.length do
@@ -172,6 +182,28 @@ object Reconciler:
     case cp: ContextProviderNode =>
       val ch = cp.child
       if ch != null then unmount(ch, eng)
+    case _ => ()
+
+
+  // After a memoized parent bails out, this helper walks its existing child
+  // tree looking for descendants that *do* need to render (e.g. a nested
+  // component whose own state just changed). For each such descendant, it
+  // re-renders and reconciles its result against the existing subtree.
+  def visitForUpdates(node: Node, eng: Engine): Unit = node match
+    case c: ComponentNode =>
+      if c.widget.shouldRender then
+        c.child = reconcile(c.child, c.widget.render(), eng)
+      else
+        val ch = c.child
+        if ch != null then visitForUpdates(ch, eng)
+    case s: StackNode =>
+      var i = 0
+      while i < s.children.length do
+        visitForUpdates(s.children(i), eng)
+        i = i + 1
+    case cp: ContextProviderNode =>
+      val ch = cp.child
+      if ch != null then visitForUpdates(ch, eng)
     case _ => ()
 
 

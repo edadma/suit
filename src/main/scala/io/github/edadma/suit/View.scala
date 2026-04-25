@@ -107,6 +107,12 @@ trait Widget:
   def attach(engine: Engine): Unit       = ()
   def updateProps(next: Widget): Unit    = ()
 
+  // Opt-in bailout: when false, the reconciler skips this widget's `render()`
+  // and instead walks the existing child Node tree to look for dirty
+  // descendants (so state changes inside a memoized subtree still take
+  // effect). Default `true` — most widgets always render.
+  def shouldRender: Boolean              = true
+
 
 // --- Context API -----------------------------------------------------------
 
