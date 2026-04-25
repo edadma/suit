@@ -298,17 +298,7 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
     // rerender → render across three frames; the Text content is the
     // hook value, so seeing "0", "1", "2" in the command stream proves
     // the full hook + reconcile + dispatch loop closes.
-    //
-    // TODO: un-ignore when the sysl pattern-binding shadow bug is
-    // fixed. engine-counter.sysl declares
-    //   enum View ... Component(render: (Fiber) -> View)
-    //   render(n: Node) -> int = ...        // global engine renderer
-    //   mount(v) -> match Component(render) -> ... render(f) ...
-    // The match-bound `render` should shadow the global function inside
-    // the arm, but the analyzer instead resolves to the global and
-    // rejects the call ("argument 'n' of 'render' expects Node, got
-    // Fiber"). Minimal repro at /tmp/sysl-shadow-bug.sysl + bug2.sysl.
-    "drives a Counter component with use_state across three frames" ignore {
+    "drives a Counter component with use_state across three frames" in {
       val texts = mutable.ArrayBuffer.empty[String]
 
       val host = new SyslHost(resourcesDir)
