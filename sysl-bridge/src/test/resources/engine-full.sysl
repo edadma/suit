@@ -42,10 +42,10 @@ struct Insets
 
 enum View
     Text(content: string)
-    Button(label: string)
+    Button(label: string, on_click: () -> int)
     Spacer(flex: int)
     Image(source: string, width: int, height: int)
-    Checkbox(label: string, checked: bool)
+    Checkbox(label: string, checked: bool, on_toggle: (bool) -> int)
     Sized(child: View, width: int, height: int)
     Center(child: View)
     Box(child: View, color: Color, padding: Insets)
@@ -111,14 +111,14 @@ const CHK_GAP: int   = 6
 
 mount(v: View) -> Node
     v match
-        Text(_)        -> TextNode(TextNodeState(v, Rect(0, 0, 0, 0)))
-        Button(_)      -> ButtonNode(ButtonNodeState(v, Rect(0, 0, 0, 0)))
-        Spacer(_)      -> SpacerNode(SpacerNodeState(v, Rect(0, 0, 0, 0)))
-        Image(_, _, _) -> ImageNode(ImageNodeState(v, Rect(0, 0, 0, 0)))
-        Checkbox(_, _) -> CheckboxNode(CheckboxNodeState(v, Rect(0, 0, 0, 0)))
-        Sized(c, _, _) -> SizedNode(SizedNodeState(v, Rect(0, 0, 0, 0), mount(c)))
-        Center(c)      -> CenterNode(CenterNodeState(v, Rect(0, 0, 0, 0), mount(c)))
-        Box(c, _, _)   -> BoxNode(BoxNodeState(v, Rect(0, 0, 0, 0), mount(c)))
+        Text(_)           -> TextNode(TextNodeState(v, Rect(0, 0, 0, 0)))
+        Button(_, _)      -> ButtonNode(ButtonNodeState(v, Rect(0, 0, 0, 0)))
+        Spacer(_)         -> SpacerNode(SpacerNodeState(v, Rect(0, 0, 0, 0)))
+        Image(_, _, _)    -> ImageNode(ImageNodeState(v, Rect(0, 0, 0, 0)))
+        Checkbox(_, _, _) -> CheckboxNode(CheckboxNodeState(v, Rect(0, 0, 0, 0)))
+        Sized(c, _, _)    -> SizedNode(SizedNodeState(v, Rect(0, 0, 0, 0), mount(c)))
+        Center(c)         -> CenterNode(CenterNodeState(v, Rect(0, 0, 0, 0), mount(c)))
+        Box(c, _, _)      -> BoxNode(BoxNodeState(v, Rect(0, 0, 0, 0), mount(c)))
         Stack(g, kids) ->
             val n = len(kids)
             val nodes = (new [n]Node)[:]
@@ -146,8 +146,8 @@ measure(n: Node) -> Size
                 _       -> Size(0, 0)
         ButtonNode(s) ->
             s.view match
-                Button(l) -> Size(text_w(l) + BTN_PAD_X * 2, LINE_H + BTN_PAD_Y * 2)
-                _         -> Size(0, 0)
+                Button(l, _) -> Size(text_w(l) + BTN_PAD_X * 2, LINE_H + BTN_PAD_Y * 2)
+                _            -> Size(0, 0)
         SpacerNode(_) -> Size(0, 0)
         ImageNode(s) ->
             s.view match
@@ -155,8 +155,8 @@ measure(n: Node) -> Size
                 _              -> Size(0, 0)
         CheckboxNode(s) ->
             s.view match
-                Checkbox(l, _) -> Size(LINE_H + CHK_GAP + text_w(l), LINE_H)
-                _              -> Size(0, 0)
+                Checkbox(l, _, _) -> Size(LINE_H + CHK_GAP + text_w(l), LINE_H)
+                _                 -> Size(0, 0)
         SizedNode(s) ->
             val cs = measure(s.child)
             s.view match
@@ -256,7 +256,7 @@ render(n: Node) -> int
                 _ -> 0
         ButtonNode(s) ->
             s.view match
-                Button(l) ->
+                Button(l, _) ->
                     host_fill_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, 40, 40, 55, 255)
                     host_draw_text(s.bounds.x + BTN_PAD_X, s.bounds.y + BTN_PAD_Y + 14, l, 220, 220, 240, 255)
                     0
@@ -270,7 +270,7 @@ render(n: Node) -> int
                 _ -> 0
         CheckboxNode(s) ->
             s.view match
-                Checkbox(l, checked) ->
+                Checkbox(l, checked, _) ->
                     host_fill_rect(s.bounds.x, s.bounds.y, LINE_H, LINE_H, 60, 60, 80, 255)
                     if checked then
                         host_fill_rect(s.bounds.x + 4, s.bounds.y + 4, LINE_H - 8, LINE_H - 8, 220, 220, 240, 255)
@@ -294,10 +294,11 @@ render(n: Node) -> int
             0
 
 main() -> int
+    noop_toggle = (b: bool) -> 0
     val kids = (new [3]View)[:]
     kids[0] = Sized(Text("title"), 200, 24)
     kids[1] = Center(Image("icon.png", 32, 32))
-    kids[2] = Box(Checkbox("agree", true), Color(80, 120, 200, 255), Insets(4, 4, 4, 4))
+    kids[2] = Box(Checkbox("agree", true, noop_toggle), Color(80, 120, 200, 255), Insets(4, 4, 4, 4))
     val v = Stack(0, kids)
     val n = mount(v)
     layout(n, Rect(0, 0, 200, 200))

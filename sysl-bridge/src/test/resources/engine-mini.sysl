@@ -17,6 +17,11 @@ extern host_fill_rect(x: int, y: int, w: int, h: int, r: int, g: int, b: int, a:
 extern host_draw_text(x: int, y: int, text: string, r: int, g: int, b: int, a: int) -> int
 extern host_draw_image(x: int, y: int, w: int, h: int, source: string) -> int
 
+struct InputState
+    mouse_x: int
+    mouse_y: int
+    mouse_pressed: bool
+
 // ---- value types ----------------------------------------------------------
 
 struct Rect
@@ -45,10 +50,10 @@ struct Insets
 
 enum View
     Text(content: string)
-    Button(label: string)
+    Button(label: string, on_click: () -> int)
     Spacer(flex: int)
     Image(source: string, width: int, height: int)
-    Checkbox(label: string, checked: bool)
+    Checkbox(label: string, checked: bool, on_toggle: (bool) -> int)
     Sized(child: View, width: int, height: int)
     Center(child: View)
     Box(child: View, color: Color, padding: Insets)
@@ -120,14 +125,14 @@ const CHK_GAP: int   = 6
 
 mount(v: View) -> Node
     v match
-        Text(_)        -> TextNode(TextNodeState(v, Rect(0, 0, 0, 0)))
-        Button(_)      -> ButtonNode(ButtonNodeState(v, Rect(0, 0, 0, 0), false, false))
-        Spacer(_)      -> SpacerNode(SpacerNodeState(v, Rect(0, 0, 0, 0)))
-        Image(_, _, _) -> ImageNode(ImageNodeState(v, Rect(0, 0, 0, 0)))
-        Checkbox(_, _) -> CheckboxNode(CheckboxNodeState(v, Rect(0, 0, 0, 0)))
-        Sized(c, _, _) -> SizedNode(SizedNodeState(v, Rect(0, 0, 0, 0), mount(c)))
-        Center(c)      -> CenterNode(CenterNodeState(v, Rect(0, 0, 0, 0), mount(c)))
-        Box(c, _, _)   -> BoxNode(BoxNodeState(v, Rect(0, 0, 0, 0), mount(c)))
+        Text(_)           -> TextNode(TextNodeState(v, Rect(0, 0, 0, 0)))
+        Button(_, _)      -> ButtonNode(ButtonNodeState(v, Rect(0, 0, 0, 0), false, false))
+        Spacer(_)         -> SpacerNode(SpacerNodeState(v, Rect(0, 0, 0, 0)))
+        Image(_, _, _)    -> ImageNode(ImageNodeState(v, Rect(0, 0, 0, 0)))
+        Checkbox(_, _, _) -> CheckboxNode(CheckboxNodeState(v, Rect(0, 0, 0, 0)))
+        Sized(c, _, _)    -> SizedNode(SizedNodeState(v, Rect(0, 0, 0, 0), mount(c)))
+        Center(c)         -> CenterNode(CenterNodeState(v, Rect(0, 0, 0, 0), mount(c)))
+        Box(c, _, _)      -> BoxNode(BoxNodeState(v, Rect(0, 0, 0, 0), mount(c)))
         Stack(g, kids) ->
             val n = len(kids)
             val nodes = (new [n]Node)[:]
@@ -157,8 +162,8 @@ measure(n: Node) -> Size
                 _       -> Size(0, 0)
         ButtonNode(s) ->
             s.view match
-                Button(l) -> Size(text_w(l) + BTN_PAD_X * 2, LINE_H + BTN_PAD_Y * 2)
-                _         -> Size(0, 0)
+                Button(l, _) -> Size(text_w(l) + BTN_PAD_X * 2, LINE_H + BTN_PAD_Y * 2)
+                _            -> Size(0, 0)
         SpacerNode(_) -> Size(0, 0)
         ImageNode(s) ->
             s.view match
@@ -166,8 +171,8 @@ measure(n: Node) -> Size
                 _              -> Size(0, 0)
         CheckboxNode(s) ->
             s.view match
-                Checkbox(l, _) -> Size(LINE_H + CHK_GAP + text_w(l), LINE_H)
-                _              -> Size(0, 0)
+                Checkbox(l, _, _) -> Size(LINE_H + CHK_GAP + text_w(l), LINE_H)
+                _                 -> Size(0, 0)
         SizedNode(s) ->
             val cs = measure(s.child)
             s.view match
@@ -277,7 +282,7 @@ reconcile(old: Node, v: View) -> Node
                 _ -> mount(v)
         ButtonNode(state) ->
             v match
-                Button(_) ->
+                Button(_, _) ->
                     state.view = v
                     old
                 _ -> mount(v)
@@ -295,7 +300,7 @@ reconcile(old: Node, v: View) -> Node
                 _ -> mount(v)
         CheckboxNode(state) ->
             v match
-                Checkbox(_, _) ->
+                Checkbox(_, _, _) ->
                     state.view = v
                     old
                 _ -> mount(v)
@@ -346,7 +351,7 @@ render(n: Node) -> int
                 _ -> 0
         ButtonNode(s) ->
             s.view match
-                Button(l) ->
+                Button(l, _) ->
                     host_fill_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h,
                                    40, 40, 55, 255)
                     host_draw_text(s.bounds.x + BTN_PAD_X, s.bounds.y + BTN_PAD_Y + 14, l,
@@ -362,7 +367,7 @@ render(n: Node) -> int
                 _ -> 0
         CheckboxNode(s) ->
             s.view match
-                Checkbox(l, checked) ->
+                Checkbox(l, checked, _) ->
                     host_fill_rect(s.bounds.x, s.bounds.y, LINE_H, LINE_H, 60, 60, 80, 255)
                     if checked then
                         host_fill_rect(s.bounds.x + 4, s.bounds.y + 4, LINE_H - 8, LINE_H - 8, 220, 220, 240, 255)
@@ -386,12 +391,47 @@ render(n: Node) -> int
                 i = i + 1
             0
 
+// ---- dispatch: hit-test interactives, fire closures -----------------------
+
+contains(b: Rect, x: int, y: int) -> bool
+    x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h
+
+dispatch(n: Node, input: InputState) -> int
+    n match
+        ButtonNode(s) ->
+            if input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
+                s.view match
+                    Button(_, on_click) ->
+                        on_click()
+                        0
+                    _ -> 0
+            else 0
+        CheckboxNode(s) ->
+            if input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
+                s.view match
+                    Checkbox(_, checked, on_toggle) ->
+                        on_toggle(!checked)
+                        0
+                    _ -> 0
+            else 0
+        SizedNode(s)  -> dispatch(s.child, input)
+        CenterNode(s) -> dispatch(s.child, input)
+        BoxNode(s)    -> dispatch(s.child, input)
+        StackNode(s) ->
+            var i = 0
+            while i < len(s.children) do
+                dispatch(s.children[i], input)
+                i = i + 1
+            0
+        _ -> 0
+
 // ---- driver entry ---------------------------------------------------------
 
 main() -> int
+    noop = () -> 0
     val kids1 = (new [2]View)[:]
     kids1[0] = Text("Hello, sysl!")
-    kids1[1] = Button("Click me")
+    kids1[1] = Button("Click me", noop)
     val v1 = Stack(6, kids1)
     val n  = mount(v1)
     layout(n, Rect(0, 0, 200, 100))
@@ -399,7 +439,7 @@ main() -> int
 
     val kids2 = (new [2]View)[:]
     kids2[0] = Text("Hello, AGAIN!")
-    kids2[1] = Button("Click me too")
+    kids2[1] = Button("Click me too", noop)
     val v2 = Stack(6, kids2)
     reconcile(n, v2)
     layout(n, Rect(0, 0, 200, 100))

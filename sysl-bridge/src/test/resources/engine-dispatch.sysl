@@ -1,0 +1,146 @@
+// Scope 2.F — event dispatch in sysl. Hit-test a laid-out Node tree and
+// fire the closure stored in the matching View variant. Mirrors the
+// suit-Scala dispatch loop's central decision: walk node, intersect
+// bounds with mouse, invoke `on_click` / `on_toggle`.
+//
+// This fixture is intentionally minimal — only Button, Checkbox, Stack
+// — because the dispatch logic doesn't depend on the broader variant
+// set. The full engine in engine-mini.sysl carries the same dispatch.
+
+extern host_record(name: string) -> int
+
+struct Rect
+    x: int
+    y: int
+    w: int
+    h: int
+
+struct InputState
+    mouse_x: int
+    mouse_y: int
+    mouse_pressed: bool
+
+enum View
+    Button(label: string, on_click: () -> int)
+    Checkbox(label: string, checked: bool, on_toggle: (bool) -> int)
+    Stack(children: []View)
+
+struct ButtonNodeState
+    view: View
+    bounds: Rect
+
+struct CheckboxNodeState
+    view: View
+    bounds: Rect
+
+struct StackNodeState
+    view: View
+    bounds: Rect
+    children: []Node
+
+enum Node
+    ButtonNode(s: ButtonNodeState)
+    CheckboxNode(s: CheckboxNodeState)
+    StackNode(s: StackNodeState)
+
+mount(v: View) -> Node
+    v match
+        Button(_, _)      -> ButtonNode(ButtonNodeState(v, Rect(0, 0, 0, 0)))
+        Checkbox(_, _, _) -> CheckboxNode(CheckboxNodeState(v, Rect(0, 0, 0, 0)))
+        Stack(kids) ->
+            val n = len(kids)
+            val nodes = (new [n]Node)[:]
+            var i = 0
+            while i < n do
+                nodes[i] = mount(kids[i])
+                i = i + 1
+            StackNode(StackNodeState(v, Rect(0, 0, 0, 0), nodes))
+
+set_rect(b: Rect, frame: Rect) -> int
+    b.x = frame.x
+    b.y = frame.y
+    b.w = frame.w
+    b.h = frame.h
+    0
+
+// Equal-share vertical layout — sufficient for hit-test verification.
+layout(n: Node, frame: Rect) -> int
+    n match
+        ButtonNode(s)   -> set_rect(s.bounds, frame)
+        CheckboxNode(s) -> set_rect(s.bounds, frame)
+        StackNode(s) ->
+            set_rect(s.bounds, frame)
+            val n_kids = len(s.children)
+            val each_h = frame.h / n_kids
+            var pos = frame.y
+            var i = 0
+            while i < n_kids do
+                layout(s.children[i], Rect(frame.x, pos, frame.w, each_h))
+                pos = pos + each_h
+                i = i + 1
+            0
+
+contains(b: Rect, x: int, y: int) -> bool
+    x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h
+
+dispatch(n: Node, input: InputState) -> int
+    n match
+        ButtonNode(s) ->
+            if input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
+                s.view match
+                    Button(_, on_click) ->
+                        on_click()
+                        0
+                    _ -> 0
+            else 0
+        CheckboxNode(s) ->
+            if input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
+                s.view match
+                    Checkbox(_, checked, on_toggle) ->
+                        on_toggle(!checked)
+                        0
+                    _ -> 0
+            else 0
+        StackNode(s) ->
+            var i = 0
+            while i < len(s.children) do
+                dispatch(s.children[i], input)
+                i = i + 1
+            0
+
+main() -> int
+    on_click_a = () ->
+        host_record("button-A")
+        0
+    on_click_b = () ->
+        host_record("button-B")
+        0
+    on_toggle = (b: bool) ->
+        host_record(if b then "toggle-on" else "toggle-off")
+        0
+
+    val kids = (new [3]View)[:]
+    kids[0] = Button("A", on_click_a)
+    kids[1] = Button("B", on_click_b)
+    kids[2] = Checkbox("c", false, on_toggle)
+    val v = Stack(kids)
+    val n = mount(v)
+
+    // Frame 200×90 → each slot is 30 tall:
+    //   slot 0 (Button A): y=0..30
+    //   slot 1 (Button B): y=30..60
+    //   slot 2 (Checkbox): y=60..90
+    layout(n, Rect(0, 0, 200, 90))
+
+    // Click each interactive in order; the dispatch must fire only the
+    // child whose bounds contain the press.
+    dispatch(n, InputState(10, 10, true))
+    dispatch(n, InputState(10, 40, true))
+    // Checkbox is unchecked → on_toggle gets `true` → records "toggle-on".
+    dispatch(n, InputState(10, 70, true))
+
+    // Hover (no press) at button A — must not fire.
+    dispatch(n, InputState(10, 10, false))
+    // Press far outside the laid-out frame — must not fire.
+    dispatch(n, InputState(300, 300, true))
+    0

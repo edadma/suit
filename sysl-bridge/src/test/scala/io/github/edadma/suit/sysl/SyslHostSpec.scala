@@ -293,6 +293,25 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       )
     }
 
+    // Scope 2.F — sysl-side dispatch fires Button/Checkbox closures via
+    // hit-test. The fixture lays out a 3-child Stack, then issues five
+    // synthetic InputStates: three matching presses, one hover (no
+    // press), and one outside-bounds press. Only the three matching
+    // presses must record.
+    "dispatches mouse-press events to interactive widgets" in {
+      val records = mutable.ArrayBuffer.empty[String]
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_record", {
+        case List(name) => records += SyslHost.asString(name); SyslHost.unit
+        case other      => fail(s"host_record: bad args $other")
+      })
+
+      host.run(host.compileFile("engine-dispatch.sysl"))
+
+      records.toList shouldBe List("button-A", "button-B", "toggle-on")
+    }
+
     // Test 3 (reconcile): pattern-match on (Node-kind, View-kind) to
     // decide reuse vs update vs remount — the reconciler's central
     // decision shape, ported in 30 lines of sysl.

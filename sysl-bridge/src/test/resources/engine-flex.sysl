@@ -25,7 +25,7 @@ struct Size
 
 enum View
     Text(content: string)
-    Button(label: string)
+    Button(label: string, on_click: () -> int)
     Spacer(flex: int)
     Stack(gap: int, children: []View)
 
@@ -59,9 +59,9 @@ const BTN_PAD_Y: int = 6
 
 mount(v: View) -> Node
     v match
-        Text(_)   -> TextNode(TextNodeState(v, Rect(0, 0, 0, 0)))
-        Button(_) -> ButtonNode(ButtonNodeState(v, Rect(0, 0, 0, 0)))
-        Spacer(_) -> SpacerNode(SpacerNodeState(v, Rect(0, 0, 0, 0)))
+        Text(_)      -> TextNode(TextNodeState(v, Rect(0, 0, 0, 0)))
+        Button(_, _) -> ButtonNode(ButtonNodeState(v, Rect(0, 0, 0, 0)))
+        Spacer(_)    -> SpacerNode(SpacerNodeState(v, Rect(0, 0, 0, 0)))
         Stack(g, kids) ->
             val n = len(kids)
             val nodes = (new [n]Node)[:]
@@ -89,8 +89,8 @@ measure(n: Node) -> Size
                 _       -> Size(0, 0)
         ButtonNode(s) ->
             s.view match
-                Button(l) -> Size(text_w(l), LINE_H + BTN_PAD_Y * 2)
-                _         -> Size(0, 0)
+                Button(l, _) -> Size(text_w(l), LINE_H + BTN_PAD_Y * 2)
+                _            -> Size(0, 0)
         SpacerNode(_) -> Size(0, 0)
         StackNode(s)  ->
             var w = 0
@@ -162,9 +162,10 @@ render_pos(n: Node) -> int
 
 main() -> int
     val kids = (new [3]View)[:]
+    noop = () -> 0
     kids[0] = Text("top")
     kids[1] = Spacer(1)
-    kids[2] = Button("bot")
+    kids[2] = Button("bot", noop)
     val v = Stack(4, kids)
     val n = mount(v)
     layout(n, Rect(0, 0, 200, 100))
