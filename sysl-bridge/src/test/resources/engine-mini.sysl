@@ -1,0 +1,197 @@
+// Scope 2 milestone — a minimal but complete render pipeline in sysl,
+// now with a real reconciler that diffs an existing Node tree against a
+// fresh View tree.
+//
+// Each Node variant wraps its mutable state in a struct: sysl analyzer
+// only supports field assignment on StructType, so `node.view = v` on a
+// raw enum-variant binding is rejected. Wrapping in `<Variant>State`
+// gives us `state.view = v` (struct field assignment, well-trodden in
+// std/) while preserving the per-variant field shapes.
+//
+// Subset: Text, Button, Spacer, Stack2. Layout mutates bounds in place;
+// reconcile reuses kind-matching Nodes (preserving identity) and remounts
+// on kind mismatch.
+
+extern host_fill_rect(x: int, y: int, w: int, h: int, r: int, g: int, b: int, a: int) -> int
+extern host_draw_text(x: int, y: int, text: string, r: int, g: int, b: int, a: int) -> int
+
+// ---- value types ----------------------------------------------------------
+
+struct Rect
+    x: int
+    y: int
+    w: int
+    h: int
+
+struct Size
+    w: int
+    h: int
+
+// ---- View / Node ----------------------------------------------------------
+
+enum View
+    Text(content: string)
+    Button(label: string)
+    Spacer(flex: int)
+    Stack2(left: View, right: View)
+
+struct TextNodeState
+    view: View
+    bounds: Rect
+
+struct ButtonNodeState
+    view: View
+    bounds: Rect
+    hover: bool
+    pressed: bool
+
+struct SpacerNodeState
+    view: View
+    bounds: Rect
+
+struct Stack2NodeState
+    view: View
+    bounds: Rect
+    left: Node
+    right: Node
+
+enum Node
+    TextNode(s: TextNodeState)
+    ButtonNode(s: ButtonNodeState)
+    SpacerNode(s: SpacerNodeState)
+    Stack2Node(s: Stack2NodeState)
+
+// ---- Theme constants ------------------------------------------------------
+
+const FONT_W: int    = 8
+const LINE_H: int    = 18
+const BTN_PAD_X: int = 12
+const BTN_PAD_Y: int = 6
+const STACK_GAP: int = 6
+
+// ---- mount: View tree → Node tree -----------------------------------------
+
+mount(v: View) -> Node
+    v match
+        Text(_)             -> TextNode(TextNodeState(v, Rect(0, 0, 0, 0)))
+        Button(_)           -> ButtonNode(ButtonNodeState(v, Rect(0, 0, 0, 0), false, false))
+        Spacer(_)           -> SpacerNode(SpacerNodeState(v, Rect(0, 0, 0, 0)))
+        Stack2(left, right) -> Stack2Node(Stack2NodeState(v, Rect(0, 0, 0, 0),
+                                                          mount(left), mount(right)))
+
+// ---- measure: natural size ------------------------------------------------
+
+text_w(s: string) -> int = len(s) * FONT_W
+
+measure(n: Node) -> Size
+    n match
+        TextNode(s) ->
+            s.view match
+                Text(c) -> Size(text_w(c), LINE_H)
+                _       -> Size(0, 0)
+        ButtonNode(s) ->
+            s.view match
+                Button(l) -> Size(text_w(l) + BTN_PAD_X * 2, LINE_H + BTN_PAD_Y * 2)
+                _         -> Size(0, 0)
+        SpacerNode(_) -> Size(0, 0)
+        Stack2Node(s) ->
+            val ls = measure(s.left)
+            val rs = measure(s.right)
+            val w  = if ls.w > rs.w then ls.w else rs.w
+            Size(w, ls.h + rs.h + STACK_GAP)
+
+// ---- layout: mutate bounds in place ---------------------------------------
+
+set_rect(b: Rect, frame: Rect) -> int
+    b.x = frame.x
+    b.y = frame.y
+    b.w = frame.w
+    b.h = frame.h
+    0
+
+layout(n: Node, frame: Rect) -> int
+    n match
+        TextNode(s)    -> set_rect(s.bounds, frame)
+        ButtonNode(s)  -> set_rect(s.bounds, frame)
+        SpacerNode(s)  -> set_rect(s.bounds, frame)
+        Stack2Node(s)  ->
+            set_rect(s.bounds, frame)
+            val ls = measure(s.left)
+            val rs = measure(s.right)
+            layout(s.left,  Rect(frame.x, frame.y, frame.w, ls.h))
+            layout(s.right, Rect(frame.x, frame.y + ls.h + STACK_GAP, frame.w, rs.h))
+            0
+
+// ---- reconcile: diff existing Node tree against a new View ---------------
+
+// Reuse the old Node when its kind matches the new View's kind — update
+// view-bearing fields in place. On kind mismatch, mount fresh. The new
+// reference may differ from the old (mount path) so callers that hold a
+// parent slot must overwrite with the returned Node.
+reconcile(old: Node, v: View) -> Node
+    old match
+        TextNode(state) ->
+            v match
+                Text(_) ->
+                    state.view = v
+                    old
+                _ -> mount(v)
+        ButtonNode(state) ->
+            v match
+                Button(_) ->
+                    state.view = v
+                    old
+                _ -> mount(v)
+        SpacerNode(state) ->
+            v match
+                Spacer(_) ->
+                    state.view = v
+                    old
+                _ -> mount(v)
+        Stack2Node(state) ->
+            v match
+                Stack2(nl, nr) ->
+                    state.view  = v
+                    state.left  = reconcile(state.left,  nl)
+                    state.right = reconcile(state.right, nr)
+                    old
+                _ -> mount(v)
+
+// ---- render: walk and emit draw commands ----------------------------------
+
+render(n: Node) -> int
+    n match
+        TextNode(s) ->
+            s.view match
+                Text(c) ->
+                    host_draw_text(s.bounds.x, s.bounds.y + 14, c, 220, 220, 240, 255)
+                    0
+                _ -> 0
+        ButtonNode(s) ->
+            s.view match
+                Button(l) ->
+                    host_fill_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h,
+                                   40, 40, 55, 255)
+                    host_draw_text(s.bounds.x + BTN_PAD_X, s.bounds.y + BTN_PAD_Y + 14, l,
+                                   220, 220, 240, 255)
+                    0
+                _ -> 0
+        SpacerNode(_) -> 0
+        Stack2Node(s) ->
+            render(s.left)
+            render(s.right)
+            0
+
+// ---- driver entry ---------------------------------------------------------
+
+main() -> int
+    val v1 = Stack2(Text("Hello, sysl!"), Button("Click me"))
+    val n  = mount(v1)
+    layout(n, Rect(0, 0, 200, 100))
+    render(n)
+
+    val v2 = Stack2(Text("Hello, AGAIN!"), Button("Click me too"))
+    reconcile(n, v2)
+    layout(n, Rect(0, 0, 200, 100))
+    render(n)
+    0

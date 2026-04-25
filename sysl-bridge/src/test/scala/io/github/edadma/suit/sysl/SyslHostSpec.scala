@@ -178,6 +178,45 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
           fail(s"expected outer Stack3 → Stack(Horizontal, 3), got $other")
     }
 
+    // Scope 2 milestone — a sysl-side render pipeline. Sysl owns View,
+    // Node, mount, measure, layout, render; the JVM only exposes
+    // draw-emit builtins. Validates that the engine's algorithmic core
+    // ports cleanly without needing the JVM-side Engine at all.
+    "drives a complete sysl-side render pipeline (mount + layout + render)" in {
+      val cmds = mutable.ArrayBuffer.empty[String]
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_fill_rect", {
+        case List(x, y, w, h, r, g, b, a) =>
+          cmds += s"fill ${SyslHost.asLong(x)},${SyslHost.asLong(y)} " +
+                  s"${SyslHost.asLong(w)}x${SyslHost.asLong(h)} " +
+                  s"rgba(${SyslHost.asLong(r)},${SyslHost.asLong(g)},${SyslHost.asLong(b)},${SyslHost.asLong(a)})"
+          SyslHost.unit
+        case other => fail(s"host_fill_rect: bad args $other")
+      })
+      host.register("host_draw_text", {
+        case List(x, y, text, r, g, b, a) =>
+          cmds += s"text ${SyslHost.asLong(x)},${SyslHost.asLong(y)} " +
+                  s"'${SyslHost.asString(text)}'"
+          SyslHost.unit
+        case other => fail(s"host_draw_text: bad args $other")
+      })
+
+      host.run(host.compileFile("engine-mini.sysl"))
+
+      // Two render passes (mount → render, reconcile → render) emit six
+      // commands. The reconcile pass reuses the existing Node identities
+      // and updates their `view` fields, so the second pass sees the new
+      // text content without remounting.
+      cmds.size shouldBe 6
+      cmds(0) should include ("'Hello, sysl!'")
+      cmds(1) should include ("rgba(40,40,55,255)")
+      cmds(2) should include ("'Click me'")
+      cmds(3) should include ("'Hello, AGAIN!'")
+      cmds(4) should include ("rgba(40,40,55,255)")
+      cmds(5) should include ("'Click me too'")
+    }
+
     // Test 3 (reconcile): pattern-match on (Node-kind, View-kind) to
     // decide reuse vs update vs remount — the reconciler's central
     // decision shape, ported in 30 lines of sysl.
