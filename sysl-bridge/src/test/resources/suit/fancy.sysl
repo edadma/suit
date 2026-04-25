@@ -1,0 +1,189 @@
+// "Fancy" sysl-driven suit demo. State (counters, slider, radio, dropdown,
+// tab index, modal flag) all lives in module-level vars on the sysl side;
+// each interaction closure mutates a var and re-publishes a fresh View
+// tree via host_set_root. The Scala-side suit Engine reconciles, lays out
+// and renders.
+//
+// Mirrors Demo.scala's FormPanel + Counter, but the entire UI definition
+// (and the application-level state) is sysl. The marshaler in
+// SyslView.scala turns these enum values into suit's case classes and
+// passes the closures back through interpreter.invokeClosure when the
+// user clicks/types/drags.
+
+extern host_set_root(v: View) -> int
+
+// Canonical View enum — variant order must match SyslView.scala's tag
+// constants. Tags 0-10 are the "core" set (shared with view.sysl);
+// tags 11-18 add the form-controls suite (Slider/Radio/Dropdown/Tabs/Modal/Box)
+// plus axis-aware HStack/VStack containers.
+enum View
+    Empty
+    Text(content: string)
+    Button(label: string, on_click: () -> int)
+    Spacer(flex: int)
+    Image(source: string, width: int, height: int)
+    Sized(child: View, width: int, height: int)
+    Center(child: View)
+    Checkbox(label: string, checked: bool, on_toggle: (bool) -> int)
+    Stack2(left: View, right: View)
+    Stack3(a: View, b: View, c: View)
+    Stack(children: []View)
+    VStack(gap: int, children: []View)
+    HStack(gap: int, children: []View)
+    Slider(value: int, min: int, max: int, on_change: (int) -> int, width: int)
+    Radio(label: string, selected: bool, on_select: () -> int)
+    Dropdown(value: string, options: []string, on_change: (string) -> int)
+    Tabs(labels: []string, selected: int, on_select: (int) -> int, content: View)
+    Modal(open: bool, child: View, on_close: () -> int)
+    Box(child: View, r: int, g: int, b: int, a: int, padding: int)
+
+// ---- application state ---------------------------------------------------
+
+var count: int          = 0
+var slider_value: int   = 50
+var radio_pick: int     = 0
+var dropdown_val: string = "Apple"
+var tab_index: int      = 0
+var modal_open: bool    = false
+var check_agree: bool   = false
+
+// ---- helpers -------------------------------------------------------------
+
+publish() -> int
+    host_set_root(build_root())
+    0
+
+// ---- tab content builders ------------------------------------------------
+
+form_tab() -> View
+    on_slider_change = (v: int) ->
+        slider_value = v
+        publish()
+        0
+    on_pick_apple  = () ->
+        radio_pick = 0
+        publish()
+        0
+    on_pick_banana = () ->
+        radio_pick = 1
+        publish()
+        0
+    on_pick_cherry = () ->
+        radio_pick = 2
+        publish()
+        0
+    on_dropdown    = (s: string) ->
+        dropdown_val = s
+        publish()
+        0
+    on_toggle      = (b: bool) ->
+        check_agree = b
+        publish()
+        0
+
+    val opts = (new [4]string)[:]
+    opts[0] = "Apple"
+    opts[1] = "Banana"
+    opts[2] = "Cherry"
+    opts[3] = "Date"
+
+    val slider_row = (new [2]View)[:]
+    slider_row[0] = Sized(Text(s"Slider: $slider_value"), 100, -1)
+    slider_row[1] = Slider(slider_value, 0, 100, on_slider_change, 200)
+
+    val radios = (new [3]View)[:]
+    radios[0] = Radio("Apple",  radio_pick == 0, on_pick_apple)
+    radios[1] = Radio("Banana", radio_pick == 1, on_pick_banana)
+    radios[2] = Radio("Cherry", radio_pick == 2, on_pick_cherry)
+
+    val drop_row = (new [2]View)[:]
+    drop_row[0] = Text("Dropdown:")
+    drop_row[1] = Dropdown(dropdown_val, opts, on_dropdown)
+
+    val rows = (new [4]View)[:]
+    rows[0] = HStack(12, slider_row)
+    rows[1] = Text("Radio group:")
+    rows[2] = VStack(4, radios)
+    rows[3] = HStack(8, drop_row)
+
+    val pieces = (new [2]View)[:]
+    pieces[0] = VStack(8, rows)
+    pieces[1] = Checkbox("agree to terms", check_agree, on_toggle)
+
+    VStack(10, pieces)
+
+animate_tab() -> View
+    val bar_w = slider_value * 3
+    val rows = (new [3]View)[:]
+    rows[0] = Text(s"Slider value: $slider_value")
+    rows[1] = Text(s"Bar width   : $bar_w px")
+    rows[2] = Sized(Box(Empty, 80, 120, 200, 255, 0), bar_w, 16)
+    VStack(6, rows)
+
+about_tab() -> View
+    on_open  = () ->
+        modal_open = true
+        publish()
+        0
+    on_close = () ->
+        modal_open = false
+        publish()
+        0
+
+    val modal_kids = (new [3]View)[:]
+    modal_kids[0] = Text("Hello from sysl!")
+    modal_kids[1] = Text("Click outside to dismiss.")
+    modal_kids[2] = Button("Close", on_close)
+
+    val rows = (new [3]View)[:]
+    rows[0] = Text("This entire UI is described in sysl.")
+    rows[1] = Button("Open modal", on_open)
+    rows[2] = Modal(modal_open, VStack(8, modal_kids), on_close)
+    VStack(8, rows)
+
+// ---- root build ---------------------------------------------------------
+
+build_tab_content() -> View
+    if tab_index == 0 then form_tab()
+    else if tab_index == 1 then animate_tab()
+    else about_tab()
+
+build_root() -> View
+    on_inc = () ->
+        count = count + 1
+        publish()
+        0
+    on_dec = () ->
+        count = count - 1
+        publish()
+        0
+    on_reset = () ->
+        count = 0
+        publish()
+        0
+    on_tab = (i: int) ->
+        tab_index = i
+        publish()
+        0
+
+    val tab_labels = (new [3]string)[:]
+    tab_labels[0] = "Form"
+    tab_labels[1] = "Animate"
+    tab_labels[2] = "About"
+
+    val counter_row = (new [4]View)[:]
+    counter_row[0] = Text(s"Count: $count")
+    counter_row[1] = Button("-", on_dec)
+    counter_row[2] = Button("+", on_inc)
+    counter_row[3] = Button("Reset", on_reset)
+
+    val sections = (new [3]View)[:]
+    sections[0] = Text("Sysl-driven suit demo")
+    sections[1] = HStack(8, counter_row)
+    sections[2] = Tabs(tab_labels, tab_index, on_tab, build_tab_content())
+
+    VStack(12, sections)
+
+main() -> int
+    publish()
+    0

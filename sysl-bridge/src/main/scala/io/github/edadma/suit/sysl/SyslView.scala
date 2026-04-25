@@ -2,6 +2,7 @@ package io.github.edadma.suit.sysl
 
 import io.github.edadma.suit.{
   View, Text, Button, Stack, Axis, Spacer, Empty, Image, Sized, Center, Checkbox,
+  Slider, Radio, Box, Color, Insets, modal, dropdown, tabs,
 }
 import io.github.edadma.trisc.{SyslInterpreter, Value}
 import io.github.edadma.trisc.Value.*
@@ -36,6 +37,15 @@ object SyslView:
   private final val TagStack2:   Int = 8
   private final val TagStack3:   Int = 9
   private final val TagStack:    Int = 10
+  // tags 11+: extended variants for the "fancy" sysl-driven demo
+  private final val TagVStack:   Int = 11
+  private final val TagHStack:   Int = 12
+  private final val TagSlider:   Int = 13
+  private final val TagRadio:    Int = 14
+  private final val TagDropdown: Int = 15
+  private final val TagTabs:     Int = 16
+  private final val TagModal:    Int = 17
+  private final val TagBox:      Int = 18
 
   def marshal(v: Value, interp: SyslInterpreter): View = v match
     case e: EnumVal => marshalEnum(e, interp)
@@ -88,6 +98,70 @@ object SyslView:
       Stack(Axis.Horizontal, Array(a, b, c))
     case TagStack =>
       Stack(Axis.Horizontal, sliceField(e, 0, interp))
+    case TagVStack =>
+      val gap      = intField(e, 0)
+      val children = sliceField(e, 1, interp)
+      Stack(axis = Axis.Vertical, children = children, gap = gap)
+    case TagHStack =>
+      val gap      = intField(e, 0)
+      val children = sliceField(e, 1, interp)
+      Stack(axis = Axis.Horizontal, children = children, gap = gap)
+    case TagSlider =>
+      val value    = intField(e, 0)
+      val min      = intField(e, 1)
+      val max      = intField(e, 2)
+      val change   = closureField(e, 3)
+      val width    = intField(e, 4)
+      val onChange: Int => Unit = v =>
+        val _ = interp.invokeClosure(change, List(IntVal(v.toLong)))
+        ()
+      Slider(value = value, min = min, max = max, onChange = onChange, width = width)
+    case TagRadio =>
+      val label    = stringField(e, 0)
+      val selected = boolField(e, 1)
+      val select   = closureField(e, 2)
+      val onSelect: () => Unit = () =>
+        val _ = interp.invokeClosure(select, Nil)
+        ()
+      Radio(label = label, selected = selected, onSelect = onSelect)
+    case TagDropdown =>
+      val value    = stringField(e, 0)
+      val options  = stringSliceField(e, 1)
+      val change   = closureField(e, 2)
+      val onChange: String => Unit = s =>
+        val _ = interp.invokeClosure(change, List(StringVal(s.getBytes("UTF-8"))))
+        ()
+      dropdown(value = value, options = options, onChange = onChange)
+    case TagTabs =>
+      val labels   = stringSliceField(e, 0)
+      val selected = intField(e, 1)
+      val select   = closureField(e, 2)
+      val content  = childField(e, 3, interp)
+      val onSelect: Int => Unit = i =>
+        val _ = interp.invokeClosure(select, List(IntVal(i.toLong)))
+        ()
+      tabs(labels = labels, selected = selected, onSelect = onSelect, content = content)
+    case TagModal =>
+      val open    = boolField(e, 0)
+      val child   = childField(e, 1, interp)
+      val close   = closureField(e, 2)
+      val onClose: () => Unit = () =>
+        val _ = interp.invokeClosure(close, Nil)
+        ()
+      modal(open = open, onClose = onClose, child = child)
+    case TagBox =>
+      val child   = childField(e, 0, interp)
+      val r       = intField(e, 1)
+      val g       = intField(e, 2)
+      val b       = intField(e, 3)
+      val a       = intField(e, 4)
+      val padding = intField(e, 5)
+      Box(
+        child   = child,
+        color   = Color(r, g, b, a),
+        padding = Insets.all(padding),
+        radius  = 6,
+      )
     case t =>
       sys.error(s"SyslView.marshal: unknown View tag $t")
 
@@ -115,6 +189,28 @@ object SyslView:
 
   private def childField(e: EnumVal, idx: Int, interp: SyslInterpreter): View =
     marshal(e.fields(idx).value, interp)
+
+  private def stringSliceField(e: EnumVal, idx: Int): Array[String] =
+    e.fields(idx).value match
+      case SliceVal(cells, off, len, _) =>
+        val out = new Array[String](len)
+        var i = 0
+        while i < len do
+          out(i) = cells(off + i).value match
+            case StringVal(bytes) => new String(bytes, "UTF-8")
+            case other => sys.error(s"expected string in slice at $i, got $other")
+          i = i + 1
+        out
+      case RefSliceVal(cells, len, _) =>
+        val out = new Array[String](len)
+        var i = 0
+        while i < len do
+          out(i) = cells(i).value match
+            case StringVal(bytes) => new String(bytes, "UTF-8")
+            case other => sys.error(s"expected string in slice at $i, got $other")
+          i = i + 1
+        out
+      case other => sys.error(s"expected string slice at field $idx, got $other")
 
   private def sliceField(e: EnumVal, idx: Int, interp: SyslInterpreter): Array[View] =
     e.fields(idx).value match

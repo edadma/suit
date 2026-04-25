@@ -293,6 +293,36 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       )
     }
 
+    // The fancy sysl-driven demo (counter + tabbed FormPanel +
+    // slider/radio/dropdown/checkbox + modal) compiles cleanly and main()
+    // publishes a complete View tree through the marshaler — every new
+    // variant (VStack/HStack/Slider/Radio/Dropdown/Tabs/Modal/Box) lands
+    // a Scala suit View. Smoke: run main(), assert at least one
+    // host_set_root captured a non-empty View. Used to keep the demo
+    // wired even when nobody runs the Swing app.
+    "compiles and marshals the fancy sysl-driven demo (smoke)" in {
+      var captured: io.github.edadma.suit.View = io.github.edadma.suit.Empty
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_set_root", {
+        case List(v) =>
+          captured = SyslView.marshal(v, host.interpreter)
+          SyslHost.unit
+        case other => fail(s"host_set_root: bad args $other")
+      })
+
+      host.run(host.compileFile("suit/fancy.sysl"))
+
+      // Top-level is a VStack(title, counter row, tabs).
+      captured match
+        case io.github.edadma.suit.Stack(io.github.edadma.suit.Axis.Vertical, kids, _, _) =>
+          kids.length shouldBe 3
+          kids(0) match
+            case io.github.edadma.suit.Text("Sysl-driven suit demo") => succeed
+            case other => fail(s"title: $other")
+        case other => fail(s"expected top-level VStack, got $other")
+    }
+
     // Scope 2 finale — a Counter component built with hooks, driven
     // through the sysl engine end-to-end. Mount → render → click →
     // rerender → render across three frames; the Text content is the
