@@ -293,6 +293,54 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       )
     }
 
+    // Scope 2 finale — a Counter component built with hooks, driven
+    // through the sysl engine end-to-end. Mount → render → click →
+    // rerender → render across three frames; the Text content is the
+    // hook value, so seeing "0", "1", "2" in the command stream proves
+    // the full hook + reconcile + dispatch loop closes.
+    //
+    // TODO: un-ignore when the sysl pattern-binding shadow bug is
+    // fixed. engine-counter.sysl declares
+    //   enum View ... Component(render: (Fiber) -> View)
+    //   render(n: Node) -> int = ...        // global engine renderer
+    //   mount(v) -> match Component(render) -> ... render(f) ...
+    // The match-bound `render` should shadow the global function inside
+    // the arm, but the analyzer instead resolves to the global and
+    // rejects the call ("argument 'n' of 'render' expects Node, got
+    // Fiber"). Minimal repro at /tmp/sysl-shadow-bug.sysl + bug2.sysl.
+    "drives a Counter component with use_state across three frames" ignore {
+      val texts = mutable.ArrayBuffer.empty[String]
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_draw_text", {
+        case List(_, _, text, _, _, _, _) =>
+          texts += SyslHost.asString(text); SyslHost.unit
+        case other => fail(s"host_draw_text: bad args $other")
+      })
+
+      host.run(host.compileFile("engine-counter.sysl"))
+
+      texts.toList shouldBe List("0", "1", "2")
+    }
+
+    // Scope 2.G probe — useState-style hooks. Single-fiber, int-only.
+    // The setter captures the cell index and mutates a module-level
+    // backing slice — writes propagate across renders, exactly the
+    // primitive a real `useState` builds on.
+    "supports useState across multiple renders (setter closure mutation)" in {
+      val published = mutable.ArrayBuffer.empty[Long]
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_publish", {
+        case List(n) => published += SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"host_publish: bad args $other")
+      })
+
+      host.run(host.compileFile("hooks-probe.sysl"))
+
+      published.toList shouldBe List(100L, 7L, 42L)
+    }
+
     // Scope 2.F — sysl-side dispatch fires Button/Checkbox closures via
     // hit-test. The fixture lays out a 3-child Stack, then issues five
     // synthetic InputStates: three matching presses, one hover (no

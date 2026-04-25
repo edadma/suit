@@ -1,0 +1,29 @@
+// Closer repro: variant field's closure type differs from the global
+// function's signature. The match-bound `render` should shadow the
+// global `render(Node) -> int`. The analyzer instead picks the
+// global, then complains about the arg type.
+
+extern host_publish(n: int) -> int
+
+struct Fiber
+    n: int
+
+struct Node
+    n: int
+
+enum View
+    Component(render: (Fiber) -> int)
+
+mount(v: View) -> int
+    v match
+        Component(render) -> render(Fiber(7))
+    0
+
+render(n: Node) -> int =
+    n.n
+
+main() -> int
+    f = (x: Fiber) -> x.n * 10
+    val v = Component(f)
+    host_publish(mount(v))
+    0

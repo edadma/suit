@@ -1,0 +1,54 @@
+// Hooks viability probe — does sysl give us setter closures whose
+// writes propagate across renders?
+//
+// Single-fiber, int-only. Module-level vars carry the per-fiber state
+// (cells slice, growth counter, hook cursor); each render resets the
+// cursor, then `use_state(initial)` returns `(value, setter)`. The
+// setter captures `i` (local val, copied) and mutates the module-level
+// cells slice (shared backing).
+
+extern host_publish(n: int) -> int
+
+// Fixed-capacity per-fiber cell array. Capacity 8 is plenty for the
+// probe; production hooks need a growable design.
+var hook_cells: []int = (new [8]int)[:]
+// How many hooks have been seen across renders so far — once a slot is
+// initialized, subsequent renders read it back instead of re-seeding.
+var hook_count: int = 0
+// Per-render cursor; reset_hooks() bumps it back to 0 before each render.
+var hook_index: int = 0
+
+reset_hooks() -> int
+    hook_index = 0
+    0
+
+use_state(initial: int) -> (int, (int) -> int)
+    val i = hook_index
+    hook_index = i + 1
+    if i >= hook_count then
+        hook_cells[i] = initial
+        hook_count = i + 1
+    val current = hook_cells[i]
+    setter = (next: int) ->
+        hook_cells[i] = next
+        next
+    return current, setter
+
+main() -> int
+    // Render 1 — first time: initial wins; setter bumps to 7.
+    reset_hooks()
+    val v1, set1 = use_state(100)
+    host_publish(v1)
+    set1(7)
+
+    // Render 2 — initial ignored, returns the stashed 7; setter to 42.
+    reset_hooks()
+    val v2, set2 = use_state(999)
+    host_publish(v2)
+    set2(42)
+
+    // Render 3 — 42 persists.
+    reset_hooks()
+    val v3, _ = use_state(0)
+    host_publish(v3)
+    0
