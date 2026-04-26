@@ -39,7 +39,7 @@ make_item(id: int) -> View
             0
         val kids = (new [2]View)[:]
         kids[0] = Text(s"$n")
-        kids[1] = Button("+", on_bump)
+        kids[1] = Button("+", on_bump, true)
         Stack(0, kids)
     Component(item_render)
 
@@ -59,7 +59,7 @@ controller(f: Fiber) -> View
         items[1] = Keyed(2, item_b)
     val outer = (new [2]View)[:]
     outer[0] = Stack(0, items)
-    outer[1] = Button("swap", on_swap)
+    outer[1] = Button("swap", on_swap, true)
     Stack(0, outer)
 
 // Layout: 200×120 outer Stack of [items_stack, swap-button].

@@ -44,8 +44,8 @@ fancy_counter(f: Fiber) -> View
 
     val kids = (new [3]View)[:]
     kids[0] = Text(s"$n - $on")
-    kids[1] = Button("+", on_inc)
-    kids[2] = Button("T", on_toggle)
+    kids[1] = Button("+", on_inc, true)
+    kids[2] = Button("T", on_toggle, true)
     Stack(0, kids)
 
 // Driver: a single fancy_counter, click +, +, T, +.

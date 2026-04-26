@@ -16,7 +16,7 @@ import suit.{set_theme, default_dark_theme}
 controller(f: Fiber) -> View
     on_click = () -> 0
     val kids = (new [1]View)[:]
-    kids[0] = Button("Hover me", on_click)
+    kids[0] = Button("Hover me", on_click, true)
     Stack(0, kids)
 
 main() -> int

@@ -39,7 +39,7 @@ controller(f: Fiber) -> View
         0
     val inner_kids = (new [2]View)[:]
     inner_kids[0] = Component(consumer)
-    inner_kids[1] = Button("+", on_inc)
+    inner_kids[1] = Button("+", on_inc, true)
     ContextProvider(KEY_THEME, IntCell(n), Stack(0, inner_kids))
 
 main() -> int

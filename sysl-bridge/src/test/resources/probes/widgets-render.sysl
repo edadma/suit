@@ -28,7 +28,7 @@ main() -> int
     val kids = (new [3]View)[:]
     kids[0] = Sized(Text("title"), 200, 24)
     kids[1] = Center(Image("icon.png", 32, 32))
-    kids[2] = Box(Checkbox("agree", true, noop_toggle),
+    kids[2] = Box(Checkbox("agree", true, noop_toggle, true),
                   Color(80, 120, 200, 255),
                   Insets(4, 4, 4, 4))
     val node = mount(Stack(0, kids))

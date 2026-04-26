@@ -25,7 +25,7 @@ counter(f: Fiber) -> View
         0
     val kids = (new [2]View)[:]
     kids[0] = Text(s"$n")
-    kids[1] = Button("+", on_inc)
+    kids[1] = Button("+", on_inc, true)
     Stack(0, kids)
 
 main() -> int

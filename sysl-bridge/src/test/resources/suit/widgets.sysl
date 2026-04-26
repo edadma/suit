@@ -49,7 +49,7 @@ dropdown(open: bool, ax: int, ay: int, width: int, items: []string, on_pick: (in
             cb = () ->
                 on_pick(idx)
                 0
-            rows[i] = Button(items[i], cb)
+            rows[i] = Button(items[i], cb, true)
             i = i + 1
         val row_h = LINE_H + BTN_PAD_Y * 2
         Portal(AbsolutePosition(Stack(0, rows), ax, ay, width, n * row_h))
@@ -75,7 +75,7 @@ tabs(selected: int, labels: []string, contents: []View, on_select: (int) -> int)
         cb = () ->
             on_select(idx)
             0
-        tab_kids[i] = Button(labels[i], cb)
+        tab_kids[i] = Button(labels[i], cb, true)
         i = i + 1
     val rows = (new [2]View)[:]
     rows[0] = HStack(0, tab_kids)

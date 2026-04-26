@@ -30,7 +30,7 @@ controller(f: Fiber) -> View
         set_v(next)
         0
     val kids = (new [1]View)[:]
-    kids[0] = Input(v, "type here", on_change, 200)
+    kids[0] = Input(v, "type here", on_change, 200, true)
     Stack(0, kids)
 
 main() -> int

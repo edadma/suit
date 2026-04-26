@@ -1268,6 +1268,64 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       )
     }
 
+    // Phase κ4 — a disabled Button drops PRESS events without firing
+    // on_click, and renders with btn_disabled_bg (rgba(30,30,38,255)).
+    // Verifies both halves of the enabled flag — dispatch gating and
+    // theme-driven render — through one probe.
+    "κ4 — disabled Button skips on_click and renders btn_disabled_bg" in {
+      val publishes = mutable.ArrayBuffer.empty[Long]
+      val fills     = mutable.ArrayBuffer.empty[String]
+      val events = scala.collection.mutable.Queue[(Long, Long, Long)](
+        (2L, 10L, 10L),  // PRESS inside bounds — would fire if enabled
+        (3L,  0L,  0L),  // REL
+        (0L,  0L,  0L),
+        (1L,  0L,  0L),  // QUIT
+      )
+      var lastEvent: (Long, Long, Long) = (0L, 0L, 0L)
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_fill_rect", { case _ => SyslHost.unit })  // bg pre-clear
+      host.register("host_stroke_rect", { case _ => SyslHost.unit })
+      host.register("host_fill_round_rect", {
+        case List(_, _, _, _, _, r, g, b, _) =>
+          fills += s"rgba(${SyslHost.asLong(r)},${SyslHost.asLong(g)},${SyslHost.asLong(b)})"
+          SyslHost.unit
+        case other => fail(s"host_fill_round_rect: $other")
+      })
+      host.register("host_stroke_round_rect", { case _ => SyslHost.unit })
+      host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_publish", {
+        case List(v) => publishes += SyslHost.asLong(v); SyslHost.unit
+        case other   => fail(s"host_publish: $other")
+      })
+      host.register("host_poll_event", {
+        case Nil =>
+          val ev = if events.nonEmpty then events.dequeue() else (0L, 0L, 0L)
+          lastEvent = ev
+          SyslHost.long(ev._1)
+        case other => fail(s"host_poll_event: $other")
+      })
+      host.register("host_event_x",    { case Nil => SyslHost.long(lastEvent._2);  case other => fail(s"$other") })
+      host.register("host_event_y",    { case Nil => SyslHost.long(lastEvent._3);  case other => fail(s"$other") })
+      host.register("host_event_key",  { case Nil => SyslHost.long(0L);            case other => fail(s"$other") })
+      host.register("host_event_text", { case Nil => SyslHost.string("");           case other => fail(s"$other") })
+      host.register("host_now_ms",     { case Nil => SyslHost.long(0L);            case other => fail(s"$other") })
+      host.register("host_present_frame",          { case Nil => SyslHost.unit; case other => fail(s"$other") })
+      host.register("host_sleep_until_next_frame", { case Nil => SyslHost.unit; case other => fail(s"$other") })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "probes/widgets-disabled.sysl",
+      )))
+
+      // No on_click invocations — the dispatch arm dropped the press.
+      publishes.toList shouldBe Nil
+
+      // First Button fill (the only fillR before QUIT) is btn_disabled_bg.
+      fills.headOption shouldBe Some("rgba(30,30,38)")
+    }
+
     // Phase θ — translates the salient bits of Demo.scala into a
     // single sysl driver and runs it through suit.engine end-to-end.
     // Each Component records its state via host_record on every

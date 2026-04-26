@@ -32,7 +32,7 @@ counter(f: Fiber) -> View
         else 0
     val kids = (new [2]View)[:]
     kids[0] = Text(s"$n")
-    kids[1] = Button("click", on_click)
+    kids[1] = Button("click", on_click, true)
     Stack(0, kids)
 
 main() -> int

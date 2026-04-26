@@ -64,8 +64,8 @@ counter_factory(label: string, delta: int) -> View
             0
         val kids = (new [3]View)[:]
         kids[0] = Sized(Text(s"$label: $n"), 100, -1)
-        kids[1] = Button(s"-$delta", on_dec)
-        kids[2] = Button(s"+$delta", on_inc)
+        kids[1] = Button(s"-$delta", on_dec, true)
+        kids[2] = Button(s"+$delta", on_inc, true)
         HStack(8, kids)
     Component(counter_render)
 
@@ -81,7 +81,7 @@ row_factory(label: string) -> View
             0
         val kids = (new [2]View)[:]
         kids[0] = Sized(Text(label), 80, -1)
-        kids[1] = Button(s"Click($n)", on_click)
+        kids[1] = Button(s"Click($n)", on_click, true)
         HStack(8, kids)
     Component(row_render)
 
@@ -111,12 +111,12 @@ form_panel(f: Fiber) -> View
 
     val slider_row = (new [2]View)[:]
     slider_row[0] = Sized(Text(s"Slider: $slider_v"), 100, -1)
-    slider_row[1] = Slider(slider_v, 0, 100, set_slider, 200)
+    slider_row[1] = Slider(slider_v, 0, 100, set_slider, 200, true)
 
     val radios = (new [3]View)[:]
-    radios[0] = Radio("Apple",  radio_pick == 0, on_pick_a)
-    radios[1] = Radio("Banana", radio_pick == 1, on_pick_b)
-    radios[2] = Radio("Cherry", radio_pick == 2, on_pick_c)
+    radios[0] = Radio("Apple",  radio_pick == 0, on_pick_a, true)
+    radios[1] = Radio("Banana", radio_pick == 1, on_pick_b, true)
+    radios[2] = Radio("Cherry", radio_pick == 2, on_pick_c, true)
 
     val form_kids = (new [3]View)[:]
     form_kids[0] = HStack(12, slider_row)
@@ -132,9 +132,9 @@ form_panel(f: Fiber) -> View
         0
     val modal_inner = (new [2]View)[:]
     modal_inner[0] = Text("This is a modal.")
-    modal_inner[1] = Button("Close", on_close_modal)
+    modal_inner[1] = Button("Close", on_close_modal, true)
     val modal_box_kids = (new [2]View)[:]
-    modal_box_kids[0] = Button("Open modal", on_open_modal)
+    modal_box_kids[0] = Button("Open modal", on_open_modal, true)
     modal_box_kids[1] = modal(modal_open, Box(Stack(8, modal_inner), Color(40, 40, 60, 255), Insets(12, 12, 12, 12)))
     val modal_view = Stack(8, modal_box_kids)
 
@@ -190,7 +190,7 @@ app(f: Fiber) -> View
     sections[5] = row_list
 
     val toolbar_kids = (new [1]View)[:]
-    toolbar_kids[0] = Button("Toggle theme", on_toggle)
+    toolbar_kids[0] = Button("Toggle theme", on_toggle, true)
     val outer = (new [2]View)[:]
     outer[0] = HStack(8, toolbar_kids)
     outer[1] = Stack(10, sections)

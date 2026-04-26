@@ -24,9 +24,9 @@ main() -> int
     on_banana = () -> host_publish(1)
     on_cherry = () -> host_publish(2)
     val kids = (new [3]View)[:]
-    kids[0] = Radio("Apple",  false, on_apple)
-    kids[1] = Radio("Banana", false, on_banana)
-    kids[2] = Radio("Cherry", false, on_cherry)
+    kids[0] = Radio("Apple",  false, on_apple,  true)
+    kids[1] = Radio("Banana", false, on_banana, true)
+    kids[2] = Radio("Cherry", false, on_cherry, true)
     val node = mount(Stack(0, kids))
     layout(node, Rect(0, 0, 200, 60))
 

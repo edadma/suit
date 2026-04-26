@@ -30,7 +30,7 @@ main() -> int
     val kids = (new [3]View)[:]
     kids[0] = Text("hi")
     kids[1] = Spacer(1)
-    kids[2] = Button("go", noop)
+    kids[2] = Button("go", noop, true)
     val node = mount(HStack(4, kids))
     layout(node, Rect(0, 0, 200, 100))
     node match

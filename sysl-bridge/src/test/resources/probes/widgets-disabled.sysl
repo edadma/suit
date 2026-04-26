@@ -1,0 +1,30 @@
+// Phase κ4 probe — disabled Button drops press events. The host
+// scripts a PRESS at (10, 10) inside the Button's bounds; because
+// the Button is constructed with enabled=false, the dispatch arm
+// short-circuits and never invokes on_click. host_publish stays
+// silent. After QUIT the test asserts publishes is empty.
+//
+// Render side: the disabled Button uses theme.btn_disabled_bg for
+// fill and theme.muted for the label. The first frame's Button
+// fill colour is captured to verify the disabled palette is in
+// effect.
+
+import suit.{View, Button, Stack, Component, Fiber, Rect}
+import suit.{mount, run_loop}
+import suit.{set_theme, default_dark_theme}
+
+extern host_publish(value: int) -> int
+
+controller(f: Fiber) -> View
+    on_click = () ->
+        host_publish(1)
+        0
+    val kids = (new [1]View)[:]
+    kids[0] = Button("Disabled", on_click, false)
+    Stack(0, kids)
+
+main() -> int
+    set_theme(default_dark_theme())
+    val node = mount(Component(controller))
+    run_loop(node, Rect(0, 0, 100, 30), 20)
+    0
