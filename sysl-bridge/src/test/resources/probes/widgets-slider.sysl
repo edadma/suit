@@ -1,0 +1,56 @@
+// Phase ζ2 probe — Slider click-to-jump dispatch through suit.engine.
+// A controller Component holds the value via use_state_int and renders
+// a Slider whose on_change writes back via the setter. Each click
+// maps mouse_x to a value in [0, 100] using the same projection as
+// render's thumb position.
+//
+// Layout: 200×18 single Slider. Track usable width tw = 200 - 8 = 192,
+// origin tx0 = 4. rel = (mx - 4) * 100 / 192, clamped to [0, 100].
+//
+// Clicks (mouse_x → emitted value):
+//   x=4   → 0
+//   x=100 → (96 * 100) / 192 = 50
+//   x=196 → (192 * 100) / 192 = 100
+//
+// Initial value 1 avoids "v == current → no publish" suppression on the
+// first click; without state-tracking, all 3 publishes need v to differ
+// from the captured value. Each rerender after a click re-runs the
+// controller, which produces a fresh Slider View with the new value.
+// host_publish records the emitted value on each click.
+
+import suit.{View, Slider, Stack, Component, Fiber, Rect, InputState}
+import suit.{mount, layout, dispatch, rerender, render}
+import suit.{use_state_int}
+
+extern host_publish(value: int) -> int
+
+controller(f: Fiber) -> View
+    val v, set_v = use_state_int(f, 1)
+    on_change = (next: int) ->
+        host_publish(next)
+        set_v(next)
+        0
+    val kids = (new [1]View)[:]
+    kids[0] = Slider(v, 0, 100, on_change, 200)
+    Stack(0, kids)
+
+main() -> int
+    val node = mount(Component(controller))
+    layout(node, Rect(0, 0, 200, 18))
+    render(node)
+
+    dispatch(node, InputState(4, 8, true))
+    rerender(node)
+    layout(node, Rect(0, 0, 200, 18))
+    render(node)
+
+    dispatch(node, InputState(100, 8, true))
+    rerender(node)
+    layout(node, Rect(0, 0, 200, 18))
+    render(node)
+
+    dispatch(node, InputState(196, 8, true))
+    rerender(node)
+    layout(node, Rect(0, 0, 200, 18))
+    render(node)
+    0

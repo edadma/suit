@@ -69,8 +69,10 @@ const LINE_H: int    = 18
 const BTN_PAD_X: int = 12
 const BTN_PAD_Y: int = 6
 const CHK_GAP: int   = 6
-const RADIO_GAP: int = 6
-const SLIDER_H:  int = 18
+const RADIO_GAP:    int = 6
+const SLIDER_H:     int = 18
+const SLIDER_TRACK: int = 4
+const SLIDER_THUMB: int = 8
 
 enum View
     Text(content: string)
@@ -78,6 +80,8 @@ enum View
     Spacer(flex: int)
     Image(source: string, width: int, height: int)
     Checkbox(label: string, checked: bool, on_toggle: (bool) -> int)
+    Radio(label: string, selected: bool, on_select: () -> int)
+    Slider(value: int, vmin: int, vmax: int, on_change: (int) -> int, width: int)
     Sized(child: View, width: int, height: int)
     Center(child: View)
     Box(child: View, color: Color, padding: Insets)
@@ -103,6 +107,14 @@ struct ImageNodeState
     bounds: Rect
 
 struct CheckboxNodeState
+    view: View
+    bounds: Rect
+
+struct RadioNodeState
+    view: View
+    bounds: Rect
+
+struct SliderNodeState
     view: View
     bounds: Rect
 
@@ -152,6 +164,8 @@ enum Node
     SpacerNode(s: SpacerNodeState)
     ImageNode(s: ImageNodeState)
     CheckboxNode(s: CheckboxNodeState)
+    RadioNode(s: RadioNodeState)
+    SliderNode(s: SliderNodeState)
     SizedNode(s: SizedNodeState)
     CenterNode(s: CenterNodeState)
     BoxNode(s: BoxNodeState)
@@ -212,6 +226,8 @@ mount(v: View) -> Node
         Spacer(_)         -> SpacerNode(SpacerNodeState(v, Rect(0, 0, 0, 0)))
         Image(_, _, _)    -> ImageNode(ImageNodeState(v, Rect(0, 0, 0, 0)))
         Checkbox(_, _, _) -> CheckboxNode(CheckboxNodeState(v, Rect(0, 0, 0, 0)))
+        Radio(_, _, _)        -> RadioNode(RadioNodeState(v, Rect(0, 0, 0, 0)))
+        Slider(_, _, _, _, _) -> SliderNode(SliderNodeState(v, Rect(0, 0, 0, 0)))
         Sized(c, _, _)    -> SizedNode(SizedNodeState(v, Rect(0, 0, 0, 0), mount(c)))
         Center(c)         -> CenterNode(CenterNodeState(v, Rect(0, 0, 0, 0), mount(c)))
         Box(c, _, _)      -> BoxNode(BoxNodeState(v, Rect(0, 0, 0, 0), mount(c)))
@@ -271,6 +287,14 @@ measure(n: Node) -> Size
             s.view match
                 Checkbox(l, _, _) -> Size(LINE_H + CHK_GAP + text_w(l), LINE_H)
                 _                 -> Size(0, 0)
+        RadioNode(s) ->
+            s.view match
+                Radio(l, _, _) -> Size(LINE_H + RADIO_GAP + text_w(l), LINE_H)
+                _              -> Size(0, 0)
+        SliderNode(s) ->
+            s.view match
+                Slider(_, _, _, _, w) -> Size(w, SLIDER_H)
+                _                     -> Size(0, 0)
         SizedNode(s) ->
             val cs = measure(s.child)
             s.view match
@@ -319,6 +343,8 @@ layout(n: Node, frame: Rect) -> int
         SpacerNode(s)   -> set_rect(s.bounds, frame)
         ImageNode(s)    -> set_rect(s.bounds, frame)
         CheckboxNode(s) -> set_rect(s.bounds, frame)
+        RadioNode(s)    -> set_rect(s.bounds, frame)
+        SliderNode(s)   -> set_rect(s.bounds, frame)
         SizedNode(s) ->
             set_rect(s.bounds, frame)
             layout(s.child, frame)
@@ -398,6 +424,42 @@ dispatch(n: Node, input: InputState) -> int
                     Checkbox(_, checked, on_toggle) ->
                         on_toggle(!checked)
                         0
+                    _ -> 0
+            else 0
+        RadioNode(s) ->
+            // Radios only fire when the press is over them AND they're
+            // not already selected — matches the Scala suit behavior so
+            // a click on the active option is a no-op rather than
+            // re-firing on_select. Group exclusivity is the parent's job:
+            // the controller flips one Radio's `selected` to true and
+            // others to false on each emission.
+            if input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
+                s.view match
+                    Radio(_, selected, on_select) ->
+                        if !selected then on_select() else 0
+                        0
+                    _ -> 0
+            else 0
+        SliderNode(s) ->
+            // Click-to-jump: project the press's x coordinate onto the
+            // [vmin, vmax] track and emit the new value via on_change.
+            // The track usable area shrinks by a half-thumb at each end
+            // so the visible thumb-rect endpoints map exactly to the
+            // value extremes (matches Scala suit emitSliderValue). Drag
+            // tracking (mouse_pressed && MOUSE_MOVE) lands in ζ3.
+            if input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
+                s.view match
+                    Slider(value, vmin, vmax, on_change, _) ->
+                        val range = vmax - vmin
+                        val tw    = s.bounds.w - SLIDER_THUMB
+                        if range > 0 && tw > 0 then
+                            val tx0  = s.bounds.x + SLIDER_THUMB / 2
+                            val rel0 = (input.mouse_x - tx0) * range / tw
+                            val rel  = if rel0 < 0 then 0 else if rel0 > range then range else rel0
+                            val v    = vmin + rel
+                            if v != value then on_change(v) else 0
+                            0
+                        else 0
                     _ -> 0
             else 0
         SizedNode(s)  -> dispatch(s.child, input)
@@ -525,6 +587,18 @@ reconcile(old: Node, v: View) -> Node
                     state.view = v
                     old
                 _ -> mount(v)
+        RadioNode(state) ->
+            v match
+                Radio(_, _, _) ->
+                    state.view = v
+                    old
+                _ -> mount(v)
+        SliderNode(state) ->
+            v match
+                Slider(_, _, _, _, _) ->
+                    state.view = v
+                    old
+                _ -> mount(v)
         SizedNode(state) ->
             v match
                 Sized(c, _, _) ->
@@ -645,6 +719,34 @@ render(n: Node) -> int
                     if checked then
                         host_fill_rect(s.bounds.x + 4, s.bounds.y + 4, LINE_H - 8, LINE_H - 8, 220, 220, 240, 255)
                     host_draw_text(s.bounds.x + LINE_H + CHK_GAP, s.bounds.y + 14, l, 220, 220, 240, 255)
+                    0
+                _ -> 0
+        RadioNode(s) ->
+            // Drawn as a square ring (since fill_rect is the only shape
+            // primitive); a real backend swaps these for circle ops.
+            // Inner mark is centered (4px inset) when selected.
+            s.view match
+                Radio(l, selected, _) ->
+                    host_fill_rect(s.bounds.x, s.bounds.y, LINE_H, LINE_H, 60, 60, 80, 255)
+                    if selected then
+                        host_fill_rect(s.bounds.x + 4, s.bounds.y + 4, LINE_H - 8, LINE_H - 8, 220, 220, 240, 255)
+                    host_draw_text(s.bounds.x + LINE_H + RADIO_GAP, s.bounds.y + 14, l, 220, 220, 240, 255)
+                    0
+                _ -> 0
+        SliderNode(s) ->
+            // Track is a thin filled rect spanning the full bounds width;
+            // thumb sits at the value's normalized position. Match the
+            // dispatch math so a value emitted by a click renders the
+            // thumb at exactly the click's x.
+            s.view match
+                Slider(value, vmin, vmax, _, _) ->
+                    val track_y = s.bounds.y + (SLIDER_H - SLIDER_TRACK) / 2
+                    host_fill_rect(s.bounds.x, track_y, s.bounds.w, SLIDER_TRACK, 60, 60, 80, 255)
+                    val range = vmax - vmin
+                    val tw    = s.bounds.w - SLIDER_THUMB
+                    val rel   = if range > 0 && tw > 0 then (value - vmin) * tw / range else 0
+                    val tx    = s.bounds.x + rel
+                    host_fill_rect(tx, s.bounds.y, SLIDER_THUMB, SLIDER_H, 220, 220, 240, 255)
                     0
                 _ -> 0
         SizedNode(s)  -> render(s.child)

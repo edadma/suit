@@ -1,0 +1,36 @@
+// Phase ζ2 probe — Radio dispatch through suit.engine. Three Radio
+// rows in a Stack; on_select on each captures its own index. The
+// driver clicks each row in turn; controller-side state isn't
+// modeled here (no rerender), so each Radio always sees its captured
+// `selected` (false), and on_select fires every time the press hits
+// inside the bounds.
+//
+// Layout: 200×60 Stack(0, [Radio×3]). Each Radio measures (LINE_H +
+// RADIO_GAP + text_w(label), LINE_H) but in a Stack each gets its
+// natural h=18 and full row width 200. Concretely:
+//   Apple   y=  0..18
+//   Banana  y= 18..36
+//   Cherry  y= 36..54
+//
+// Click sequence: (10, 5), (10, 25), (10, 45). Publishes [0, 1, 2].
+
+import suit.{View, Radio, Stack, Rect, InputState}
+import suit.{mount, layout, dispatch}
+
+extern host_publish(idx: int) -> int
+
+main() -> int
+    on_apple  = () -> host_publish(0)
+    on_banana = () -> host_publish(1)
+    on_cherry = () -> host_publish(2)
+    val kids = (new [3]View)[:]
+    kids[0] = Radio("Apple",  false, on_apple)
+    kids[1] = Radio("Banana", false, on_banana)
+    kids[2] = Radio("Cherry", false, on_cherry)
+    val node = mount(Stack(0, kids))
+    layout(node, Rect(0, 0, 200, 60))
+
+    dispatch(node, InputState(10,  5, true))
+    dispatch(node, InputState(10, 25, true))
+    dispatch(node, InputState(10, 45, true))
+    0

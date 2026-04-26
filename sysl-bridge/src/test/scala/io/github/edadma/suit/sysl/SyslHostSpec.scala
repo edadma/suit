@@ -790,6 +790,56 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       publishes.toList shouldBe List(1L, 1L, 1L)
     }
 
+    // Phase ζ2 — Radio dispatch fires on_select when a press lands
+    // inside an unselected radio's bounds. The probe uses three
+    // captured indices; clicks at y=5/25/45 hit Apple/Banana/Cherry
+    // (each 18 tall in the natural-height stack).
+    "ζ2 — Radio dispatch fires on_select through suit.engine" in {
+      val publishes = mutable.ArrayBuffer.empty[Long]
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_publish", {
+        case List(idx) => publishes += SyslHost.asLong(idx); SyslHost.unit
+        case other     => fail(s"host_publish: $other")
+      })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "probes/widgets-radio.sysl",
+      )))
+
+      publishes.toList shouldBe List(0L, 1L, 2L)
+    }
+
+    // Phase ζ2 — Slider click-to-jump maps mouse_x to a value in
+    // [0, 100] over a 200-wide slider. Track usable width = 192,
+    // half-thumb offset = 4. The controller holds the value via
+    // use_state_int; each rerender feeds the fresh value back into
+    // the Slider's `v != current` suppression check, so all three
+    // clicks land distinct emissions.
+    "ζ2 — Slider click-to-jump emits projected value through suit.engine" in {
+      val publishes = mutable.ArrayBuffer.empty[Long]
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_publish", {
+        case List(v) => publishes += SyslHost.asLong(v); SyslHost.unit
+        case other   => fail(s"host_publish: $other")
+      })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "probes/widgets-slider.sysl",
+      )))
+
+      publishes.toList shouldBe List(0L, 50L, 100L)
+    }
+
     "Keyed children preserve state across reorder" in {
       val publishes = mutable.ArrayBuffer.empty[Long]
 
