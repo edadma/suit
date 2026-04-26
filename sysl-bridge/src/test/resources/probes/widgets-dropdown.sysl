@@ -1,0 +1,34 @@
+// Phase η2 probe — `dropdown` helper. Open at (40, 30), 80 wide,
+// three items. Each item is a Button; clicking row 1 fires
+// on_pick(1) which records via host_publish.
+//
+// Layout (Portal lays out the panel against screen_frame, but
+// AbsolutePosition overrides with (40, 30, 80, 90)):
+//   Stack(0, [Button×3]) at (40, 30, 80, 90).
+//   Button h = LINE_H + 2*BTN_PAD_Y = 30. Three rows = 90 tall.
+//   row 0: y 30..60  (item "a")
+//   row 1: y 60..90  (item "b")  ← clicked at (50, 70)
+//   row 2: y 90..120 (item "c")
+//
+// Frame 0: PRESS at (50, 70) inside row 1's bounds → on_pick(1)
+// Frame 1: QUIT.
+// Expected publishes: [1].
+
+import suit.{View, Stack, Rect}
+import suit.{mount, run_loop, dropdown}
+
+extern host_publish(idx: int) -> int
+
+main() -> int
+    on_pick = (i: int) ->
+        host_publish(i)
+        0
+    val items = (new [3]string)[:]
+    items[0] = "a"
+    items[1] = "b"
+    items[2] = "c"
+    val kids = (new [1]View)[:]
+    kids[0] = dropdown(true, 40, 30, 80, items, on_pick)
+    val node = mount(Stack(0, kids))
+    run_loop(node, Rect(0, 0, 200, 80), 5)
+    0

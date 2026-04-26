@@ -1,0 +1,61 @@
+// suit widgets — helper compositions on top of the engine's
+// primitive variants. Lives in `module suit` so the helpers can
+// name View/Spacer/Portal/etc. without an import; callers pull
+// them with `import suit.{modal, dropdown, ...}` like any other
+// engine name.
+//
+// Each helper is a pure View constructor: it builds and returns a
+// View tree shaped by its arguments. State (e.g. a modal's `open`
+// flag) lives in the caller's Component cells — the helper takes
+// the bool and rebuilds the tree on each render. That matches the
+// React-style "the parent owns the state, the helper is a function
+// of state" model.
+
+module suit
+
+// modal — full-screen overlay with a centered content panel and a
+// translucent backdrop. When `open` is false this returns Spacer(0)
+// (zero-measure, draws nothing). When open it returns a Stack of
+// two Portals so render_overlays() draws the backdrop first and
+// then the centered content on top of it. The outer Stack measures
+// (0, 0) because Portals are out-of-flow, so the modal can be
+// placed anywhere in the caller's tree without affecting layout.
+modal(open: bool, child: View) -> View
+    if !open then Spacer(0)
+    else
+        val kids = (new [2]View)[:]
+        kids[0] = Portal(Backdrop(Color(0, 0, 0, 160)))
+        kids[1] = Portal(Center(child))
+        Stack(0, kids)
+
+// dropdown — anchored items panel that pops open at (ax, ay).
+// `items` is the list of labels; `on_pick(i)` fires when the user
+// clicks the i-th item. Width is the panel width; each row is
+// LINE_H + 2*BTN_PAD_Y tall. Closed → Spacer(0); open → a Portal
+// rendering the panel via AbsolutePosition so it overlays whatever
+// sits underneath.
+//
+// The caller is responsible for closing the dropdown when an item
+// is picked — usually by also calling its own `set_open(false)`
+// inside the on_pick handler.
+dropdown(open: bool, ax: int, ay: int, width: int, items: []string, on_pick: (int) -> int) -> View
+    if !open then Spacer(0)
+    else
+        val n = len(items)
+        val rows = (new [n]View)[:]
+        var i = 0
+        while i < n do
+            val idx = i
+            cb = () ->
+                on_pick(idx)
+                0
+            rows[i] = Button(items[i], cb)
+            i = i + 1
+        // LINE_H + 2 * BTN_PAD_Y — the natural Button height. Using
+        // the literal because const visibility across files in the
+        // same multi-file module isn't reliable in the current sysl
+        // analyzer (engine.sysl's const LINE_H reads as undefined
+        // when looked up from this file). If/when that lifts, the
+        // expression below should be `LINE_H + BTN_PAD_Y * 2`.
+        val row_h = 30
+        Portal(AbsolutePosition(Stack(0, rows), ax, ay, width, n * row_h))

@@ -1,0 +1,29 @@
+// Phase η2 probe — `modal` helper composition. Tree:
+//
+//   Stack(0, [
+//     Text("base"),
+//     modal(true, Text("ok")),
+//   ])
+//
+// Expected draw sequence (one frame, then QUIT):
+//   text   0,14 'base'                       base tree
+//   fill   0, 0 200x80 rgba(0,0,0,160)       backdrop overlay 1
+//   text  92,45 'ok'                         centered overlay 2
+//                                            Center: cx=(200-16)/2=92,
+//                                                    cy=(80-18)/2=31,
+//                                                    text baseline +14
+//
+// Validates the full modal stack: outer Stack-of-two-Portals walks
+// in declaration order, push_overlay queues backdrop then content,
+// render_overlays drains so backdrop draws under the centered text.
+
+import suit.{View, Text, Stack, Rect}
+import suit.{mount, run_loop, modal}
+
+main() -> int
+    val kids = (new [2]View)[:]
+    kids[0] = Text("base")
+    kids[1] = modal(true, Text("ok"))
+    val node = mount(Stack(0, kids))
+    run_loop(node, Rect(0, 0, 200, 80), 2)
+    0

@@ -1000,6 +1000,106 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       )
     }
 
+    // Phase η2 — `modal` helper. When open=true returns a Stack of
+    // two Portals (backdrop + Center(child)), so the overlay queue
+    // emits backdrop then centered content. When open=false the
+    // helper returns Spacer(0), which renders no draw commands.
+    "η2 — modal helper composes Backdrop + Center via two Portals" in {
+      val cmds = mutable.ArrayBuffer.empty[String]
+      val events = scala.collection.mutable.Queue[(Long, Long, Long)](
+        (0L, 0L, 0L),  // NONE
+        (1L, 0L, 0L),  // QUIT
+      )
+      var lastEvent: (Long, Long, Long) = (0L, 0L, 0L)
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_fill_rect", {
+        case List(x, y, w, h, r, g, b, a) =>
+          cmds += s"fill ${SyslHost.asLong(x)},${SyslHost.asLong(y)} " +
+                  s"${SyslHost.asLong(w)}x${SyslHost.asLong(h)} " +
+                  s"rgba(${SyslHost.asLong(r)},${SyslHost.asLong(g)},${SyslHost.asLong(b)},${SyslHost.asLong(a)})"
+          SyslHost.unit
+        case other => fail(s"host_fill_rect: $other")
+      })
+      host.register("host_draw_text", {
+        case List(x, y, text, _, _, _, _) =>
+          cmds += s"text ${SyslHost.asLong(x)},${SyslHost.asLong(y)} '${SyslHost.asString(text)}'"
+          SyslHost.unit
+        case other => fail(s"host_draw_text: $other")
+      })
+      host.register("host_poll_event", {
+        case Nil =>
+          val ev = if events.nonEmpty then events.dequeue() else (0L, 0L, 0L)
+          lastEvent = ev
+          SyslHost.long(ev._1)
+        case other => fail(s"host_poll_event: $other")
+      })
+      host.register("host_event_x",    { case Nil => SyslHost.long(lastEvent._2);  case other => fail(s"$other") })
+      host.register("host_event_y",    { case Nil => SyslHost.long(lastEvent._3);  case other => fail(s"$other") })
+      host.register("host_event_key",  { case Nil => SyslHost.long(0L);            case other => fail(s"$other") })
+      host.register("host_event_text", { case Nil => SyslHost.string("");           case other => fail(s"$other") })
+      host.register("host_now_ms",     { case Nil => SyslHost.long(0L);            case other => fail(s"$other") })
+      host.register("host_present_frame",          { case Nil => SyslHost.unit; case other => fail(s"$other") })
+      host.register("host_sleep_until_next_frame", { case Nil => SyslHost.unit; case other => fail(s"$other") })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "suit/widgets.sysl",
+        "probes/widgets-modal.sysl",
+      )))
+
+      cmds.toList shouldBe List(
+        "text 0,14 'base'",
+        "fill 0,0 200x80 rgba(0,0,0,160)",
+        "text 92,45 'ok'",
+      )
+    }
+
+    // Phase η2 — `dropdown` helper. Open dropdown at (40, 30) with
+    // three items in an 80-wide panel. Click at (50, 70) hits the
+    // middle row (Button "b"), firing on_pick(1).
+    "η2 — dropdown panel routes click to indexed item" in {
+      val publishes = mutable.ArrayBuffer.empty[Long]
+      val events = scala.collection.mutable.Queue[(Long, Long, Long)](
+        (2L, 50L, 70L),  // PRESS — hits row 1 (y 60..90)
+        (0L,  0L,  0L),  // NONE
+        (1L,  0L,  0L),  // QUIT
+      )
+      var lastEvent: (Long, Long, Long) = (0L, 0L, 0L)
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_publish", {
+        case List(i) => publishes += SyslHost.asLong(i); SyslHost.unit
+        case other   => fail(s"host_publish: $other")
+      })
+      host.register("host_poll_event", {
+        case Nil =>
+          val ev = if events.nonEmpty then events.dequeue() else (0L, 0L, 0L)
+          lastEvent = ev
+          SyslHost.long(ev._1)
+        case other => fail(s"host_poll_event: $other")
+      })
+      host.register("host_event_x",    { case Nil => SyslHost.long(lastEvent._2);  case other => fail(s"$other") })
+      host.register("host_event_y",    { case Nil => SyslHost.long(lastEvent._3);  case other => fail(s"$other") })
+      host.register("host_event_key",  { case Nil => SyslHost.long(0L);            case other => fail(s"$other") })
+      host.register("host_event_text", { case Nil => SyslHost.string("");           case other => fail(s"$other") })
+      host.register("host_now_ms",     { case Nil => SyslHost.long(0L);            case other => fail(s"$other") })
+      host.register("host_present_frame",          { case Nil => SyslHost.unit; case other => fail(s"$other") })
+      host.register("host_sleep_until_next_frame", { case Nil => SyslHost.unit; case other => fail(s"$other") })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "suit/widgets.sysl",
+        "probes/widgets-dropdown.sysl",
+      )))
+
+      publishes.toList shouldBe List(1L)
+    }
+
     "Keyed children preserve state across reorder" in {
       val publishes = mutable.ArrayBuffer.empty[Long]
 
