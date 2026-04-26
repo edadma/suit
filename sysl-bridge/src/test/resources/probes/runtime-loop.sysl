@@ -1,0 +1,84 @@
+// Probe 3: the OS-facing event/render loop contract.
+//
+// The host (OS layer or JVM bridge) provides:
+//   host_poll_event() -> int   - dequeues one event; returns tag (0 = none)
+//   host_event_x() -> int      - X coord of the last polled event
+//   host_event_y() -> int      - Y coord of the last polled event
+//   host_now_ms() -> int       - monotonic clock for animation pacing
+//   host_present_frame() -> int    - flush draw cmds to screen
+//   host_sleep_until_next_frame() -> int  - block till next vsync/tick
+// Plus the existing draw primitives (host_fill_rect, host_draw_text,
+// host_draw_image, host_measure_text TBD).
+//
+// Event tags:
+const EVENT_NONE:        int = 0
+const EVENT_QUIT:        int = 1
+const EVENT_MOUSE_PRESS: int = 2
+const EVENT_MOUSE_REL:   int = 3
+const EVENT_MOUSE_MOVE:  int = 4
+const EVENT_KEY_DOWN:    int = 5
+const EVENT_KEY_UP:      int = 6
+const EVENT_FRAME:       int = 7   // optional pacing tick from host
+//
+// This probe stubs the host (sysl-side) and verifies a few frames'
+// worth of loop iterations consume events in order, tick animations,
+// and exit cleanly when EVENT_QUIT arrives.
+
+extern host_poll_event() -> int
+extern host_event_x() -> int
+extern host_event_y() -> int
+extern host_now_ms() -> int
+extern host_record(label: string) -> int
+
+struct InputState
+    mouse_x: int
+    mouse_y: int
+    pressed: bool
+
+handle_event(input: InputState, tag: int) -> int
+    if tag == EVENT_MOUSE_PRESS then
+        input.mouse_x = host_event_x()
+        input.mouse_y = host_event_y()
+        input.pressed = true
+        val mx = input.mouse_x
+        val my = input.mouse_y
+        host_record(s"press@$mx,$my")
+        0
+    else if tag == EVENT_MOUSE_REL then
+        input.pressed = false
+        host_record("release")
+        0
+    else if tag == EVENT_FRAME then
+        host_record("frame")
+        0
+    else 0
+
+// The engine's main loop, parameterized to terminate after `max_frames`
+// for the probe (real OS would loop forever).
+run_loop(max_frames: int) -> int
+    val input = InputState(0, 0, false)
+    var frame = 0
+    var quit  = false
+    while !quit && frame < max_frames do
+        // 1) drain events for this frame
+        var tag = host_poll_event()
+        while tag != EVENT_NONE && !quit do
+            if tag == EVENT_QUIT then
+                quit = true
+            else
+                handle_event(input, tag)
+            tag = host_poll_event()
+
+        // 2) (animations would tick here against host_now_ms())
+
+        // 3) (reconcile / layout / render would go here)
+
+        // 4) advance frame counter
+        frame = frame + 1
+
+    if quit then host_record("quit") else host_record("timeout")
+    frame
+
+main() -> int
+    run_loop(10)
+    0

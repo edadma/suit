@@ -1,0 +1,90 @@
+// Probe: HookValue discriminator with mixed-type variants, including a
+// closure-typed cell (the shape useEffect needs to store its cleanup
+// callback). All hook cells must live in a single `[]HookValue` slice
+// so the same fiber can hold useState + useEffect + useRef + useMemo
+// at consecutive positional indices.
+//
+// Verifies:
+//   1. enum HookValue with int / bool / string / closure / nested-data variants compiles
+//   2. (new [N]HookValue)[:] + indexed assignment works
+//   3. match arms can destructure each variant and read its payload
+//   4. closure-typed cells can be invoked from a match arm
+//   5. mutating a slice slot to a different variant kind works (the
+//      cell-grows-into-its-final-shape pattern useEffect needs)
+
+extern host_publish(n: int) -> int
+
+// A "ref" payload — the kind of opaque value useRef holds.
+struct RefCellState
+    value: int
+
+enum HookValue
+    Empty
+    IntCell(v: int)
+    BoolCell(v: bool)
+    StringCell(v: string)
+    RefCell(s: RefCellState)
+    EffectCell(cleanup: () -> int)
+
+main() -> int
+    val cells = (new [6]HookValue)[:]
+    var i = 0
+    while i < 6 do
+        cells[i] = Empty
+        i = i + 1
+
+    // Populate each variant kind in a different slot.
+    cells[0] = IntCell(42)
+    cells[1] = BoolCell(true)
+    cells[2] = StringCell("hello")
+    cells[3] = RefCell(RefCellState(7))
+
+    // The interesting one: store a closure that captures local state and
+    // can be invoked later from within a match arm. Capture is done
+    // through a struct field — sysl captures local primitive `var`s by
+    // value, but struct/slice locals by reference (the same semantic
+    // hooks rely on, and the reason HookValue stores cells in slice
+    // slots rather than raw ints).
+    val captured_box = RefCellState(0)
+    closure_value = () ->
+        captured_box.value = captured_box.value + 1
+        captured_box.value
+    cells[4] = EffectCell(closure_value)
+
+    // Mutate slot 0 to a different variant kind — exercises the
+    // "cell-replaces-itself" pattern useEffect uses on dep-change.
+    cells[0] = StringCell("replaced")
+
+    // Read each cell back via match. The total combines them so a single
+    // host_publish observes whether each branch fired.
+    var total = 0
+
+    cells[0] match
+        StringCell(s) -> total = total + len(s)   // "replaced" = 8
+        _             -> total = total + 1000     // sentinel: wrong arm
+
+    cells[1] match
+        BoolCell(b) -> total = total + (if b then 100 else 0)
+        _           -> total = total + 2000
+
+    cells[2] match
+        StringCell(s) -> total = total + len(s) * 10  // "hello" = 50
+        _             -> total = total + 3000
+
+    cells[3] match
+        RefCell(rs) -> total = total + rs.value * 100   // 700
+        _           -> total = total + 4000
+
+    // Invoke the captured closure twice via the EffectCell variant — the
+    // mutation of `captured` must propagate so the second call sees 1
+    // and returns 2.
+    cells[4] match
+        EffectCell(cb) ->
+            cb()
+            cb()
+            total = total + captured_box.value * 1000   // 2000
+        _ -> total = total + 5000
+
+    // Expected: 8 + 100 + 50 + 700 + 2000 = 2858
+    host_publish(total)
+    total

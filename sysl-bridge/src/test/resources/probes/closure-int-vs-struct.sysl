@@ -1,0 +1,40 @@
+// Hypothesis: closures capture local primitive `var`s by value but local
+// struct/slice `var`s by reference. If true, the hook system must store
+// state in struct cells (already the plan), not in raw ints.
+
+extern host_publish_int(n: int) -> int
+extern host_publish_struct(n: int) -> int
+extern host_publish_slice(n: int) -> int
+
+struct Box
+    v: int
+
+main() -> int
+    // -- Int via local var
+    var n: int = 0
+    bump_int = () ->
+        n = n + 1
+        n
+    bump_int()
+    bump_int()
+    host_publish_int(n)            // expect 2 if by-ref, 0 if by-value
+
+    // -- Int wrapped in a struct
+    var b = Box(0)
+    bump_struct = () ->
+        b.v = b.v + 1
+        b.v
+    bump_struct()
+    bump_struct()
+    host_publish_struct(b.v)       // expect 2
+
+    // -- Int slot in a slice
+    val s = (new [1]int)[:]
+    s[0] = 0
+    bump_slice = () ->
+        s[0] = s[0] + 1
+        s[0]
+    bump_slice()
+    bump_slice()
+    host_publish_slice(s[0])       // expect 2
+    0

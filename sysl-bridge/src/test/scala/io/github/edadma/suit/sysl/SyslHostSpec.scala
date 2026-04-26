@@ -293,6 +293,147 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       )
     }
 
+    // Probe 1 (full-translation prep): HookValue discriminator with five
+    // mixed variants — int / bool / string / struct-payload / closure —
+    // stored in a single []HookValue, mutated in place, and read back
+    // via match arms. The closure variant gets invoked twice from
+    // inside its match arm; captured-state mutations must propagate.
+    // Computed total: 8 + 100 + 50 + 700 + 2000 = 2858.
+    // Probe 3 (full-translation prep): the OS-facing event/render loop
+    // contract. Stubs host_poll_event with a scripted sequence of events
+    // and verifies the sysl-side run_loop drains them in order, dispatches
+    // each to the right handler, and exits on EVENT_QUIT. This is the
+    // shape the eventual OS-layer integration will plug into — the
+    // engine's main loop is sysl, the OS provides events + frame timing.
+    "probe — main event loop drains events, dispatches, exits on quit" in {
+      val records = mutable.ArrayBuffer.empty[String]
+      // Scripted event queue: 3 events then quit.
+      val events = scala.collection.mutable.Queue[(Long, Long, Long)](
+        (2L, 10L, 20L),  // mouse press at (10,20)
+        (3L, 0L, 0L),    // mouse release
+        (7L, 0L, 0L),    // frame tick
+        (1L, 0L, 0L),    // quit
+      )
+      var lastX, lastY = 0L
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_poll_event", { _ =>
+        if events.isEmpty then SyslHost.long(0L)
+        else
+          val (t, x, y) = events.dequeue()
+          lastX = x; lastY = y
+          SyslHost.long(t)
+      })
+      host.register("host_event_x", { _ => SyslHost.long(lastX) })
+      host.register("host_event_y", { _ => SyslHost.long(lastY) })
+      host.register("host_now_ms",  { _ => SyslHost.long(0L) })
+      host.register("host_record", {
+        case List(s) => records += SyslHost.asString(s); SyslHost.unit
+        case other   => fail(s"host_record: $other")
+      })
+
+      host.run(host.compileFile("probes/runtime-loop.sysl"))
+
+      records.toList shouldBe List(
+        "press@10,20",
+        "release",
+        "frame",
+        "quit",
+      )
+    }
+
+    // Probe 2 (full-translation prep): a Node-like struct with a *Self
+    // parent pointer + a walk that climbs to find an ancestor matching
+    // some predicate. This is the bones of useContext. Three-level chain:
+    //   root (kind=1, value=42) <- mid (kind=0) <- leaf (kind=0)
+    // find_provider(leaf) walks up via .parent and returns 42.
+    "probe — Node parent-pointer ancestor walk (useContext shape)" in {
+      var published: Long = -1L
+      val host = new SyslHost(resourcesDir)
+      host.register("host_publish", {
+        case List(n) => published = SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"host_publish: $other")
+      })
+
+      host.run(host.compileFile("probes/parent-walk.sysl"))
+
+      published shouldBe 42L
+    }
+
+    // Pins the documented sysl semantic: local primitive `var` is
+    // captured by value, local struct/slice is captured by reference.
+    // This is the reason useState's cells live in struct/slice slots,
+    // not raw ints. The `int=0` result here is the EXPECTED behavior;
+    // if it ever flips to 2 the language semantic changed and the
+    // hook system probably wants to reconsider its storage shape.
+    "documents — closure capture: int by-value, struct/slice by-ref" in {
+      var i, s, sl = -1L
+      val host = new SyslHost(resourcesDir)
+      host.register("host_publish_int", {
+        case List(n) => i = SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"bad: $other")
+      })
+      host.register("host_publish_struct", {
+        case List(n) => s = SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"bad: $other")
+      })
+      host.register("host_publish_slice", {
+        case List(n) => sl = SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"bad: $other")
+      })
+
+      host.run(host.compileFile("probes/closure-int-vs-struct.sysl"))
+
+      withClue("local int var captures by value: ")    { i  shouldBe 0L }
+      withClue("local struct var captures by ref: ")   { s  shouldBe 2L }
+      withClue("local slice slot captures by ref: ")   { sl shouldBe 2L }
+    }
+
+    // Drill-down: which closure-storage path drops the captured-var
+    // mutation? Four storage shapes, one shared `bump` closure, expected
+    // captured == 2 at each `host_publish_*` checkpoint.
+    "probe — closure capture across storage paths" in {
+      var a, b, c, d = -1L
+      val host = new SyslHost(resourcesDir)
+      host.register("host_publish_a", {
+        case List(n) => a = SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"host_publish_a: bad args $other")
+      })
+      host.register("host_publish_b", {
+        case List(n) => b = SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"host_publish_b: bad args $other")
+      })
+      host.register("host_publish_c", {
+        case List(n) => c = SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"host_publish_c: bad args $other")
+      })
+      host.register("host_publish_d", {
+        case List(n) => d = SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"host_publish_d: bad args $other")
+      })
+
+      host.run(host.compileFile("probes/closure-in-cell.sysl"))
+
+      info(s"a=$a b=$b c=$c d=$d (each should be 2)")
+      withClue("A — direct var-held closure invocation: ") { a shouldBe 2L }
+      withClue("B — closure stored in a struct field: ")   { b shouldBe 2L }
+      withClue("C — closure in an enum-variant cell (no slice): ") { c shouldBe 2L }
+      withClue("D — closure in an enum-variant cell inside a slice: ") { d shouldBe 2L }
+    }
+
+    "probe — HookValue mixed-variant cells incl. closure-typed" in {
+      var published: Long = -1L
+      val host = new SyslHost(resourcesDir)
+      host.register("host_publish", {
+        case List(n) => published = SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"host_publish: bad args $other")
+      })
+
+      host.run(host.compileFile("probes/hookvalue.sysl"))
+
+      published shouldBe 2858L
+    }
+
     // The fancy sysl-driven demo (counter + tabbed FormPanel +
     // slider/radio/dropdown/checkbox + modal) compiles cleanly and main()
     // publishes a complete View tree through the marshaler — every new

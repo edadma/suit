@@ -1,0 +1,43 @@
+// Probe 2: Node parent-pointer walk for useContext.
+//
+// Each Node carries a `parent: *NodeData` so any descendant can find
+// its nearest ContextProvider ancestor. Mirrors std/container/list's
+// pointer conventions: `var z: *T` declares a null *T; `i64(p) != 0`
+// is the truthiness check; heap allocation goes via `(new [1]T)[:]`
+// + `&slot[0]`.
+
+extern host_publish(n: int) -> int
+
+struct NodeData
+    kind: int          // 0 = Leaf, 1 = Provider
+    value: int
+    parent: *NodeData  // null at the root
+
+null_node() -> *NodeData
+    var z: *NodeData
+    z
+
+alloc_node(kind: int, value: int, parent: *NodeData) -> *NodeData
+    val slot = (new [1]NodeData)[:]
+    val n = &slot[0]
+    n.kind   = kind
+    n.value  = value
+    n.parent = parent
+    n
+
+// Walk up the parent chain looking for a Provider (kind==1).
+find_provider(start: *NodeData) -> int
+    var p = start
+    while i64(p) != 0 do
+        if p.kind == 1 then return p.value
+        p = p.parent
+    -1
+
+main() -> int
+    val root = alloc_node(1, 42, null_node())
+    val mid  = alloc_node(0,  0, root)
+    val leaf = alloc_node(0,  0, mid)
+
+    val found = find_provider(leaf)
+    host_publish(found)        // expect 42
+    found

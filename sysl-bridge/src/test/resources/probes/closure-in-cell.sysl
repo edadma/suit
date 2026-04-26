@@ -1,0 +1,65 @@
+// Drill-down: which storage path drops the closure's capture? Sysl
+// captures local primitive vars by value, but struct/slice locals by
+// reference. Each test below uses a struct-field-backed counter so the
+// only variable is *where* the closure lives between calls.
+//   A — local var holding closure, called directly
+//   B — closure stored in a struct field, called via field access
+//   C — closure stored in an enum-variant cell, called via match-arm bind
+//   D — closure in enum-variant in a slice slot, called via [i] match
+
+extern host_publish_a(n: int) -> int
+extern host_publish_b(n: int) -> int
+extern host_publish_c(n: int) -> int
+extern host_publish_d(n: int) -> int
+
+struct Counter
+    n: int
+
+struct Holder
+    cb: () -> int
+
+enum Cell
+    Empty
+    EffectCell(cb: () -> int)
+
+main() -> int
+    val box = Counter(0)
+    bump = () ->
+        box.n = box.n + 1
+        box.n
+
+    // -- A: direct var-held closure
+    bump()
+    bump()
+    host_publish_a(box.n)        // expect 2
+    box.n = 0
+
+    // -- B: closure in a struct field
+    val h = Holder(bump)
+    h.cb()
+    h.cb()
+    host_publish_b(box.n)        // expect 2
+    box.n = 0
+
+    // -- C: closure in an enum-variant cell, no slice
+    val c: Cell = EffectCell(bump)
+    c match
+        EffectCell(cb) ->
+            cb()
+            cb()
+            0
+        _ -> 0
+    host_publish_c(box.n)        // expect 2
+    box.n = 0
+
+    // -- D: closure in enum-variant inside a slice slot
+    val cells = (new [1]Cell)[:]
+    cells[0] = EffectCell(bump)
+    cells[0] match
+        EffectCell(cb) ->
+            cb()
+            cb()
+            0
+        _ -> 0
+    host_publish_d(box.n)        // expect 2
+    0
