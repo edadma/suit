@@ -1,0 +1,17 @@
+// Repro: a closure-typed local declared inside another closure's
+// body. The interpreter raises "undefined variable: <name>" when the
+// inner closure is referenced after declaration. Same pattern in a
+// top-level fn body works (see engine-counter.sysl).
+//
+// Expected on fix: host_publish(7) called once.
+
+extern host_publish(n: int) -> int
+
+main() -> int
+    outer = (a: int) ->
+        inner = (b: int) ->
+            a + b
+        inner(5)
+    val r = outer(2)
+    host_publish(r)
+    0

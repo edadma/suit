@@ -548,6 +548,51 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
     //   outer reader        → 11
     //   nested-inner reader → 33
     //   no-provider reader  → -1 (sentinel for Empty)
+    // Phase δ — Keyed children survive reorder. Two item Components
+    // each own a counter cell. Bump each separately, then click swap.
+    // Keyed reconcile must move the existing fibers (and their state)
+    // into their new slots, so post-swap the publish order is the
+    // counter values in swapped order, NOT the seed values.
+    // Sysl bug: a closure-typed local declared inside another
+    // closure's body raises "undefined variable" at lookup time. The
+    // same pattern at top-level-fn scope works (see counter() in
+    // engine-counter.sysl). Repro at probes/closure-in-closure.sysl.
+    // Marked ignore until the interpreter is fixed.
+    "probe — closure-in-closure local resolution (sysl bug, ignored)" ignore {
+      val publishes = mutable.ArrayBuffer.empty[Long]
+      val host = new SyslHost(resourcesDir)
+      host.register("host_publish", {
+        case List(n) => publishes += SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"host_publish: $other")
+      })
+      host.run(host.compileFile("probes/closure-in-closure.sysl"))
+      publishes.toList shouldBe List(7L)
+    }
+
+    "Keyed children preserve state across reorder" in {
+      val publishes = mutable.ArrayBuffer.empty[Long]
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_publish", {
+        case List(n) => publishes += SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"host_publish: $other")
+      })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "probes/keyed-reorder.sysl",
+      )))
+
+      publishes.toList shouldBe List(
+        1L,  2L,    // mount
+        11L, 2L,    // bump item 1
+        11L, 12L,   // bump item 2
+        12L, 11L,   // swap
+      )
+    }
+
     "ContextProvider injects values; nested providers shadow" in {
       val publishes = mutable.ArrayBuffer.empty[Long]
 

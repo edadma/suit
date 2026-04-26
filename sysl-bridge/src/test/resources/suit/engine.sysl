@@ -27,6 +27,7 @@ enum View
     Stack(children: []View)
     Component(render: (Fiber) -> View)
     ContextProvider(key: int, value: HookValue, child: View)
+    Keyed(key: int, child: View)
 
 struct TextNodeState
     view: View
@@ -54,12 +55,19 @@ struct ContextProviderState
     value: HookValue
     child: Node
 
+struct KeyedNodeState
+    view: View
+    bounds: Rect
+    key: int
+    child: Node
+
 enum Node
     TextNode(s: TextNodeState)
     ButtonNode(s: ButtonNodeState)
     StackNode(s: StackNodeState)
     ComponentNode(s: ComponentNodeState)
     ContextProviderNode(s: ContextProviderState)
+    KeyedNode(s: KeyedNodeState)
 
 // Module-level context stack — pushed when mount/rerender enters a
 // ContextProvider's subtree, popped on the way back. use_context walks
@@ -128,6 +136,8 @@ mount(v: View) -> Node
             val mounted_child = mount(child)
             pop_context()
             ContextProviderNode(ContextProviderState(v, Rect(0, 0, 0, 0), key, value, mounted_child))
+        Keyed(key, child) ->
+            KeyedNode(KeyedNodeState(v, Rect(0, 0, 0, 0), key, mount(child)))
 
 set_rect(b: Rect, frame: Rect) -> int
     b.x = frame.x
@@ -157,6 +167,9 @@ layout(n: Node, frame: Rect) -> int
         ContextProviderNode(s) ->
             set_rect(s.bounds, frame)
             layout(s.child, frame)
+        KeyedNode(s) ->
+            set_rect(s.bounds, frame)
+            layout(s.child, frame)
 
 contains(b: Rect, x: int, y: int) -> bool
     x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h
@@ -179,7 +192,87 @@ dispatch(n: Node, input: InputState) -> int
             0
         ComponentNode(s) -> dispatch(s.child, input)
         ContextProviderNode(s) -> dispatch(s.child, input)
+        KeyedNode(s) -> dispatch(s.child, input)
         _ -> 0
+
+// True when every child is a Keyed wrapper. We only switch to the
+// key-matched reconciliation path for fully-keyed lists; mixing keyed
+// and unkeyed children is a programming bug, and falling through to
+// positional matching keeps surprises minimal.
+all_keyed(kids: []View) -> bool
+    var ok = true
+    var i = 0
+    while ok && i < len(kids) do
+        val is_keyed = kids[i] match
+            Keyed(_, _) -> true
+            _           -> false
+        if !is_keyed then ok = false
+        i = i + 1
+    ok
+
+key_of_view(v: View) -> int
+    v match
+        Keyed(k, _) -> k
+        _           -> -1
+
+key_of_node(n: Node) -> int
+    n match
+        KeyedNode(s) -> s.key
+        _            -> -1
+
+// Linear-scan key match. For each new child, find the unclaimed old
+// child with the matching key (KeyedNode), reconcile it; if none,
+// mount fresh. Old children that nobody claims are silently dropped.
+// O(n*m) — fine for typical lists; promote to a hash map later.
+reconcile_keyed_children(old_kids: []Node, new_kids: []View) -> []Node
+    val n_new = len(new_kids)
+    val n_old = len(old_kids)
+    val out   = (new [n_new]Node)[:]
+    val taken = (new [n_old]bool)[:]
+    var k = 0
+    while k < n_old do
+        taken[k] = false
+        k = k + 1
+    var i = 0
+    while i < n_new do
+        val target = key_of_view(new_kids[i])
+        var found = -1
+        var j = 0
+        while found < 0 && j < n_old do
+            if !taken[j] && key_of_node(old_kids[j]) == target then
+                found = j
+            j = j + 1
+        if found >= 0 then
+            taken[found] = true
+            out[i] = reconcile(old_kids[found], new_kids[i])
+        else
+            out[i] = mount(new_kids[i])
+        i = i + 1
+    out
+
+// Positional fallback — the previous Stack reconcile policy.
+reconcile_positional_children(old_kids: []Node, new_kids: []View) -> []Node
+    val n_new = len(new_kids)
+    val n_old = len(old_kids)
+    if n_new == n_old then
+        var i = 0
+        while i < n_new do
+            old_kids[i] = reconcile(old_kids[i], new_kids[i])
+            i = i + 1
+        old_kids
+    else
+        val out = (new [n_new]Node)[:]
+        var i = 0
+        while i < n_new do
+            out[i] = mount(new_kids[i])
+            i = i + 1
+        out
+
+reconcile_children(old_kids: []Node, new_kids: []View) -> []Node
+    if len(new_kids) > 0 && all_keyed(new_kids) then
+        reconcile_keyed_children(old_kids, new_kids)
+    else
+        reconcile_positional_children(old_kids, new_kids)
 
 reconcile(old: Node, v: View) -> Node
     old match
@@ -198,14 +291,9 @@ reconcile(old: Node, v: View) -> Node
         StackNode(state) ->
             v match
                 Stack(kids) ->
-                    if len(kids) == len(state.children) then
-                        state.view = v
-                        var i = 0
-                        while i < len(kids) do
-                            state.children[i] = reconcile(state.children[i], kids[i])
-                            i = i + 1
-                        old
-                    else mount(v)
+                    state.view = v
+                    state.children = reconcile_children(state.children, kids)
+                    old
                 _ -> mount(v)
         ComponentNode(state) ->
             v match
@@ -227,6 +315,14 @@ reconcile(old: Node, v: View) -> Node
                     push_context(key, value)
                     state.child = reconcile(state.child, child_view)
                     pop_context()
+                    old
+                _ -> mount(v)
+        KeyedNode(state) ->
+            v match
+                Keyed(key, child_view) ->
+                    state.view = v
+                    state.key = key
+                    state.child = reconcile(state.child, child_view)
                     old
                 _ -> mount(v)
 
@@ -256,6 +352,7 @@ rerender(n: Node) -> int
             rerender(s.child)
             pop_context()
             0
+        KeyedNode(s) -> rerender(s.child)
         _ -> 0
 
 render(n: Node) -> int
@@ -275,3 +372,4 @@ render(n: Node) -> int
             0
         ComponentNode(s) -> render(s.child)
         ContextProviderNode(s) -> render(s.child)
+        KeyedNode(s) -> render(s.child)
