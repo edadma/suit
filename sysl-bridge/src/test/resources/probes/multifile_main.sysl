@@ -1,0 +1,14 @@
+// Top-level driver — sits outside the module, imports everything it
+// needs by name, calls one function from each file. host_publish is
+// invoked with the final integer the test will assert on.
+
+import probes.multifile.{Pair, make_pair, sum, scale}
+
+extern host_publish(n: int) -> int
+
+main() -> int
+    val p = make_pair(3, 4)
+    val q = scale(p, 5)
+    val total = sum(p) + sum(q)   // (3+4) + (15+20) = 7 + 35 = 42
+    host_publish(total)
+    0

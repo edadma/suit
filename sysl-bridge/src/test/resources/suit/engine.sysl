@@ -1,0 +1,193 @@
+// suit engine — View/Node tree, layout, hit-test, dispatch, render.
+// Lives in the same `module suit` as hooks.sysl so the engine can name
+// the Fiber type without an import. The Component variant carries a
+// `(Fiber) -> View` render function; mount/rerender drive that fiber.
+//
+// host_draw_text is the only OS-facing extern wired here — render() calls
+// it to paint Text nodes. Demos register their own JVM/OS-side handler.
+
+module suit
+
+extern host_draw_text(x: int, y: int, text: string, r: int, g: int, b: int, a: int) -> int
+
+struct Rect
+    x: int
+    y: int
+    w: int
+    h: int
+
+struct InputState
+    mouse_x: int
+    mouse_y: int
+    mouse_pressed: bool
+
+enum View
+    Text(content: string)
+    Button(label: string, on_click: () -> int)
+    Stack(children: []View)
+    Component(render: (Fiber) -> View)
+
+struct TextNodeState
+    view: View
+    bounds: Rect
+
+struct ButtonNodeState
+    view: View
+    bounds: Rect
+
+struct StackNodeState
+    view: View
+    bounds: Rect
+    children: []Node
+
+struct ComponentNodeState
+    view: View
+    bounds: Rect
+    fiber: Fiber
+    child: Node
+
+enum Node
+    TextNode(s: TextNodeState)
+    ButtonNode(s: ButtonNodeState)
+    StackNode(s: StackNodeState)
+    ComponentNode(s: ComponentNodeState)
+
+mount(v: View) -> Node
+    v match
+        Text(_)      -> TextNode(TextNodeState(v, Rect(0, 0, 0, 0)))
+        Button(_, _) -> ButtonNode(ButtonNodeState(v, Rect(0, 0, 0, 0)))
+        Stack(kids) ->
+            val n = len(kids)
+            val nodes = (new [n]Node)[:]
+            var i = 0
+            while i < n do
+                nodes[i] = mount(kids[i])
+                i = i + 1
+            StackNode(StackNodeState(v, Rect(0, 0, 0, 0), nodes))
+        Component(render_fn) ->
+            val f = new_fiber()
+            f.hook_index = 0
+            val root = render_fn(f)
+            ComponentNode(ComponentNodeState(v, Rect(0, 0, 0, 0), f, mount(root)))
+
+set_rect(b: Rect, frame: Rect) -> int
+    b.x = frame.x
+    b.y = frame.y
+    b.w = frame.w
+    b.h = frame.h
+    0
+
+layout(n: Node, frame: Rect) -> int
+    n match
+        TextNode(s)   -> set_rect(s.bounds, frame)
+        ButtonNode(s) -> set_rect(s.bounds, frame)
+        StackNode(s) ->
+            set_rect(s.bounds, frame)
+            val n_kids = len(s.children)
+            val each_h = frame.h / n_kids
+            var pos = frame.y
+            var i = 0
+            while i < n_kids do
+                layout(s.children[i], Rect(frame.x, pos, frame.w, each_h))
+                pos = pos + each_h
+                i = i + 1
+            0
+        ComponentNode(s) ->
+            set_rect(s.bounds, frame)
+            layout(s.child, frame)
+
+contains(b: Rect, x: int, y: int) -> bool
+    x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h
+
+dispatch(n: Node, input: InputState) -> int
+    n match
+        ButtonNode(s) ->
+            if input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
+                s.view match
+                    Button(_, on_click) ->
+                        on_click()
+                        0
+                    _ -> 0
+            else 0
+        StackNode(s) ->
+            var i = 0
+            while i < len(s.children) do
+                dispatch(s.children[i], input)
+                i = i + 1
+            0
+        ComponentNode(s) -> dispatch(s.child, input)
+        _ -> 0
+
+reconcile(old: Node, v: View) -> Node
+    old match
+        TextNode(state) ->
+            v match
+                Text(_) ->
+                    state.view = v
+                    old
+                _ -> mount(v)
+        ButtonNode(state) ->
+            v match
+                Button(_, _) ->
+                    state.view = v
+                    old
+                _ -> mount(v)
+        StackNode(state) ->
+            v match
+                Stack(kids) ->
+                    if len(kids) == len(state.children) then
+                        state.view = v
+                        var i = 0
+                        while i < len(kids) do
+                            state.children[i] = reconcile(state.children[i], kids[i])
+                            i = i + 1
+                        old
+                    else mount(v)
+                _ -> mount(v)
+        ComponentNode(state) ->
+            v match
+                Component(_) ->
+                    state.view = v
+                    rerender(old)
+                    old
+                _ -> mount(v)
+
+// Drive a Component's re-render: hook cursor reset, render() called,
+// the produced View is reconciled against the existing child Node.
+// Also recurses into Stack and other wrappers so rerender() at the
+// root re-runs every Component in the tree (single-pass dirty walk).
+rerender(n: Node) -> int
+    n match
+        ComponentNode(s) ->
+            s.view match
+                Component(render_fn) ->
+                    s.fiber.hook_index = 0
+                    val root = render_fn(s.fiber)
+                    s.child = reconcile(s.child, root)
+                    rerender(s.child)
+                    0
+                _ -> 0
+        StackNode(s) ->
+            var i = 0
+            while i < len(s.children) do
+                rerender(s.children[i])
+                i = i + 1
+            0
+        _ -> 0
+
+render(n: Node) -> int
+    n match
+        TextNode(s) ->
+            s.view match
+                Text(c) ->
+                    host_draw_text(s.bounds.x, s.bounds.y, c, 220, 220, 240, 255)
+                    0
+                _ -> 0
+        ButtonNode(_) -> 0
+        StackNode(s) ->
+            var i = 0
+            while i < len(s.children) do
+                render(s.children[i])
+                i = i + 1
+            0
+        ComponentNode(s) -> render(s.child)

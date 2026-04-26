@@ -1,0 +1,126 @@
+// Positional hooks — module half that's standalone (no engine import).
+// Owns HookValue, the per-fiber cell array, and the use_* primitives.
+//
+// `next_fiber_id` is the module's only mutable state; new_fiber bumps it
+// so each Component instance gets a stable id useful for useId.
+//
+// Multi-file-module rule (see feedback memory): module-level vars cannot
+// be re-exported as mutable to siblings. Keeping all writers (new_fiber)
+// inside this same file means the engine can hold a Fiber typed value
+// but never reaches in to mutate next_fiber_id directly.
+
+module suit
+
+struct EffectState
+    deps_hash: int
+
+enum HookValue
+    Empty
+    IntCell(v: int)
+    BoolCell(v: bool)
+    StringCell(v: string)
+    EffectCell(s: EffectState)
+    IdCell(id: string)
+
+struct Fiber
+    cells: []HookValue
+    cell_count: int
+    hook_index: int
+    fiber_id: int
+
+const HOOK_CAPACITY: int = 16
+
+var next_fiber_id: int = 0
+
+new_fiber() -> Fiber
+    next_fiber_id = next_fiber_id + 1
+    val cells = (new [HOOK_CAPACITY]HookValue)[:]
+    var i = 0
+    while i < HOOK_CAPACITY do
+        cells[i] = Empty
+        i = i + 1
+    Fiber(cells, 0, 0, next_fiber_id)
+
+// useState(int) — most-used flavor; cell is IntCell, setter writes back.
+use_state_int(f: Fiber, initial: int) -> (int, (int) -> int)
+    val i = f.hook_index
+    f.hook_index = i + 1
+    val cell = f.cells[i]
+    val current = cell match
+        IntCell(v) -> v
+        Empty ->
+            f.cells[i] = IntCell(initial)
+            initial
+        _ -> initial
+    setter = (next: int) ->
+        f.cells[i] = IntCell(next)
+        next
+    return current, setter
+
+// useState(bool) — used for toggles, Checkbox state, modal-open flags.
+use_state_bool(f: Fiber, initial: bool) -> (bool, (bool) -> int)
+    val i = f.hook_index
+    f.hook_index = i + 1
+    val cell = f.cells[i]
+    val current = cell match
+        BoolCell(v) -> v
+        Empty ->
+            f.cells[i] = BoolCell(initial)
+            initial
+        _ -> initial
+    setter = (next: bool) ->
+        f.cells[i] = BoolCell(next)
+        0
+    return current, setter
+
+// useState(string) — used for Input.value, Dropdown selection.
+use_state_string(f: Fiber, initial: string) -> (string, (string) -> int)
+    val i = f.hook_index
+    f.hook_index = i + 1
+    val cell = f.cells[i]
+    val current = cell match
+        StringCell(v) -> v
+        Empty ->
+            f.cells[i] = StringCell(initial)
+            initial
+        _ -> initial
+    setter = (next: string) ->
+        f.cells[i] = StringCell(next)
+        0
+    return current, setter
+
+// useEffect(setup, deps_hash) — runs `setup` on mount and whenever
+// deps_hash differs from the value stored last render. No cleanup
+// support yet (a future variant adds `() -> () -> int` and tracks the
+// returned cleanup closure for unmount + dep-change ordering).
+use_effect(f: Fiber, setup: () -> int, deps_hash: int) -> int
+    val i = f.hook_index
+    f.hook_index = i + 1
+    val cell = f.cells[i]
+    cell match
+        EffectCell(s) ->
+            if s.deps_hash != deps_hash then
+                setup()
+                s.deps_hash = deps_hash
+            0
+        Empty ->
+            setup()
+            f.cells[i] = EffectCell(EffectState(deps_hash))
+            0
+        _ -> 0
+
+// useId — returns a stable string keyed on (fiber_id, cell_index).
+// Survives across renders because the cell is initialized once and read
+// thereafter. Used by form labels (`<label for="id-3-2">`-shape).
+use_id(f: Fiber) -> string
+    val i = f.hook_index
+    f.hook_index = i + 1
+    val cell = f.cells[i]
+    cell match
+        IdCell(id) -> id
+        Empty ->
+            val fid = f.fiber_id
+            val id = s"id-$fid-$i"
+            f.cells[i] = IdCell(id)
+            id
+        _ -> "?"

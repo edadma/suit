@@ -1,0 +1,11 @@
+// Multi-file probe — half B. Lives in the same module as util.sysl,
+// reads the Pair struct it defines without an explicit import — that
+// proves intra-module visibility works inside a multi-file module.
+
+module probes.multifile
+
+sum(p: Pair) -> int
+    p.a + p.b
+
+scale(p: Pair, k: int) -> Pair
+    Pair(p.a * k, p.b * k)

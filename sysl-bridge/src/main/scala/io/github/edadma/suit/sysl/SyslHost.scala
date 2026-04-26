@@ -40,6 +40,17 @@ final class SyslHost(baseDir: String):
     val key  = relativePath.stripSuffix(".sysl").stripSuffix(".lsysl")
     compile(Map(key -> raw))
 
+  // Multi-file variant — read each path, key it by stripped relative path,
+  // and run a single driver.compile so cross-file imports resolve.
+  def compileFiles(relativePaths: Seq[String]): TProgram =
+    val sources = relativePaths.map { rel =>
+      val full = baseDir + "/" + rel
+      val raw  = scala.io.Source.fromFile(full).mkString
+      val key  = rel.stripSuffix(".sysl").stripSuffix(".lsysl")
+      key -> raw
+    }.toMap
+    compile(sources)
+
   // Install a JVM function as an extern. The `name` must match the name the
   // Sysl source uses; argument values are passed in source order, the
   // returned `Value` becomes the call's result.

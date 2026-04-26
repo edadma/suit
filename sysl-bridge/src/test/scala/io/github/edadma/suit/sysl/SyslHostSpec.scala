@@ -483,7 +483,11 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
         case other   => fail(s"host_record: $other")
       })
 
-      host.run(host.compileFile("engine-hooks.sysl"))
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "engine-hooks.sysl",
+      )))
 
       // Hook order in fancy_counter: useState(int)=slot 0, useState(bool)=slot 1,
       // useId=slot 2, useEffect=slot 3. So id = id-{fiber_id=1}-{cell_idx=2}.
@@ -498,6 +502,31 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       )
     }
 
+    // Phase α prep — verifies the bridge can hand the driver multiple
+    // sources in one compile() call and that intra-module + cross-module
+    // visibility both resolve. util.sysl + mathx.sysl share `module
+    // probes.multifile`; the top-level driver imports four names from
+    // that module and combines them. If this passes, the engine refactor
+    // can split engine.sysl from hooks.sysl with confidence.
+    "compiles a multi-file module + a top-level driver that imports it" in {
+      var published: Long = -1L
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_publish", {
+        case List(n) => published = SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"host_publish: bad args $other")
+      })
+
+      val program = host.compileFiles(Seq(
+        "probes/multifile/util.sysl",
+        "probes/multifile/mathx.sysl",
+        "probes/multifile_main.sysl",
+      ))
+      host.run(program)
+
+      published shouldBe 42L
+    }
+
     "drives two independent Counter components across six frames" in {
       val texts = mutable.ArrayBuffer.empty[String]
 
@@ -508,7 +537,11 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
         case other => fail(s"host_draw_text: bad args $other")
       })
 
-      host.run(host.compileFile("engine-counter.sysl"))
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "engine-counter.sysl",
+      )))
 
       // Two Counter children → each render emits two Text commands.
       // Click sequence A,A,B,A,B drives counters to (3, 2) over 5 clicks

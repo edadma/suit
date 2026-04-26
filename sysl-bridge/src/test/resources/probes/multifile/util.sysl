@@ -1,0 +1,13 @@
+// Multi-file probe — half A. Defines a struct + a function that
+// `mathx.sysl` (sibling in the same module) consumes via implicit
+// intra-module visibility, and that the top-level driver pulls in
+// via `import probes.multifile.{Pair, make_pair}`.
+
+module probes.multifile
+
+struct Pair
+    a: int
+    b: int
+
+make_pair(a: int, b: int) -> Pair
+    Pair(a, b)
