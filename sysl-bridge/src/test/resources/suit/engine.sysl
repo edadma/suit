@@ -3,12 +3,15 @@
 // the Fiber type without an import. The Component variant carries a
 // `(Fiber) -> View` render function; mount/rerender drive that fiber.
 //
-// host_draw_text is the only OS-facing extern wired here — render() calls
-// it to paint Text nodes. Demos register their own JVM/OS-side handler.
+// host_draw_text / host_fill_rect / host_draw_image are the OS-facing
+// draw primitives; render() emits them. Demos register their own
+// JVM/OS-side handlers.
 
 module suit
 
 extern host_draw_text(x: int, y: int, text: string, r: int, g: int, b: int, a: int) -> int
+extern host_fill_rect(x: int, y: int, w: int, h: int, r: int, g: int, b: int, a: int) -> int
+extern host_draw_image(x: int, y: int, w: int, h: int, source: string) -> int
 
 // OS-facing event/render loop contract — implemented by the host (JVM
 // dev shell, OS layer, or test stub). Tags are the int returned by
@@ -38,15 +41,47 @@ struct Rect
     w: int
     h: int
 
+struct Size
+    w: int
+    h: int
+
+struct Color
+    r: int
+    g: int
+    b: int
+    a: int
+
+struct Insets
+    top: int
+    right: int
+    bottom: int
+    left: int
+
 struct InputState
     mouse_x: int
     mouse_y: int
     mouse_pressed: bool
 
+// Theme constants — match engine-mini so widgets sized in either world
+// agree on natural dimensions.
+const FONT_W: int    = 8
+const LINE_H: int    = 18
+const BTN_PAD_X: int = 12
+const BTN_PAD_Y: int = 6
+const CHK_GAP: int   = 6
+const RADIO_GAP: int = 6
+const SLIDER_H:  int = 18
+
 enum View
     Text(content: string)
     Button(label: string, on_click: () -> int)
-    Stack(children: []View)
+    Spacer(flex: int)
+    Image(source: string, width: int, height: int)
+    Checkbox(label: string, checked: bool, on_toggle: (bool) -> int)
+    Sized(child: View, width: int, height: int)
+    Center(child: View)
+    Box(child: View, color: Color, padding: Insets)
+    Stack(gap: int, children: []View)
     Component(render: (Fiber) -> View)
     ContextProvider(key: int, value: HookValue, child: View)
     Keyed(key: int, child: View)
@@ -59,9 +94,37 @@ struct ButtonNodeState
     view: View
     bounds: Rect
 
+struct SpacerNodeState
+    view: View
+    bounds: Rect
+
+struct ImageNodeState
+    view: View
+    bounds: Rect
+
+struct CheckboxNodeState
+    view: View
+    bounds: Rect
+
+struct SizedNodeState
+    view: View
+    bounds: Rect
+    child: Node
+
+struct CenterNodeState
+    view: View
+    bounds: Rect
+    child: Node
+
+struct BoxNodeState
+    view: View
+    bounds: Rect
+    child: Node
+
 struct StackNodeState
     view: View
     bounds: Rect
+    gap: int
     children: []Node
 
 struct ComponentNodeState
@@ -86,6 +149,12 @@ struct KeyedNodeState
 enum Node
     TextNode(s: TextNodeState)
     ButtonNode(s: ButtonNodeState)
+    SpacerNode(s: SpacerNodeState)
+    ImageNode(s: ImageNodeState)
+    CheckboxNode(s: CheckboxNodeState)
+    SizedNode(s: SizedNodeState)
+    CenterNode(s: CenterNodeState)
+    BoxNode(s: BoxNodeState)
     StackNode(s: StackNodeState)
     ComponentNode(s: ComponentNodeState)
     ContextProviderNode(s: ContextProviderState)
@@ -138,16 +207,22 @@ use_context(f: Fiber, key: int) -> HookValue
 
 mount(v: View) -> Node
     v match
-        Text(_)      -> TextNode(TextNodeState(v, Rect(0, 0, 0, 0)))
-        Button(_, _) -> ButtonNode(ButtonNodeState(v, Rect(0, 0, 0, 0)))
-        Stack(kids) ->
+        Text(_)           -> TextNode(TextNodeState(v, Rect(0, 0, 0, 0)))
+        Button(_, _)      -> ButtonNode(ButtonNodeState(v, Rect(0, 0, 0, 0)))
+        Spacer(_)         -> SpacerNode(SpacerNodeState(v, Rect(0, 0, 0, 0)))
+        Image(_, _, _)    -> ImageNode(ImageNodeState(v, Rect(0, 0, 0, 0)))
+        Checkbox(_, _, _) -> CheckboxNode(CheckboxNodeState(v, Rect(0, 0, 0, 0)))
+        Sized(c, _, _)    -> SizedNode(SizedNodeState(v, Rect(0, 0, 0, 0), mount(c)))
+        Center(c)         -> CenterNode(CenterNodeState(v, Rect(0, 0, 0, 0), mount(c)))
+        Box(c, _, _)      -> BoxNode(BoxNodeState(v, Rect(0, 0, 0, 0), mount(c)))
+        Stack(g, kids) ->
             val n = len(kids)
             val nodes = (new [n]Node)[:]
             var i = 0
             while i < n do
                 nodes[i] = mount(kids[i])
                 i = i + 1
-            StackNode(StackNodeState(v, Rect(0, 0, 0, 0), nodes))
+            StackNode(StackNodeState(v, Rect(0, 0, 0, 0), g, nodes))
         Component(render_fn) ->
             val f = new_fiber()
             f.hook_index = 0
@@ -161,6 +236,70 @@ mount(v: View) -> Node
         Keyed(key, child) ->
             KeyedNode(KeyedNodeState(v, Rect(0, 0, 0, 0), key, mount(child)))
 
+// Natural width in pixels for a string at the engine's monospace font.
+text_w(s: string) -> int = len(s) * FONT_W
+
+// Spacer flex weight, or 0 for any non-Spacer node. Used by Stack
+// layout to split the unclaimed pool between flex children.
+flex_of(n: Node) -> int
+    n match
+        SpacerNode(s) ->
+            s.view match
+                Spacer(f) -> f
+                _         -> 0
+        _ -> 0
+
+// measure — natural size of a Node's subtree before layout assigns
+// concrete bounds. Wrapper variants forward to their child; Stack
+// returns max-of-widths × sum-of-heights+gaps.
+measure(n: Node) -> Size
+    n match
+        TextNode(s) ->
+            s.view match
+                Text(c) -> Size(text_w(c), LINE_H)
+                _       -> Size(0, 0)
+        ButtonNode(s) ->
+            s.view match
+                Button(l, _) -> Size(text_w(l) + BTN_PAD_X * 2, LINE_H + BTN_PAD_Y * 2)
+                _            -> Size(0, 0)
+        SpacerNode(_) -> Size(0, 0)
+        ImageNode(s) ->
+            s.view match
+                Image(_, w, h) -> Size(w, h)
+                _              -> Size(0, 0)
+        CheckboxNode(s) ->
+            s.view match
+                Checkbox(l, _, _) -> Size(LINE_H + CHK_GAP + text_w(l), LINE_H)
+                _                 -> Size(0, 0)
+        SizedNode(s) ->
+            val cs = measure(s.child)
+            s.view match
+                Sized(_, w, h) ->
+                    val sw = if w >= 0 then w else cs.w
+                    val sh = if h >= 0 then h else cs.h
+                    Size(sw, sh)
+                _ -> cs
+        CenterNode(s) -> measure(s.child)
+        BoxNode(s) ->
+            val cs = measure(s.child)
+            s.view match
+                Box(_, _, p) -> Size(cs.w + p.left + p.right, cs.h + p.top + p.bottom)
+                _            -> cs
+        StackNode(s) ->
+            var w = 0
+            var h = 0
+            var i = 0
+            while i < len(s.children) do
+                val cs = measure(s.children[i])
+                if cs.w > w then w = cs.w
+                h = h + cs.h
+                if i > 0 then h = h + s.gap
+                i = i + 1
+            Size(w, h)
+        ComponentNode(s)        -> measure(s.child)
+        ContextProviderNode(s)  -> measure(s.child)
+        KeyedNode(s)            -> measure(s.child)
+
 set_rect(b: Rect, frame: Rect) -> int
     b.x = frame.x
     b.y = frame.y
@@ -168,19 +307,66 @@ set_rect(b: Rect, frame: Rect) -> int
     b.h = frame.h
     0
 
+// layout — assign concrete bounds. Stack distributes leftover space to
+// Spacer children proportional to their flex weight; non-flex children
+// get their measured natural height. Single-child wrappers either
+// pass the frame straight down (Sized), shrink to centered intrinsic
+// size (Center), or pad before recursing (Box).
 layout(n: Node, frame: Rect) -> int
     n match
-        TextNode(s)   -> set_rect(s.bounds, frame)
-        ButtonNode(s) -> set_rect(s.bounds, frame)
+        TextNode(s)     -> set_rect(s.bounds, frame)
+        ButtonNode(s)   -> set_rect(s.bounds, frame)
+        SpacerNode(s)   -> set_rect(s.bounds, frame)
+        ImageNode(s)    -> set_rect(s.bounds, frame)
+        CheckboxNode(s) -> set_rect(s.bounds, frame)
+        SizedNode(s) ->
+            set_rect(s.bounds, frame)
+            layout(s.child, frame)
+        CenterNode(s) ->
+            val cs    = measure(s.child)
+            val cx    = frame.x + (frame.w - cs.w) / 2
+            val cy    = frame.y + (frame.h - cs.h) / 2
+            val inner = Rect(cx, cy, cs.w, cs.h)
+            // Own bounds = the centered child rect so hit-testing sees
+            // the rendered area, not the surrounding parent frame.
+            set_rect(s.bounds, inner)
+            layout(s.child, inner)
+        BoxNode(s) ->
+            set_rect(s.bounds, frame)
+            s.view match
+                Box(_, _, p) ->
+                    val inner = Rect(frame.x + p.left,
+                                     frame.y + p.top,
+                                     frame.w - p.left - p.right,
+                                     frame.h - p.top - p.bottom)
+                    layout(s.child, inner)
+                _ -> 0
         StackNode(s) ->
             set_rect(s.bounds, frame)
-            val n_kids = len(s.children)
-            val each_h = frame.h / n_kids
-            var pos = frame.y
+            var fixed_total = 0
+            var flex_total  = 0
             var i = 0
-            while i < n_kids do
-                layout(s.children[i], Rect(frame.x, pos, frame.w, each_h))
-                pos = pos + each_h
+            while i < len(s.children) do
+                val f = flex_of(s.children[i])
+                if f > 0 then
+                    flex_total = flex_total + f
+                else
+                    val sz = measure(s.children[i])
+                    fixed_total = fixed_total + sz.h
+                i = i + 1
+            val n_kids = len(s.children)
+            val gaps   = if n_kids > 1 then (n_kids - 1) * s.gap else 0
+            val avail0 = frame.h - fixed_total - gaps
+            val flex_pool = if avail0 > 0 then avail0 else 0
+            var pos = frame.y
+            i = 0
+            while i < len(s.children) do
+                val child = s.children[i]
+                val f     = flex_of(child)
+                val ch    = if f > 0 && flex_total > 0 then flex_pool * f / flex_total else measure(child).h
+                layout(child, Rect(frame.x, pos, frame.w, ch))
+                pos = pos + ch
+                if i < n_kids - 1 then pos = pos + s.gap
                 i = i + 1
             0
         ComponentNode(s) ->
@@ -206,15 +392,26 @@ dispatch(n: Node, input: InputState) -> int
                         0
                     _ -> 0
             else 0
+        CheckboxNode(s) ->
+            if input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
+                s.view match
+                    Checkbox(_, checked, on_toggle) ->
+                        on_toggle(!checked)
+                        0
+                    _ -> 0
+            else 0
+        SizedNode(s)  -> dispatch(s.child, input)
+        CenterNode(s) -> dispatch(s.child, input)
+        BoxNode(s)    -> dispatch(s.child, input)
         StackNode(s) ->
             var i = 0
             while i < len(s.children) do
                 dispatch(s.children[i], input)
                 i = i + 1
             0
-        ComponentNode(s) -> dispatch(s.child, input)
+        ComponentNode(s)       -> dispatch(s.child, input)
         ContextProviderNode(s) -> dispatch(s.child, input)
-        KeyedNode(s) -> dispatch(s.child, input)
+        KeyedNode(s)           -> dispatch(s.child, input)
         _ -> 0
 
 // True when every child is a Keyed wrapper. We only switch to the
@@ -310,10 +507,50 @@ reconcile(old: Node, v: View) -> Node
                     state.view = v
                     old
                 _ -> mount(v)
+        SpacerNode(state) ->
+            v match
+                Spacer(_) ->
+                    state.view = v
+                    old
+                _ -> mount(v)
+        ImageNode(state) ->
+            v match
+                Image(_, _, _) ->
+                    state.view = v
+                    old
+                _ -> mount(v)
+        CheckboxNode(state) ->
+            v match
+                Checkbox(_, _, _) ->
+                    state.view = v
+                    old
+                _ -> mount(v)
+        SizedNode(state) ->
+            v match
+                Sized(c, _, _) ->
+                    state.view  = v
+                    state.child = reconcile(state.child, c)
+                    old
+                _ -> mount(v)
+        CenterNode(state) ->
+            v match
+                Center(c) ->
+                    state.view  = v
+                    state.child = reconcile(state.child, c)
+                    old
+                _ -> mount(v)
+        BoxNode(state) ->
+            v match
+                Box(c, _, _) ->
+                    state.view  = v
+                    state.child = reconcile(state.child, c)
+                    old
+                _ -> mount(v)
         StackNode(state) ->
             v match
-                Stack(kids) ->
+                Stack(g, kids) ->
                     state.view = v
+                    state.gap  = g
                     state.children = reconcile_children(state.children, kids)
                     old
                 _ -> mount(v)
@@ -369,6 +606,9 @@ rerender(n: Node) -> int
                 rerender(s.children[i])
                 i = i + 1
             0
+        SizedNode(s)  -> rerender(s.child)
+        CenterNode(s) -> rerender(s.child)
+        BoxNode(s)    -> rerender(s.child)
         ContextProviderNode(s) ->
             push_context(s.key, s.value)
             rerender(s.child)
@@ -382,19 +622,49 @@ render(n: Node) -> int
         TextNode(s) ->
             s.view match
                 Text(c) ->
-                    host_draw_text(s.bounds.x, s.bounds.y, c, 220, 220, 240, 255)
+                    host_draw_text(s.bounds.x, s.bounds.y + 14, c, 220, 220, 240, 255)
                     0
                 _ -> 0
+        // Buttons emit no draw commands at this layer — the host's
+        // chrome (theme-aware fill + label) is layered in by the
+        // environment's render adapter, not the engine. Keeping
+        // ButtonNode silent means probes that only exercise Button +
+        // Text need just host_draw_text registered.
         ButtonNode(_) -> 0
+        SpacerNode(_) -> 0
+        ImageNode(s) ->
+            s.view match
+                Image(src, _, _) ->
+                    host_draw_image(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, src)
+                    0
+                _ -> 0
+        CheckboxNode(s) ->
+            s.view match
+                Checkbox(l, checked, _) ->
+                    host_fill_rect(s.bounds.x, s.bounds.y, LINE_H, LINE_H, 60, 60, 80, 255)
+                    if checked then
+                        host_fill_rect(s.bounds.x + 4, s.bounds.y + 4, LINE_H - 8, LINE_H - 8, 220, 220, 240, 255)
+                    host_draw_text(s.bounds.x + LINE_H + CHK_GAP, s.bounds.y + 14, l, 220, 220, 240, 255)
+                    0
+                _ -> 0
+        SizedNode(s)  -> render(s.child)
+        CenterNode(s) -> render(s.child)
+        BoxNode(s) ->
+            s.view match
+                Box(_, c, _) ->
+                    host_fill_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, c.r, c.g, c.b, c.a)
+                    render(s.child)
+                    0
+                _ -> render(s.child)
         StackNode(s) ->
             var i = 0
             while i < len(s.children) do
                 render(s.children[i])
                 i = i + 1
             0
-        ComponentNode(s) -> render(s.child)
+        ComponentNode(s)       -> render(s.child)
         ContextProviderNode(s) -> render(s.child)
-        KeyedNode(s) -> render(s.child)
+        KeyedNode(s)           -> render(s.child)
 
 // run_loop drives the engine the way an app's main() would in
 // production: drain events from the host, dispatch them through the

@@ -574,10 +574,10 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
     "run_loop drains events, dispatches, exits on QUIT" in {
       val publishes = mutable.ArrayBuffer.empty[Long]
       val events = scala.collection.mutable.Queue[(Long, Long, Long)](
-        // (tag, x, y)
-        (2L, 50L, 60L),  // PRESS
+        // (tag, x, y) — Button at y 18..48 in the new measured layout
+        (2L, 50L, 30L),  // PRESS
         (0L, 0L, 0L),    // NONE → end of frame 0 drain
-        (2L, 50L, 60L),  // PRESS
+        (2L, 50L, 30L),  // PRESS
         (0L, 0L, 0L),    // NONE → end of frame 1 drain
         (1L, 0L, 0L),    // QUIT
       )
@@ -635,7 +635,7 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
     "use_transition advances toward target across rendered frames" in {
       val publishes = mutable.ArrayBuffer.empty[Long]
       val events = scala.collection.mutable.Queue[(Long, Long, Long)](
-        (2L, 50L, 60L),  // PRESS — frame 0
+        (2L, 50L, 30L),  // PRESS — frame 0; Button at y 18..48
         (0L, 0L, 0L),    // NONE — end frame 0 drain
         (0L, 0L, 0L),    // frame 1 NONE
         (0L, 0L, 0L),    // frame 2 NONE
@@ -687,6 +687,107 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       )))
 
       publishes.toList shouldBe List(0L, 0L, 25L, 50L, 75L, 100L)
+    }
+
+    // Phase ζ1 — exercises every new layout-primitive variant (Sized,
+    // Center, Spacer, Box, Image, Checkbox) through the canonical
+    // suit.engine module. Mirrors engine-full.sysl's expected draw
+    // sequence but routes everything through suit.engine instead of a
+    // duplicated local pipeline.
+    "ζ1 — renders every layout primitive through suit.engine" in {
+      val cmds = mutable.ArrayBuffer.empty[String]
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_fill_rect", {
+        case List(x, y, w, h, r, g, b, a) =>
+          cmds += s"fill ${SyslHost.asLong(x)},${SyslHost.asLong(y)} " +
+                  s"${SyslHost.asLong(w)}x${SyslHost.asLong(h)} " +
+                  s"rgba(${SyslHost.asLong(r)},${SyslHost.asLong(g)},${SyslHost.asLong(b)},${SyslHost.asLong(a)})"
+          SyslHost.unit
+        case other => fail(s"host_fill_rect: $other")
+      })
+      host.register("host_draw_text", {
+        case List(x, y, text, _, _, _, _) =>
+          cmds += s"text ${SyslHost.asLong(x)},${SyslHost.asLong(y)} '${SyslHost.asString(text)}'"
+          SyslHost.unit
+        case other => fail(s"host_draw_text: $other")
+      })
+      host.register("host_draw_image", {
+        case List(x, y, w, h, src) =>
+          cmds += s"image ${SyslHost.asLong(x)},${SyslHost.asLong(y)} " +
+                  s"${SyslHost.asLong(w)}x${SyslHost.asLong(h)} '${SyslHost.asString(src)}'"
+          SyslHost.unit
+        case other => fail(s"host_draw_image: $other")
+      })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "probes/widgets-render.sysl",
+      )))
+
+      cmds.toList shouldBe List(
+        "text 0,14 'title'",
+        "image 84,24 32x32 'icon.png'",
+        "fill 0,56 200x26 rgba(80,120,200,255)",
+        "fill 4,60 18x18 rgba(60,60,80,255)",
+        "fill 8,64 10x10 rgba(220,220,240,255)",
+        "text 28,74 'agree'",
+      )
+    }
+
+    // Phase ζ1 — Spacer absorbs leftover space in Stack flex layout.
+    // Three children inside a 200×100 frame with gap=4: Text natural
+    // h=18, Spacer(flex=1) absorbs the leftover 44, Button natural
+    // h=30. Total = 18 + 4 + 44 + 4 + 30 = 100. Each child's bounds
+    // is published via host_emit so the test pins the layout contract.
+    "ζ1 — Stack flex distribution via Spacer through suit.engine" in {
+      case class Frame(name: String, x: Int, y: Int, w: Int, h: Int)
+      val emitted = mutable.ArrayBuffer.empty[Frame]
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_emit", {
+        case List(name, x, y, w, h) =>
+          emitted += Frame(SyslHost.asString(name),
+            SyslHost.asLong(x).toInt, SyslHost.asLong(y).toInt,
+            SyslHost.asLong(w).toInt, SyslHost.asLong(h).toInt)
+          SyslHost.unit
+        case other => fail(s"host_emit: $other")
+      })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "probes/widgets-flex.sysl",
+      )))
+
+      emitted.toList shouldBe List(
+        Frame("text",   0,  0, 200, 18),
+        Frame("spacer", 0, 22, 200, 44),
+        Frame("button", 0, 70, 200, 30),
+      )
+    }
+
+    // Phase ζ1 — Checkbox dispatch fires on_toggle(!checked) on each
+    // hit. Three clicks against a Checkbox that starts unchecked all
+    // see `checked=false` (no rerender wires the new value back to
+    // the View), so each fires on_toggle(true).
+    "ζ1 — Checkbox dispatch fires on_toggle through suit.engine" in {
+      val publishes = mutable.ArrayBuffer.empty[Long]
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_publish", {
+        case List(b) => publishes += SyslHost.asLong(b); SyslHost.unit
+        case other   => fail(s"host_publish: $other")
+      })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "probes/widgets-checkbox.sysl",
+      )))
+
+      publishes.toList shouldBe List(1L, 1L, 1L)
     }
 
     "Keyed children preserve state across reorder" in {

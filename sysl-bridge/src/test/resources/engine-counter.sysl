@@ -21,19 +21,19 @@ counter(f: Fiber) -> View
     val kids = (new [2]View)[:]
     kids[0] = Text(s"$n")
     kids[1] = Button("+", on_inc)
-    Stack(kids)
+    Stack(0, kids)
 
 // Two independent Counter children at positions 0 and 1 of a Stack.
 // Each gets its own Fiber via mount; clicking inside one Counter's
-// button must not perturb the other's state. Layout: Stack of 2
-// Counters fills 200×160 → each gets 80 tall. Inside each Counter,
-// Stack of 2 → Text 0..40, Button 40..80 (relative to the Counter's
-// frame).
+// button must not perturb the other's state.
 //
-//   Counter A (y 0..80):    Text@0..40,  Button@40..80
-//   Counter B (y 80..160):  Text@80..120, Button@120..160
+// With measured-height layout each Counter naturally measures 48 tall
+// (Text 18 + Button 30). The frame is 200×160 with no Spacer, so the
+// 64 leftover pixels stay unused below Counter B. Concrete bounds:
+//   Counter A (y  0..48): Text  0..18, Button 18..48
+//   Counter B (y 48..96): Text 48..66, Button 66..96
 //
-// dispatch(InputState(50, 60, true))  hits A; (50, 140, true) hits B.
+// dispatch(InputState(50, 30, true)) hits A; (50, 80, true) hits B.
 // Click sequence: A, A, B, A, B → A=3, B=2 → Texts emitted "0" "0",
 // then "1" "0", "2" "0", "2" "1", "3" "1", "3" "2".
 
@@ -41,33 +41,33 @@ main() -> int
     val kids = (new [2]View)[:]
     kids[0] = Component(counter)
     kids[1] = Component(counter)
-    val app = Stack(kids)
+    val app = Stack(0, kids)
     val node = mount(app)
 
     layout(node, Rect(0, 0, 200, 160))
     render(node)                                        // "0", "0"
 
-    dispatch(node, InputState(50, 60, true))            // click A
+    dispatch(node, InputState(50, 30, true))            // click A
     rerender(node)
     layout(node, Rect(0, 0, 200, 160))
     render(node)                                        // "1", "0"
 
-    dispatch(node, InputState(50, 60, true))            // click A
+    dispatch(node, InputState(50, 30, true))            // click A
     rerender(node)
     layout(node, Rect(0, 0, 200, 160))
     render(node)                                        // "2", "0"
 
-    dispatch(node, InputState(50, 140, true))           // click B
+    dispatch(node, InputState(50, 80, true))            // click B
     rerender(node)
     layout(node, Rect(0, 0, 200, 160))
     render(node)                                        // "2", "1"
 
-    dispatch(node, InputState(50, 60, true))            // click A
+    dispatch(node, InputState(50, 30, true))            // click A
     rerender(node)
     layout(node, Rect(0, 0, 200, 160))
     render(node)                                        // "3", "1"
 
-    dispatch(node, InputState(50, 140, true))           // click B
+    dispatch(node, InputState(50, 80, true))            // click B
     rerender(node)
     layout(node, Rect(0, 0, 200, 160))
     render(node)                                        // "3", "2"

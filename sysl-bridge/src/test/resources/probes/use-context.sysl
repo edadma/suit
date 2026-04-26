@@ -47,7 +47,7 @@ main() -> int
     kids[1] = inner_outer
     kids[2] = no_provider
 
-    val app = Stack(kids)
+    val app = Stack(0, kids)
     val node = mount(app)
     layout(node, Rect(0, 0, 200, 90))
     render(node)

@@ -40,7 +40,7 @@ make_item(id: int) -> View
         val kids = (new [2]View)[:]
         kids[0] = Text(s"$n")
         kids[1] = Button("+", on_bump)
-        Stack(kids)
+        Stack(0, kids)
     Component(item_render)
 
 controller(f: Fiber) -> View
@@ -58,21 +58,25 @@ controller(f: Fiber) -> View
         items[0] = Keyed(1, item_a)
         items[1] = Keyed(2, item_b)
     val outer = (new [2]View)[:]
-    outer[0] = Stack(items)
+    outer[0] = Stack(0, items)
     outer[1] = Button("swap", on_swap)
-    Stack(outer)
+    Stack(0, outer)
 
-// Layout: 200×120 outer Stack of 2 → each 60 tall.
-//   Top half (0..60) is the items Stack, with each item filling 30 tall.
-//     Item 0 at y 0..30 (its inner Stack of [Text, Button] → Text 0..15,
-//       Button 15..30)
-//     Item 1 at y 30..60 (Text 30..45, Button 45..60)
-//   Bottom half (60..120) is the swap Button.
+// Layout: 200×120 outer Stack of [items_stack, swap-button].
+// With measured-height layout each item Component naturally measures
+// 48 tall (Text 18 + Button 30); the items_stack sums to 96, and the
+// swap-button measures 30 (label="swap", h=LINE_H+2*BTN_PAD_Y). Frame
+// leftover is unused (no Spacer flex). Concretely:
+//   items_stack at y 0..96 (within the 200×96 sub-frame given to it):
+//     Item 0 at y  0..48 — Text  0..18, Button 18..48
+//     Item 1 at y 48..96 — Text 48..66, Button 66..96
+//   swap-button at y 96..126 (overruns frame.h=120 but that's OK —
+//     the overflow just clips off the bottom).
 //
 // Click coords:
-//   (50, 22)  → item 0's bump button (y 15..30)
-//   (50, 52)  → item 1's bump button (y 45..60)
-//   (50, 90)  → swap button
+//   (50,  30) → item 0's bump button (y 18..48)
+//   (50,  80) → item 1's bump button (y 66..96)
+//   (50, 110) → swap button (y 96..126)
 
 main() -> int
     val app = Component(controller)
@@ -80,17 +84,17 @@ main() -> int
     layout(node, Rect(0, 0, 200, 120))
     render(node)                                // publish [1, 2]
 
-    dispatch(node, InputState(50, 22, true))    // bump item 0
+    dispatch(node, InputState(50, 30, true))    // bump item 0
     rerender(node)
     layout(node, Rect(0, 0, 200, 120))
     render(node)                                // publish [11, 2]
 
-    dispatch(node, InputState(50, 52, true))    // bump item 1
+    dispatch(node, InputState(50, 80, true))    // bump item 1
     rerender(node)
     layout(node, Rect(0, 0, 200, 120))
     render(node)                                // publish [11, 12]
 
-    dispatch(node, InputState(50, 90, true))    // swap
+    dispatch(node, InputState(50, 110, true))   // swap
     rerender(node)
     layout(node, Rect(0, 0, 200, 120))
     render(node)                                // publish [12, 11]

@@ -29,7 +29,7 @@ counter(f: Fiber) -> View
     val kids = (new [2]View)[:]
     kids[0] = Text(s"$n")
     kids[1] = Button("++", on_double_inc)
-    Stack(kids)
+    Stack(0, kids)
 
 main() -> int
     val app = Component(counter)
@@ -38,9 +38,9 @@ main() -> int
     layout(node, Rect(0, 0, 200, 80))
     render(node)                                  // host_publish(0)
 
-    dispatch(node, InputState(50, 60, true))      // hits button at y 40..80
+    dispatch(node, InputState(50, 30, true))      // hits button at y 18..48
     rerender(node)                                // host_publish(2)
 
-    dispatch(node, InputState(50, 60, true))
+    dispatch(node, InputState(50, 30, true))
     rerender(node)                                // host_publish(4)
     0

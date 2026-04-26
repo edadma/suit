@@ -46,13 +46,15 @@ fancy_counter(f: Fiber) -> View
     kids[0] = Text(s"$n - $on")
     kids[1] = Button("+", on_inc)
     kids[2] = Button("T", on_toggle)
-    Stack(kids)
+    Stack(0, kids)
 
 // Driver: a single fancy_counter, click +, +, T, +.
-// Layout: 200×120, single child Stack with 3 children → 40 each.
-//   Text   y= 0..40
-//   "+"    y=40..80
-//   "T"    y=80..120
+// With measured-height layout the inner Stack(0, [Text, "+", "T"])
+// places children at their natural heights:
+//   Text   y= 0..18  (h=LINE_H)
+//   "+"    y=18..48  (h=LINE_H + 2*BTN_PAD_Y)
+//   "T"    y=48..78
+// The remaining 200×42 below row "T" stays unused (no flex Spacer).
 // Effect fires on mount (n=0,on=false), then once per state-change
 // render (deps differ each time). 5 effect log lines total.
 
@@ -63,22 +65,22 @@ main() -> int
     layout(node, Rect(0, 0, 200, 120))
     render(node)
 
-    dispatch(node, InputState(50, 60, true))     // +
+    dispatch(node, InputState(50, 30, true))     // +
     rerender(node)
     layout(node, Rect(0, 0, 200, 120))
     render(node)
 
-    dispatch(node, InputState(50, 60, true))     // +
+    dispatch(node, InputState(50, 30, true))     // +
     rerender(node)
     layout(node, Rect(0, 0, 200, 120))
     render(node)
 
-    dispatch(node, InputState(50, 100, true))    // toggle
+    dispatch(node, InputState(50, 60, true))     // toggle
     rerender(node)
     layout(node, Rect(0, 0, 200, 120))
     render(node)
 
-    dispatch(node, InputState(50, 60, true))     // +
+    dispatch(node, InputState(50, 30, true))     // +
     rerender(node)
     layout(node, Rect(0, 0, 200, 120))
     render(node)

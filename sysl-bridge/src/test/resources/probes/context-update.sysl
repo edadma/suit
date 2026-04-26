@@ -5,8 +5,9 @@
 // (now producing a new ContextProvider value), reconcile updates the
 // ContextProviderState's value field, and the consumer sees fresh.
 //
-// Layout: 200×80 single Stack of 1 child (Component(controller)).
-// The button hits at y 60. After mount:
+// Layout: 200×80. Inner Stack(0, [Component(consumer), Button "+"])
+// — consumer renders Text (h=18), Button (h=30). Layout: Text 0..18,
+// Button 18..48. The button hits at y=30. After mount:
 //   render 0: theme=10, consumer publishes 10
 // After click+rerender:
 //   render 1: theme=11, consumer publishes 11
@@ -39,7 +40,7 @@ controller(f: Fiber) -> View
     val inner_kids = (new [2]View)[:]
     inner_kids[0] = Component(consumer)
     inner_kids[1] = Button("+", on_inc)
-    ContextProvider(KEY_THEME, IntCell(n), Stack(inner_kids))
+    ContextProvider(KEY_THEME, IntCell(n), Stack(0, inner_kids))
 
 main() -> int
     val app = Component(controller)
@@ -48,12 +49,12 @@ main() -> int
     layout(node, Rect(0, 0, 200, 80))
     render(node)                               // theme=10 → publish 10
 
-    dispatch(node, InputState(50, 60, true))   // click +
+    dispatch(node, InputState(50, 30, true))   // click +
     rerender(node)
     layout(node, Rect(0, 0, 200, 80))
     render(node)                               // theme=11 → publish 11
 
-    dispatch(node, InputState(50, 60, true))
+    dispatch(node, InputState(50, 30, true))
     rerender(node)
     layout(node, Rect(0, 0, 200, 80))
     render(node)                               // theme=12 → publish 12

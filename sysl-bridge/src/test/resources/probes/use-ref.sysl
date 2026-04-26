@@ -33,7 +33,7 @@ counter(f: Fiber) -> View
     val kids = (new [2]View)[:]
     kids[0] = Text(s"$n")
     kids[1] = Button("click", on_click)
-    Stack(kids)
+    Stack(0, kids)
 
 main() -> int
     val app = Component(counter)
@@ -44,7 +44,7 @@ main() -> int
 
     var i = 0
     while i < 6 do
-        dispatch(node, InputState(50, 60, true))
+        dispatch(node, InputState(50, 30, true))
         rerender(node)
         i = i + 1
     0

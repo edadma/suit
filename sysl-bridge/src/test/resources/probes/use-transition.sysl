@@ -28,7 +28,7 @@ animator(f: Fiber) -> View
     val kids = (new [2]View)[:]
     kids[0] = Text(s"$current")
     kids[1] = Button("go", on_click)
-    Stack(kids)
+    Stack(0, kids)
 
 main() -> int
     val node = mount(Component(animator))

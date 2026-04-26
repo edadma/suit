@@ -1,0 +1,37 @@
+// Phase ζ1 probe — exercises every new layout primitive (Sized,
+// Center, Spacer, Box, Image) plus the Checkbox leaf, all driven
+// through suit.engine. Mirrors the engine-full.sysl fixture but goes
+// through the canonical engine module instead of duplicating the
+// pipeline locally.
+//
+// Tree (Stack at 200×200, gap=0):
+//   Sized(Text "title", 200, 24)         row 0 y= 0..24
+//   Center(Image "icon.png" 32x32)       row 1 y=24..56
+//   Box(Checkbox "agree" checked=true,   row 2 y=56..82
+//       color=violet,
+//       padding=4 each side)
+//
+// Expected draw-command sequence (suit/engine.sysl renders):
+//   text   0,14 'title'                    Text inside Sized
+//   image 84,24 32x32 'icon.png'           Center → Image, x=(200-32)/2=84
+//   fill   0,56 200x26 rgba(80,120,200)    Box background, full row
+//   fill   4,60 18x18 rgba(60,60,80)       Checkbox bg
+//   fill   8,64 10x10 rgba(220,220,240)    Checkbox check (checked)
+//   text  28,74 'agree'                    Checkbox label
+
+import suit.{View, Text, Spacer, Image, Checkbox, Sized, Center, Box, Stack}
+import suit.{Color, Insets, Rect}
+import suit.{mount, layout, render}
+
+main() -> int
+    noop_toggle = (b: bool) -> 0
+    val kids = (new [3]View)[:]
+    kids[0] = Sized(Text("title"), 200, 24)
+    kids[1] = Center(Image("icon.png", 32, 32))
+    kids[2] = Box(Checkbox("agree", true, noop_toggle),
+                  Color(80, 120, 200, 255),
+                  Insets(4, 4, 4, 4))
+    val node = mount(Stack(0, kids))
+    layout(node, Rect(0, 0, 200, 200))
+    render(node)
+    0

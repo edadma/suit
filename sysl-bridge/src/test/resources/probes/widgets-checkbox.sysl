@@ -1,0 +1,30 @@
+// Phase ζ1 probe — Checkbox dispatch via suit.engine. The on_toggle
+// closure mutates a sysl-side `last_toggle` slot and publishes it
+// each time. Driver clicks the checkbox three times; each click
+// flips its captured `checked` value (parent doesn't re-render the
+// View so the closure always sees `checked=false` baseline →
+// on_toggle(true) every time). The test asserts host saw 3 toggles
+// all with value=true.
+//
+// Layout: 200×40 single Checkbox. With measured layout, the Checkbox
+// node fills its frame (200×40 in this trivial Stack-of-1 case).
+// Hit-test contains() the entire row, so a click at (10, 10) hits.
+
+import suit.{View, Checkbox, Stack, Rect, InputState}
+import suit.{mount, layout, dispatch}
+
+extern host_publish(b: int) -> int
+
+main() -> int
+    on_toggle = (next: bool) ->
+        host_publish(if next then 1 else 0)
+        0
+    val kids = (new [1]View)[:]
+    kids[0] = Checkbox("agree", false, on_toggle)
+    val node = mount(Stack(0, kids))
+    layout(node, Rect(0, 0, 200, 40))
+
+    dispatch(node, InputState(10, 10, true))
+    dispatch(node, InputState(10, 10, true))
+    dispatch(node, InputState(10, 10, true))
+    0

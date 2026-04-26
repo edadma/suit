@@ -1,0 +1,45 @@
+// Phase ζ1 probe — flex distribution via Spacer through suit.engine.
+// Stack(gap=4, [Text, Spacer(1), Button]) inside a 200×100 frame;
+// Spacer absorbs the leftover space so Button pins to the bottom.
+//
+// Layout math (matches engine-flex.sysl, but routed through the suit
+// module's measure+flex layout):
+//   Text natural h=18, Button "go" natural h=30 (LINE_H + 2*BTN_PAD_Y).
+//   fixed_total = 48; gaps = 2 * 4 = 8; flex_pool = 100 - 48 - 8 = 44.
+//   Spacer claims the whole pool: h=44.
+//
+// Concrete bounds (each child's own bounds rect is published via
+// host_emit so the test can assert positions without going through
+// host_draw_text / host_fill_rect indirection):
+//   Text  at (0,  0, 200, 18)
+//   Spacer at (0, 22, 200, 44)   y = 18 + 4
+//   Button at (0, 70, 200, 30)   y = 22 + 44 + 4
+
+import suit.{View, Text, Button, Spacer, Stack, Rect, Node}
+import suit.{TextNode, SpacerNode, ButtonNode, StackNode}
+import suit.{mount, layout}
+
+extern host_emit(name: string, x: int, y: int, w: int, h: int) -> int
+
+emit(label: string, n: Node) -> int
+    n match
+        TextNode(s)   -> host_emit(label, s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h)
+        SpacerNode(s) -> host_emit(label, s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h)
+        ButtonNode(s) -> host_emit(label, s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h)
+        _ -> 0
+
+main() -> int
+    noop = () -> 0
+    val kids = (new [3]View)[:]
+    kids[0] = Text("hi")
+    kids[1] = Spacer(1)
+    kids[2] = Button("go", noop)
+    val node = mount(Stack(4, kids))
+    layout(node, Rect(0, 0, 200, 100))
+    node match
+        StackNode(s) ->
+            emit("text", s.children[0])
+            emit("spacer", s.children[1])
+            emit("button", s.children[2])
+            0
+        _ -> 0
