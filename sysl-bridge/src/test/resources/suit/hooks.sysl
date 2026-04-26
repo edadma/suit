@@ -11,6 +11,13 @@
 
 module suit
 
+// Extern re-declared here (canonical home is suit/engine.sysl) so
+// use_transition can read the monotonic clock without the cross-file
+// analyzer having to see engine.sysl first. Multiple `extern` decls
+// of the same symbol are linker-compatible — they resolve to the
+// single host-side registration.
+extern host_now_ms() -> int
+
 struct EffectState
     deps_hash: int
 
@@ -21,6 +28,17 @@ struct EffectState
 struct IntRef
     current: int
 
+// use_transition state. start_value + start_ms + duration_ms describe
+// the active animation; target_value is checked each call so changes
+// kick off a fresh segment. Eased value is recomputed from these
+// fields on every render rather than stored — that way every frame's
+// rerender naturally advances the animation against host_now_ms.
+struct TransitionState
+    start_value: int
+    target_value: int
+    start_ms: int
+    duration_ms: int
+
 enum HookValue
     Empty
     IntCell(v: int)
@@ -29,6 +47,7 @@ enum HookValue
     EffectCell(s: EffectState)
     IdCell(id: string)
     RefIntCell(r: IntRef)
+    TransitionCell(t: TransitionState)
 
 struct Fiber
     cells: []HookValue
@@ -173,3 +192,42 @@ use_id(f: Fiber) -> string
             f.cells[i] = IdCell(id)
             id
         _ -> "?"
+
+// Linear interpolation, clamped at both ends. duration_ms must be > 0;
+// callers pass at least 1 to avoid division-by-zero.
+ease_linear(start: int, target: int, start_ms: int, now_ms: int, duration_ms: int) -> int
+    val elapsed = now_ms - start_ms
+    if elapsed >= duration_ms then target
+    else if elapsed <= 0 then start
+    else start + (target - start) * elapsed / duration_ms
+
+// use_transition — eased animation hook. Returns the current eased
+// value of an animation toward `target` over `duration_ms`. When the
+// caller passes a different target than the cell's stored target, a
+// fresh segment is started from the currently-eased value.
+//
+// No separate tick function is needed: run_loop rerenders every
+// frame, so each render call recomputes the eased value against
+// host_now_ms. The animation "advances" implicitly via the rerender
+// cycle. A future dirty-bit scheduler will need a tick_animations
+// helper here to mark transitioning Components dirty.
+use_transition(f: Fiber, target: int, duration_ms: int) -> int
+    val i = f.hook_index
+    f.hook_index = i + 1
+    val cell = f.cells[i]
+    val now = host_now_ms()
+    cell match
+        TransitionCell(s) ->
+            if s.target_value != target then
+                val current = ease_linear(s.start_value, s.target_value, s.start_ms, now, s.duration_ms)
+                s.start_value = current
+                s.target_value = target
+                s.start_ms = now
+                s.duration_ms = duration_ms
+                current
+            else
+                ease_linear(s.start_value, s.target_value, s.start_ms, now, s.duration_ms)
+        Empty ->
+            f.cells[i] = TransitionCell(TransitionState(target, target, now, duration_ms))
+            target
+        _ -> target

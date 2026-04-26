@@ -628,6 +628,67 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       presents shouldBe 2L            // 2 full frames before QUIT
     }
 
+    // Phase ε2 — use_transition advances eased value as run_loop
+    // ticks frames. Stub increments host_now_ms by 100 per present,
+    // so the deterministic timeline is mount@0, frame 0 click@0,
+    // rerenders at 100/200/300/400ms.
+    "use_transition advances toward target across rendered frames" in {
+      val publishes = mutable.ArrayBuffer.empty[Long]
+      val events = scala.collection.mutable.Queue[(Long, Long, Long)](
+        (2L, 50L, 60L),  // PRESS — frame 0
+        (0L, 0L, 0L),    // NONE — end frame 0 drain
+        (0L, 0L, 0L),    // frame 1 NONE
+        (0L, 0L, 0L),    // frame 2 NONE
+        (0L, 0L, 0L),    // frame 3 NONE
+        (0L, 0L, 0L),    // frame 4 NONE
+        (1L, 0L, 0L),    // frame 5 QUIT
+      )
+      var lastEvent: (Long, Long, Long) = (0L, 0L, 0L)
+      var nowMs: Long = 0L
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_publish", {
+        case List(n) => publishes += SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"host_publish: $other")
+      })
+      host.register("host_poll_event", {
+        case Nil =>
+          val ev = if events.nonEmpty then events.dequeue() else (0L, 0L, 0L)
+          lastEvent = ev
+          SyslHost.long(ev._1)
+        case other => fail(s"host_poll_event: $other")
+      })
+      host.register("host_event_x", {
+        case Nil   => SyslHost.long(lastEvent._2)
+        case other => fail(s"host_event_x: $other")
+      })
+      host.register("host_event_y", {
+        case Nil   => SyslHost.long(lastEvent._3)
+        case other => fail(s"host_event_y: $other")
+      })
+      host.register("host_now_ms", {
+        case Nil   => SyslHost.long(nowMs)
+        case other => fail(s"host_now_ms: $other")
+      })
+      host.register("host_present_frame", {
+        case Nil   => nowMs += 100L; SyslHost.unit
+        case other => fail(s"host_present_frame: $other")
+      })
+      host.register("host_sleep_until_next_frame", {
+        case Nil   => SyslHost.unit
+        case other => fail(s"host_sleep_until_next_frame: $other")
+      })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "probes/use-transition.sysl",
+      )))
+
+      publishes.toList shouldBe List(0L, 0L, 25L, 50L, 75L, 100L)
+    }
+
     "Keyed children preserve state across reorder" in {
       val publishes = mutable.ArrayBuffer.empty[Long]
 

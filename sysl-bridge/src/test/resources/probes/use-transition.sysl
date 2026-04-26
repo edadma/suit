@@ -1,0 +1,36 @@
+// use_transition probe — a Component animates an int from 0 to 100
+// over 400ms when its target state changes. Driver advances time
+// deterministically: host_now_ms ticks +100 per host_present_frame,
+// so each rendered frame samples the eased value at progressively
+// later moments.
+//
+// Mount publishes 0 (target=0, no animation).
+// Frame 0 dispatches the click that sets target=100. Rerender at
+// now=0 detects the new target, starts a fresh segment from 0, and
+// publishes 0 again (no time has passed since the segment began).
+// Frames 1..4 sample the eased value at now=100, 200, 300, 400ms
+// → 25, 50, 75, 100 (last clamps at target since elapsed == duration).
+// Frame 5's drain returns QUIT and exits.
+
+import suit.{View, Text, Button, Stack, Component, Fiber, Rect}
+import suit.{mount, run_loop}
+import suit.{use_state_int, use_transition}
+
+extern host_publish(n: int) -> int
+
+animator(f: Fiber) -> View
+    val target, set_target = use_state_int(f, 0)
+    val current = use_transition(f, target, 400)
+    host_publish(current)
+    on_click = () ->
+        set_target(100)
+        0
+    val kids = (new [2]View)[:]
+    kids[0] = Text(s"$current")
+    kids[1] = Button("go", on_click)
+    Stack(kids)
+
+main() -> int
+    val node = mount(Component(animator))
+    run_loop(node, Rect(0, 0, 200, 80), 10)
+    0
