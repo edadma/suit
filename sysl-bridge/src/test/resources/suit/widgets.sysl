@@ -51,13 +51,7 @@ dropdown(open: bool, ax: int, ay: int, width: int, items: []string, on_pick: (in
                 0
             rows[i] = Button(items[i], cb)
             i = i + 1
-        // LINE_H + 2 * BTN_PAD_Y — the natural Button height. Using
-        // the literal because const visibility across files in the
-        // same multi-file module isn't reliable in the current sysl
-        // analyzer (engine.sysl's const LINE_H reads as undefined
-        // when looked up from this file). If/when that lifts, the
-        // expression below should be `LINE_H + BTN_PAD_Y * 2`.
-        val row_h = 30
+        val row_h = LINE_H + BTN_PAD_Y * 2
         Portal(AbsolutePosition(Stack(0, rows), ax, ay, width, n * row_h))
 
 // tabs — a tab bar (HStack of Buttons) sitting above a content panel
