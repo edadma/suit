@@ -187,5 +187,9 @@ app(f: Fiber) -> View
 
 main() -> int
     val node = mount(Component(app))
-    run_loop(node, Rect(0, 0, 720, 560), 30)
+    // Big max_frames cap so the loop runs effectively forever in the
+    // SwingHost — exits early when the host pushes EVENT_QUIT (window
+    // close). The headless test still drives a small finite sequence
+    // because it injects QUIT after a few frames.
+    run_loop(node, Rect(0, 0, 720, 560), 1000000000)
     0

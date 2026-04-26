@@ -1215,6 +1215,56 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       )
     }
 
+    // Run the demo for three idle frames (NONE,NONE,NONE,QUIT) and
+    // print every host_record line so the tape across mount + 3
+    // rerenders is visible. Useful as a "what does the demo do" sanity
+    // check while the SwingHost rewire (phase ι) is still pending.
+    "θ — demo: print tape across mount + 3 idle rerenders" in {
+      val records = mutable.ArrayBuffer.empty[String]
+      val events = scala.collection.mutable.Queue[(Long, Long, Long)](
+        (0L, 0L, 0L),  // NONE — end frame 0 drain (rerender fires)
+        (0L, 0L, 0L),  // NONE — end frame 1 drain
+        (0L, 0L, 0L),  // NONE — end frame 2 drain
+        (1L, 0L, 0L),  // QUIT
+      )
+      var lastEvent: (Long, Long, Long) = (0L, 0L, 0L)
+      var frameTick = 0L
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_draw_image", { case _ => SyslHost.unit })
+      host.register("host_record", {
+        case List(s) => records += SyslHost.asString(s); SyslHost.unit
+        case other   => fail(s"host_record: $other")
+      })
+      host.register("host_poll_event", {
+        case Nil =>
+          val ev = if events.nonEmpty then events.dequeue() else (0L, 0L, 0L)
+          lastEvent = ev
+          SyslHost.long(ev._1)
+        case other => fail(s"host_poll_event: $other")
+      })
+      host.register("host_event_x",    { case Nil => SyslHost.long(lastEvent._2);  case other => fail(s"$other") })
+      host.register("host_event_y",    { case Nil => SyslHost.long(lastEvent._3);  case other => fail(s"$other") })
+      host.register("host_event_key",  { case Nil => SyslHost.long(0L);            case other => fail(s"$other") })
+      host.register("host_event_text", { case Nil => SyslHost.string("");           case other => fail(s"$other") })
+      host.register("host_now_ms",     { case Nil => SyslHost.long(frameTick);    case other => fail(s"$other") })
+      host.register("host_present_frame",          { case Nil => frameTick += 100L; SyslHost.unit; case other => fail(s"$other") })
+      host.register("host_sleep_until_next_frame", { case Nil => SyslHost.unit; case other => fail(s"$other") })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "suit/widgets.sysl",
+        "probes/demo.sysl",
+      )))
+
+      info(s"--- demo tape (${records.size} records) ---")
+      records.zipWithIndex.foreach { case (r, i) => info(f"  $i%3d: $r") }
+      info("--- end demo tape ---")
+    }
+
     "Keyed children preserve state across reorder" in {
       val publishes = mutable.ArrayBuffer.empty[Long]
 
