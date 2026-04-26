@@ -1,0 +1,26 @@
+// Phase κ3 probe — Button hover state through run_loop. The host
+// scripts the event sequence:
+//   MOVE   at (50, 15)  → cursor inside bounds, hover=true,  render uses btn_hover_bg
+//   MOVE   at (200, 200) → cursor outside,        hover=false, render uses btn_bg
+//   QUIT
+//
+// Two frames are rendered (one per non-NONE event consumed). Each
+// frame's render emits one host_fill_round_rect for the Button bg;
+// the test captures all calls and asserts hover toggles between
+// btn_hover_bg (rgba(55,55,75,255)) and btn_bg (rgba(40,40,55,255)).
+
+import suit.{View, Button, Stack, Component, Fiber, Rect}
+import suit.{mount, run_loop}
+import suit.{set_theme, default_dark_theme}
+
+controller(f: Fiber) -> View
+    on_click = () -> 0
+    val kids = (new [1]View)[:]
+    kids[0] = Button("Hover me", on_click)
+    Stack(0, kids)
+
+main() -> int
+    set_theme(default_dark_theme())
+    val node = mount(Component(controller))
+    run_loop(node, Rect(0, 0, 100, 30), 20)
+    0

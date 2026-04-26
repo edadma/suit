@@ -1210,6 +1210,64 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       publishes.toList shouldBe List(1L, 0L, 2L)
     }
 
+    // Phase κ3 — Button hover toggling through PHASE_HOVER. An
+    // unpressed MOUSE_MOVE inside the Button bounds sets s.hover=true;
+    // the next frame's render emits btn_hover_bg (rgba(55,55,75,255)).
+    // A second MOVE outside flips it back; render uses btn_bg
+    // (rgba(40,40,55,255)). Captures the bg colour from each
+    // host_fill_round_rect call (the only rounded fill emitted —
+    // theme.bg pre-clear uses host_fill_rect).
+    "κ3 — Button hover toggles btn_hover_bg vs btn_bg via PHASE_HOVER" in {
+      val fills = mutable.ArrayBuffer.empty[String]
+      val events = scala.collection.mutable.Queue[(Long, Long, Long)](
+        (4L,  50L,  15L),   // MOVE inside  — frame 0 renders hover bg
+        (0L,   0L,   0L),
+        (4L, 200L, 200L),   // MOVE outside — frame 1 renders default bg
+        (0L,   0L,   0L),
+        (1L,   0L,   0L),   // QUIT
+      )
+      var lastEvent: (Long, Long, Long) = (0L, 0L, 0L)
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_fill_rect", { case _ => SyslHost.unit })  // bg pre-clear
+      host.register("host_stroke_rect", { case _ => SyslHost.unit })
+      host.register("host_fill_round_rect", {
+        case List(_, _, _, _, _, r, g, b, _) =>
+          fills += s"rgba(${SyslHost.asLong(r)},${SyslHost.asLong(g)},${SyslHost.asLong(b)})"
+          SyslHost.unit
+        case other => fail(s"host_fill_round_rect: $other")
+      })
+      host.register("host_stroke_round_rect", { case _ => SyslHost.unit })
+      host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_poll_event", {
+        case Nil =>
+          val ev = if events.nonEmpty then events.dequeue() else (0L, 0L, 0L)
+          lastEvent = ev
+          SyslHost.long(ev._1)
+        case other => fail(s"host_poll_event: $other")
+      })
+      host.register("host_event_x",    { case Nil => SyslHost.long(lastEvent._2);  case other => fail(s"$other") })
+      host.register("host_event_y",    { case Nil => SyslHost.long(lastEvent._3);  case other => fail(s"$other") })
+      host.register("host_event_key",  { case Nil => SyslHost.long(0L);            case other => fail(s"$other") })
+      host.register("host_event_text", { case Nil => SyslHost.string("");           case other => fail(s"$other") })
+      host.register("host_now_ms",     { case Nil => SyslHost.long(0L);            case other => fail(s"$other") })
+      host.register("host_present_frame",          { case Nil => SyslHost.unit; case other => fail(s"$other") })
+      host.register("host_sleep_until_next_frame", { case Nil => SyslHost.unit; case other => fail(s"$other") })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "probes/widgets-hover.sysl",
+      )))
+
+      // Two frames: frame 0 after MOVE inside (hover=true → btn_hover_bg);
+      // frame 1 after MOVE outside (hover=false → btn_bg).
+      fills.toList shouldBe List(
+        "rgba(55,55,75)",
+        "rgba(40,40,55)",
+      )
+    }
+
     // Phase θ — translates the salient bits of Demo.scala into a
     // single sysl driver and runs it through suit.engine end-to-end.
     // Each Component records its state via host_record on every

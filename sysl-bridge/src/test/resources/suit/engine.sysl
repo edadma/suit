@@ -55,6 +55,7 @@ const PHASE_PRESS: int = 1
 const PHASE_DRAG:  int = 2
 const PHASE_REL:   int = 3
 const PHASE_KEY:   int = 4
+const PHASE_HOVER: int = 5
 
 // A few keycodes Input cares about. The host can pass anything; the
 // Input arm only special-cases backspace and ignores any non-printable
@@ -322,6 +323,7 @@ struct TextNodeState
 struct ButtonNodeState
     view: View
     bounds: Rect
+    hover: bool
 
 struct SpacerNodeState
     view: View
@@ -334,20 +336,24 @@ struct ImageNodeState
 struct CheckboxNodeState
     view: View
     bounds: Rect
+    hover: bool
 
 struct RadioNodeState
     view: View
     bounds: Rect
+    hover: bool
 
 struct SliderNodeState
     view: View
     bounds: Rect
     dragging: bool
+    hover: bool
 
 struct InputNodeState
     view: View
     bounds: Rect
     focus_id: int
+    hover: bool
 
 struct SizedNodeState
     view: View
@@ -478,13 +484,13 @@ use_context(f: Fiber, key: int) -> HookValue
 mount(v: View) -> Node
     v match
         Text(_)           -> TextNode(TextNodeState(v, Rect(0, 0, 0, 0)))
-        Button(_, _)      -> ButtonNode(ButtonNodeState(v, Rect(0, 0, 0, 0)))
+        Button(_, _)      -> ButtonNode(ButtonNodeState(v, Rect(0, 0, 0, 0), false))
         Spacer(_)         -> SpacerNode(SpacerNodeState(v, Rect(0, 0, 0, 0)))
         Image(_, _, _)    -> ImageNode(ImageNodeState(v, Rect(0, 0, 0, 0)))
-        Checkbox(_, _, _) -> CheckboxNode(CheckboxNodeState(v, Rect(0, 0, 0, 0)))
-        Radio(_, _, _)        -> RadioNode(RadioNodeState(v, Rect(0, 0, 0, 0)))
-        Slider(_, _, _, _, _) -> SliderNode(SliderNodeState(v, Rect(0, 0, 0, 0), false))
-        Input(_, _, _, _)     -> InputNode(InputNodeState(v, Rect(0, 0, 0, 0), new_focus_id()))
+        Checkbox(_, _, _) -> CheckboxNode(CheckboxNodeState(v, Rect(0, 0, 0, 0), false))
+        Radio(_, _, _)        -> RadioNode(RadioNodeState(v, Rect(0, 0, 0, 0), false))
+        Slider(_, _, _, _, _) -> SliderNode(SliderNodeState(v, Rect(0, 0, 0, 0), false, false))
+        Input(_, _, _, _)     -> InputNode(InputNodeState(v, Rect(0, 0, 0, 0), new_focus_id(), false))
         Sized(c, _, _)    -> SizedNode(SizedNodeState(v, Rect(0, 0, 0, 0), mount(c)))
         Center(c)         -> CenterNode(CenterNodeState(v, Rect(0, 0, 0, 0), mount(c)))
         Box(c, _, _)      -> BoxNode(BoxNodeState(v, Rect(0, 0, 0, 0), mount(c)))
@@ -756,7 +762,10 @@ contains(b: Rect, x: int, y: int) -> bool
 dispatch(n: Node, input: InputState) -> int
     n match
         ButtonNode(s) ->
-            if current_phase == PHASE_PRESS && input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
+            if current_phase == PHASE_HOVER then
+                s.hover = contains(s.bounds, input.mouse_x, input.mouse_y)
+                0
+            else if current_phase == PHASE_PRESS && input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
                 s.view match
                     Button(_, on_click) ->
                         on_click()
@@ -764,7 +773,10 @@ dispatch(n: Node, input: InputState) -> int
                     _ -> 0
             else 0
         CheckboxNode(s) ->
-            if current_phase == PHASE_PRESS && input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
+            if current_phase == PHASE_HOVER then
+                s.hover = contains(s.bounds, input.mouse_x, input.mouse_y)
+                0
+            else if current_phase == PHASE_PRESS && input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
                 s.view match
                     Checkbox(_, checked, on_toggle) ->
                         on_toggle(!checked)
@@ -778,7 +790,10 @@ dispatch(n: Node, input: InputState) -> int
             // re-firing on_select. Group exclusivity is the parent's job:
             // the controller flips one Radio's `selected` to true and
             // others to false on each emission.
-            if current_phase == PHASE_PRESS && input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
+            if current_phase == PHASE_HOVER then
+                s.hover = contains(s.bounds, input.mouse_x, input.mouse_y)
+                0
+            else if current_phase == PHASE_PRESS && input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
                 s.view match
                     Radio(_, selected, on_select) ->
                         if !selected then on_select() else 0
@@ -794,7 +809,12 @@ dispatch(n: Node, input: InputState) -> int
             // the edit if we're the focused Input — append the
             // printable text payload, drop the last byte on
             // BACKSPACE — and emit the new value via on_change.
-            if current_phase == PHASE_PRESS then
+            // PHASE_HOVER updates the hover bit so render can pick the
+            // input_hover_border colour next frame.
+            if current_phase == PHASE_HOVER then
+                s.hover = contains(s.bounds, input.mouse_x, input.mouse_y)
+                0
+            else if current_phase == PHASE_PRESS then
                 if contains(s.bounds, input.mouse_x, input.mouse_y) then
                     set_focus(s.focus_id)
                     0
@@ -815,12 +835,12 @@ dispatch(n: Node, input: InputState) -> int
                     _ -> 0
             else 0
         SliderNode(s) ->
-            // Three-phase handling. PRESS arms the dragging latch and
-            // emits the projected value at the click point. DRAG (a
-            // MOUSE_MOVE while still pressed) keeps emitting whenever
-            // the cursor moves — without a contains() check, since the
-            // user may drag past the bounds and we still track. REL
-            // clears the latch.
+            // Four-phase handling. HOVER updates the hover bit. PRESS
+            // arms the dragging latch and emits the projected value at
+            // the click point. DRAG (a MOUSE_MOVE while still pressed)
+            // keeps emitting whenever the cursor moves — without a
+            // contains() check, since the user may drag past the bounds
+            // and we still track. REL clears the latch.
             //
             // The projection math (track_width = bounds.w - SLIDER_THUMB;
             // origin = bounds.x + SLIDER_THUMB/2) matches render's thumb
@@ -830,7 +850,10 @@ dispatch(n: Node, input: InputState) -> int
                 Slider(value, vmin, vmax, on_change, _) ->
                     val range = vmax - vmin
                     val tw    = s.bounds.w - SLIDER_THUMB
-                    if current_phase == PHASE_PRESS && contains(s.bounds, input.mouse_x, input.mouse_y) then
+                    if current_phase == PHASE_HOVER then
+                        s.hover = contains(s.bounds, input.mouse_x, input.mouse_y)
+                        0
+                    else if current_phase == PHASE_PRESS && contains(s.bounds, input.mouse_x, input.mouse_y) then
                         s.dragging = true
                         if range > 0 && tw > 0 then
                             val tx0  = s.bounds.x + SLIDER_THUMB / 2
@@ -1146,7 +1169,7 @@ render(n: Node) -> int
         ButtonNode(s) ->
             s.view match
                 Button(l, _) ->
-                    val bg = t.btn_bg
+                    val bg = if s.hover then t.btn_hover_bg else t.btn_bg
                     val br = t.border
                     host_fill_round_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, t.btn_radius, bg.r, bg.g, bg.b, 255)
                     host_stroke_round_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, t.btn_radius, br.r, br.g, br.b, 255)
@@ -1165,7 +1188,7 @@ render(n: Node) -> int
                 Checkbox(l, checked, _) ->
                     val box  = t.line_height
                     val bg   = if checked then t.accent else t.input_bg
-                    val br   = t.input_border
+                    val br   = if s.hover then t.input_hover_border else t.input_border
                     host_fill_round_rect(s.bounds.x, s.bounds.y, box, box, t.check_radius, bg.r, bg.g, bg.b, 255)
                     host_stroke_round_rect(s.bounds.x, s.bounds.y, box, box, t.check_radius, br.r, br.g, br.b, 255)
                     if checked then
@@ -1185,7 +1208,7 @@ render(n: Node) -> int
                     val box = t.line_height
                     val r   = box / 2
                     val bg  = if selected then t.accent else t.input_bg
-                    val br  = t.input_border
+                    val br  = if s.hover then t.input_hover_border else t.input_border
                     host_fill_round_rect(s.bounds.x, s.bounds.y, box, box, r, bg.r, bg.g, bg.b, 255)
                     host_stroke_round_rect(s.bounds.x, s.bounds.y, box, box, r, br.r, br.g, br.b, 255)
                     if selected then
@@ -1205,7 +1228,8 @@ render(n: Node) -> int
                 Input(value, placeholder, _, _) ->
                     val is_focused = focused_id == s.focus_id
                     val bg = if is_focused then t.input_focus_bg else t.input_bg
-                    val br = if is_focused then t.focus_border   else t.input_border
+                    val border_else = if s.hover then t.input_hover_border else t.input_border
+                    val br = if is_focused then t.focus_border else border_else
                     host_fill_round_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, t.input_radius, bg.r, bg.g, bg.b, 255)
                     host_stroke_round_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, t.input_radius, br.r, br.g, br.b, 255)
                     val tx = s.bounds.x + t.input_padding_x
@@ -1237,7 +1261,8 @@ render(n: Node) -> int
                     if fill_w > 0 then
                         val ac = t.accent
                         host_fill_round_rect(s.bounds.x, track_y, fill_w, SLIDER_TRACK, SLIDER_TRACK / 2, ac.r, ac.g, ac.b, 255)
-                    val thbg = t.btn_bg
+                    val thbg_base = if s.hover then t.btn_hover_bg else t.btn_bg
+                    val thbg = if s.dragging then t.btn_pressed_bg else thbg_base
                     val thbr = t.border
                     host_fill_round_rect(tx, s.bounds.y, SLIDER_THUMB, SLIDER_H, t.btn_radius, thbg.r, thbg.g, thbg.b, 255)
                     host_stroke_round_rect(tx, s.bounds.y, SLIDER_THUMB, SLIDER_H, t.btn_radius, thbr.r, thbr.g, thbr.b, 255)
@@ -1345,7 +1370,14 @@ run_loop(node: Node, frame: Rect, max_frames: int) -> int
                     dispatch(node, input)
                     set_phase(PHASE_PRESS)
                     0
-                else 0
+                else
+                    // Un-pressed move: walk the tree so each interactive
+                    // node updates its hover bit. Render then picks up
+                    // the new hover state on this frame's render pass.
+                    set_phase(PHASE_HOVER)
+                    dispatch(node, input)
+                    set_phase(PHASE_PRESS)
+                    0
             else if tag == EVENT_KEY_DOWN then
                 set_key_event(host_event_key(), host_event_text())
                 set_phase(PHASE_KEY)
