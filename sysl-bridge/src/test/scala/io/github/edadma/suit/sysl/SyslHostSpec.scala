@@ -469,6 +469,35 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
     // rerender → render across three frames; the Text content is the
     // hook value, so seeing "0", "1", "2" in the command stream proves
     // the full hook + reconcile + dispatch loop closes.
+    // useState(int) + useState(bool) + useId + useEffect in one fiber.
+    // Effect fires on mount (deps_hash=0) and on each state-change render
+    // (4 state changes → 4 more); useId returns the same stable id every
+    // render, so all 5 log lines share the prefix `effect[id-1-3]:`.
+    "exercises useState(int)+useState(bool)+useId+useEffect" in {
+      val records = mutable.ArrayBuffer.empty[String]
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_record", {
+        case List(s) => records += SyslHost.asString(s); SyslHost.unit
+        case other   => fail(s"host_record: $other")
+      })
+
+      host.run(host.compileFile("engine-hooks.sysl"))
+
+      // Hook order in fancy_counter: useState(int)=slot 0, useState(bool)=slot 1,
+      // useId=slot 2, useEffect=slot 3. So id = id-{fiber_id=1}-{cell_idx=2}.
+      // sysl's s"$on" prints bool as 0/1 (not "true"/"false") — that's the
+      // language's default str() for bool inside interpolation.
+      records.toList shouldBe List(
+        "effect[id-1-2]: n=0 on=0",   // mount
+        "effect[id-1-2]: n=1 on=0",   // click +
+        "effect[id-1-2]: n=2 on=0",   // click +
+        "effect[id-1-2]: n=2 on=1",   // toggle
+        "effect[id-1-2]: n=3 on=1",   // click +
+      )
+    }
+
     "drives two independent Counter components across six frames" in {
       val texts = mutable.ArrayBuffer.empty[String]
 
