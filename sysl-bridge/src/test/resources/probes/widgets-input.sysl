@@ -1,0 +1,39 @@
+// Phase ζ4 probe — Input + EVENT_KEY_DOWN through run_loop. A
+// controller Component holds the string value via use_state_string
+// and binds it to an Input. Driver scripts:
+//
+//   frame 0: MOUSE_PRESS (10, 10) — inside Input bounds → focus
+//   frame 1: KEY_DOWN text="h"   → emit "h"
+//   frame 2: KEY_DOWN text="i"   → emit "hi"
+//   frame 3: KEY_DOWN key=8 BS   → emit "h"  (drop_last("hi"))
+//   frame 4: KEY_DOWN text="o"   → emit "ho"
+//   frame 5: QUIT
+//
+// Each KEY_DOWN sits in its own frame so the rerender between them
+// captures the fresh value. Without that, two KEY_DOWNs in a single
+// drain would both see the original empty value (closure captured at
+// render time) and emit ["h", "i"] instead of ["h", "hi"].
+//
+// host_publish(s) records the value emitted by on_change, so the
+// expected sequence is ["h", "hi", "h", "ho"].
+
+import suit.{View, Input, Stack, Component, Fiber, Rect}
+import suit.{mount, run_loop}
+import suit.{use_state_string}
+
+extern host_publish(s: string) -> int
+
+controller(f: Fiber) -> View
+    val v, set_v = use_state_string(f, "")
+    on_change = (next: string) ->
+        host_publish(next)
+        set_v(next)
+        0
+    val kids = (new [1]View)[:]
+    kids[0] = Input(v, "type here", on_change, 200)
+    Stack(0, kids)
+
+main() -> int
+    val node = mount(Component(controller))
+    run_loop(node, Rect(0, 0, 200, 26), 30)
+    0

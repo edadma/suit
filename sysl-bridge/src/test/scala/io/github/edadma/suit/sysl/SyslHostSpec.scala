@@ -887,6 +887,62 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       publishes.toList shouldBe List(0L, 50L, 100L)
     }
 
+    // Phase ζ4 — Input + EVENT_KEY_DOWN through run_loop. PRESS
+    // inside the Input claims focus (focused_id == focus_id).
+    // Subsequent KEY_DOWN events fire dispatch with PHASE_KEY; the
+    // focused Input's arm appends `current_text` (printable payload)
+    // or chops the last byte on KEY_BACKSPACE, then emits the new
+    // value via on_change. One KEY_DOWN per frame so the captured
+    // value is fresh on each emission.
+    "ζ4 — Input applies KEY_DOWN edits while focused" in {
+      val publishes = mutable.ArrayBuffer.empty[String]
+      // (tag, x, y, key, text)
+      val events = scala.collection.mutable.Queue[(Long, Long, Long, Long, String)](
+        (2L, 10L, 10L, 0L, ""),    // PRESS (focuses)
+        (0L,  0L,  0L, 0L, ""),    // NONE
+        (5L,  0L,  0L, 0L, "h"),   // KEY_DOWN "h"
+        (0L,  0L,  0L, 0L, ""),
+        (5L,  0L,  0L, 0L, "i"),   // KEY_DOWN "i"
+        (0L,  0L,  0L, 0L, ""),
+        (5L,  0L,  0L, 8L, ""),    // KEY_DOWN BACKSPACE
+        (0L,  0L,  0L, 0L, ""),
+        (5L,  0L,  0L, 0L, "o"),   // KEY_DOWN "o"
+        (0L,  0L,  0L, 0L, ""),
+        (1L,  0L,  0L, 0L, ""),    // QUIT
+      )
+      var lastEvent: (Long, Long, Long, Long, String) = (0L, 0L, 0L, 0L, "")
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_publish", {
+        case List(s) => publishes += SyslHost.asString(s); SyslHost.unit
+        case other   => fail(s"host_publish: $other")
+      })
+      host.register("host_poll_event", {
+        case Nil =>
+          val ev = if events.nonEmpty then events.dequeue() else (0L, 0L, 0L, 0L, "")
+          lastEvent = ev
+          SyslHost.long(ev._1)
+        case other => fail(s"host_poll_event: $other")
+      })
+      host.register("host_event_x",    { case Nil => SyslHost.long(lastEvent._2);  case other => fail(s"$other") })
+      host.register("host_event_y",    { case Nil => SyslHost.long(lastEvent._3);  case other => fail(s"$other") })
+      host.register("host_event_key",  { case Nil => SyslHost.long(lastEvent._4);  case other => fail(s"$other") })
+      host.register("host_event_text", { case Nil => SyslHost.string(lastEvent._5); case other => fail(s"$other") })
+      host.register("host_now_ms",     { case Nil => SyslHost.long(0L);            case other => fail(s"$other") })
+      host.register("host_present_frame",          { case Nil => SyslHost.unit; case other => fail(s"$other") })
+      host.register("host_sleep_until_next_frame", { case Nil => SyslHost.unit; case other => fail(s"$other") })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "probes/widgets-input.sysl",
+      )))
+
+      publishes.toList shouldBe List("h", "hi", "h", "ho")
+    }
+
     "Keyed children preserve state across reorder" in {
       val publishes = mutable.ArrayBuffer.empty[Long]
 
