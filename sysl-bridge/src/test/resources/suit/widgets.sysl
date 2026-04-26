@@ -59,3 +59,31 @@ dropdown(open: bool, ax: int, ay: int, width: int, items: []string, on_pick: (in
         // expression below should be `LINE_H + BTN_PAD_Y * 2`.
         val row_h = 30
         Portal(AbsolutePosition(Stack(0, rows), ax, ay, width, n * row_h))
+
+// tabs — a tab bar (HStack of Buttons) sitting above a content panel
+// (the View at `contents[selected]`). Clicking a tab Button fires
+// `on_select(i)`; the caller is expected to update its own `selected`
+// state and rerender, which causes tabs() to swap in the new
+// content[selected] view via reconcile.
+//
+// Layout: outer Stack(0, [tab_bar, content]). tab_bar is an HStack
+// so labels arrange horizontally; tab buttons get their natural
+// widths (text_w(label) + 2*BTN_PAD_X), no flex. The content panel
+// is whatever View was at contents[selected] — the parent picks
+// width/height by where it places the tabs() return value in its
+// own tree.
+tabs(selected: int, labels: []string, contents: []View, on_select: (int) -> int) -> View
+    val n = len(labels)
+    val tab_kids = (new [n]View)[:]
+    var i = 0
+    while i < n do
+        val idx = i
+        cb = () ->
+            on_select(idx)
+            0
+        tab_kids[i] = Button(labels[i], cb)
+        i = i + 1
+    val rows = (new [2]View)[:]
+    rows[0] = HStack(0, tab_kids)
+    rows[1] = contents[selected]
+    Stack(0, rows)

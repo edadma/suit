@@ -1,0 +1,42 @@
+// Phase η3 probe — HStack flex distribution. Mirrors widgets-flex
+// but on the x axis: Text("hi") on the left, Spacer(1) absorbs
+// leftover, Button("go") on the right. 200×100 frame, gap=4 → text
+// h=18 left-edge, spacer absorbs 144 px, button right-edge.
+//
+// Layout math: text natural w = text_w("hi") = 16; button natural
+// w = text_w("go") + 2*BTN_PAD_X = 16 + 24 = 40. fixed_total = 56;
+// gaps = 2*4 = 8; flex_pool = 200 - 56 - 8 = 136. Spacer claims it.
+//
+// Concrete bounds:
+//   text   at (  0, 0,  16, 100)
+//   spacer at ( 20, 0, 136, 100)   x = 16 + 4
+//   button at (160, 0,  40, 100)   x = 20 + 136 + 4
+
+import suit.{View, Text, Button, Spacer, HStack, Rect, Node}
+import suit.{TextNode, SpacerNode, ButtonNode, HStackNode}
+import suit.{mount, layout}
+
+extern host_emit(name: string, x: int, y: int, w: int, h: int) -> int
+
+emit(label: string, n: Node) -> int
+    n match
+        TextNode(s)   -> host_emit(label, s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h)
+        SpacerNode(s) -> host_emit(label, s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h)
+        ButtonNode(s) -> host_emit(label, s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h)
+        _ -> 0
+
+main() -> int
+    noop = () -> 0
+    val kids = (new [3]View)[:]
+    kids[0] = Text("hi")
+    kids[1] = Spacer(1)
+    kids[2] = Button("go", noop)
+    val node = mount(HStack(4, kids))
+    layout(node, Rect(0, 0, 200, 100))
+    node match
+        HStackNode(s) ->
+            emit("text", s.children[0])
+            emit("spacer", s.children[1])
+            emit("button", s.children[2])
+            0
+        _ -> 0

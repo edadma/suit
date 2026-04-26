@@ -197,6 +197,7 @@ enum View
     Center(child: View)
     Box(child: View, color: Color, padding: Insets)
     Stack(gap: int, children: []View)
+    HStack(gap: int, children: []View)
     Portal(child: View)
     AbsolutePosition(child: View, ax: int, ay: int, aw: int, ah: int)
     Backdrop(color: Color)
@@ -259,6 +260,12 @@ struct StackNodeState
     gap: int
     children: []Node
 
+struct HStackNodeState
+    view: View
+    bounds: Rect
+    gap: int
+    children: []Node
+
 struct PortalNodeState
     view: View
     bounds: Rect
@@ -305,6 +312,7 @@ enum Node
     CenterNode(s: CenterNodeState)
     BoxNode(s: BoxNodeState)
     StackNode(s: StackNodeState)
+    HStackNode(s: HStackNodeState)
     PortalNode(s: PortalNodeState)
     AbsolutePositionNode(s: AbsolutePositionState)
     BackdropNode(s: BackdropNodeState)
@@ -378,6 +386,14 @@ mount(v: View) -> Node
                 nodes[i] = mount(kids[i])
                 i = i + 1
             StackNode(StackNodeState(v, Rect(0, 0, 0, 0), g, nodes))
+        HStack(g, kids) ->
+            val n = len(kids)
+            val nodes = (new [n]Node)[:]
+            var i = 0
+            while i < n do
+                nodes[i] = mount(kids[i])
+                i = i + 1
+            HStackNode(HStackNodeState(v, Rect(0, 0, 0, 0), g, nodes))
         Portal(c)              -> PortalNode(PortalNodeState(v, Rect(0, 0, 0, 0), mount(c)))
         AbsolutePosition(c, _, _, _, _) -> AbsolutePositionNode(AbsolutePositionState(v, Rect(0, 0, 0, 0), mount(c)))
         Backdrop(_)            -> BackdropNode(BackdropNodeState(v, Rect(0, 0, 0, 0)))
@@ -466,6 +482,17 @@ measure(n: Node) -> Size
                 if i > 0 then h = h + s.gap
                 i = i + 1
             Size(w, h)
+        HStackNode(s) ->
+            var w = 0
+            var h = 0
+            var i = 0
+            while i < len(s.children) do
+                val cs = measure(s.children[i])
+                w = w + cs.w
+                if cs.h > h then h = cs.h
+                if i > 0 then w = w + s.gap
+                i = i + 1
+            Size(w, h)
         // Portal/Absolute/Backdrop are out-of-flow — they don't take
         // up space in their parent's Stack-flex calculations. Always
         // measure as zero so non-flex Stack children's natural-height
@@ -546,6 +573,40 @@ layout(n: Node, frame: Rect) -> int
                 val ch    = if f > 0 && flex_total > 0 then flex_pool * f / flex_total else measure(child).h
                 layout(child, Rect(frame.x, pos, frame.w, ch))
                 pos = pos + ch
+                if i < n_kids - 1 then pos = pos + s.gap
+                i = i + 1
+            0
+        HStackNode(s) ->
+            // Same flex algorithm as StackNode, mirrored to x. Each
+            // child gets the full frame height; widths are split
+            // between fixed-natural and flex-pool the same way Stack
+            // splits heights. flex_of() reuses the Spacer flex weight
+            // — Spacer is axis-agnostic and stretches in whichever
+            // direction its parent measures along.
+            set_rect(s.bounds, frame)
+            var fixed_total = 0
+            var flex_total  = 0
+            var i = 0
+            while i < len(s.children) do
+                val f = flex_of(s.children[i])
+                if f > 0 then
+                    flex_total = flex_total + f
+                else
+                    val sz = measure(s.children[i])
+                    fixed_total = fixed_total + sz.w
+                i = i + 1
+            val n_kids = len(s.children)
+            val gaps   = if n_kids > 1 then (n_kids - 1) * s.gap else 0
+            val avail0 = frame.w - fixed_total - gaps
+            val flex_pool = if avail0 > 0 then avail0 else 0
+            var pos = frame.x
+            i = 0
+            while i < len(s.children) do
+                val child = s.children[i]
+                val f     = flex_of(child)
+                val cw    = if f > 0 && flex_total > 0 then flex_pool * f / flex_total else measure(child).w
+                layout(child, Rect(pos, frame.y, cw, frame.h))
+                pos = pos + cw
                 if i < n_kids - 1 then pos = pos + s.gap
                 i = i + 1
             0
@@ -687,6 +748,12 @@ dispatch(n: Node, input: InputState) -> int
         CenterNode(s) -> dispatch(s.child, input)
         BoxNode(s)    -> dispatch(s.child, input)
         StackNode(s) ->
+            var i = 0
+            while i < len(s.children) do
+                dispatch(s.children[i], input)
+                i = i + 1
+            0
+        HStackNode(s) ->
             var i = 0
             while i < len(s.children) do
                 dispatch(s.children[i], input)
@@ -858,6 +925,14 @@ reconcile(old: Node, v: View) -> Node
                     state.children = reconcile_children(state.children, kids)
                     old
                 _ -> mount(v)
+        HStackNode(state) ->
+            v match
+                HStack(g, kids) ->
+                    state.view = v
+                    state.gap  = g
+                    state.children = reconcile_children(state.children, kids)
+                    old
+                _ -> mount(v)
         PortalNode(state) ->
             v match
                 Portal(c) ->
@@ -925,6 +1000,12 @@ rerender(n: Node) -> int
                     0
                 _ -> 0
         StackNode(s) ->
+            var i = 0
+            while i < len(s.children) do
+                rerender(s.children[i])
+                i = i + 1
+            0
+        HStackNode(s) ->
             var i = 0
             while i < len(s.children) do
                 rerender(s.children[i])
@@ -1026,6 +1107,12 @@ render(n: Node) -> int
                     0
                 _ -> render(s.child)
         StackNode(s) ->
+            var i = 0
+            while i < len(s.children) do
+                render(s.children[i])
+                i = i + 1
+            0
+        HStackNode(s) ->
             var i = 0
             while i < len(s.children) do
                 render(s.children[i])

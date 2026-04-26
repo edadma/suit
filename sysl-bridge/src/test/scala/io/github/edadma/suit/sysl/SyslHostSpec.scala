@@ -1100,6 +1100,61 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       publishes.toList shouldBe List(1L)
     }
 
+    // Phase η3 — HStack flex distribution. Mirror of the vertical
+    // flex test (ζ1) but on the x axis. Spacer absorbs leftover
+    // width between Text and Button; gap=4 takes 8 px total.
+    "η3 — HStack flex distribution via Spacer through suit.engine" in {
+      case class Frame(name: String, x: Int, y: Int, w: Int, h: Int)
+      val emitted = mutable.ArrayBuffer.empty[Frame]
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_emit", {
+        case List(name, x, y, w, h) =>
+          emitted += Frame(SyslHost.asString(name),
+            SyslHost.asLong(x).toInt, SyslHost.asLong(y).toInt,
+            SyslHost.asLong(w).toInt, SyslHost.asLong(h).toInt)
+          SyslHost.unit
+        case other => fail(s"host_emit: $other")
+      })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "probes/widgets-hstack.sysl",
+      )))
+
+      emitted.toList shouldBe List(
+        Frame("text",     0, 0,  16, 100),
+        Frame("spacer",  20, 0, 136, 100),
+        Frame("button", 160, 0,  40, 100),
+      )
+    }
+
+    // Phase η3 — `tabs` helper. Three tabs (A/B/C) over three
+    // content panels (first/second/third). Click sequence B, A, C
+    // emits on_select [1, 0, 2]. Each click also calls set_sel,
+    // so the next render's contents[selected] is the new panel —
+    // reconcile updates the existing TextNode in place.
+    "η3 — tabs helper routes clicks and toggles content" in {
+      val publishes = mutable.ArrayBuffer.empty[Long]
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_publish", {
+        case List(i) => publishes += SyslHost.asLong(i); SyslHost.unit
+        case other   => fail(s"host_publish: $other")
+      })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "suit/widgets.sysl",
+        "probes/widgets-tabs.sysl",
+      )))
+
+      publishes.toList shouldBe List(1L, 0L, 2L)
+    }
+
     "Keyed children preserve state across reorder" in {
       val publishes = mutable.ArrayBuffer.empty[Long]
 

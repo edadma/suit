@@ -1,0 +1,57 @@
+// Phase η3 probe — `tabs` helper composition. Three tabs with
+// content panels; controller Component holds `selected` via
+// use_state_int. Each tab Button measures (text_w(label)+24, 30) =
+// (32, 30). HStack(0, [A, B, C]) lays them at:
+//   Tab A: x  0..32
+//   Tab B: x 32..64
+//   Tab C: x 64..96
+// All at y 0..30 (button h = LINE_H + 2*BTN_PAD_Y).
+//
+// Click sequence: Tab B (48, 15), Tab A (16, 15), Tab C (80, 15).
+// on_select fires with [1, 0, 2]; controller flips set_sel each
+// time so the content panel changes visibly. The test only
+// observes the on_select sequence — the content swap correctness
+// is implied by the existing reconcile coverage.
+
+import suit.{View, Text, Component, Fiber, Rect, InputState}
+import suit.{mount, layout, dispatch, rerender, render}
+import suit.{use_state_int, tabs}
+
+extern host_publish(idx: int) -> int
+
+controller(f: Fiber) -> View
+    val sel, set_sel = use_state_int(f, 0)
+    on_select = (i: int) ->
+        host_publish(i)
+        set_sel(i)
+        0
+    val labels = (new [3]string)[:]
+    labels[0] = "A"
+    labels[1] = "B"
+    labels[2] = "C"
+    val contents = (new [3]View)[:]
+    contents[0] = Text("first")
+    contents[1] = Text("second")
+    contents[2] = Text("third")
+    tabs(sel, labels, contents, on_select)
+
+main() -> int
+    val node = mount(Component(controller))
+    layout(node, Rect(0, 0, 200, 100))
+    render(node)
+
+    dispatch(node, InputState(48, 15, true))   // B
+    rerender(node)
+    layout(node, Rect(0, 0, 200, 100))
+    render(node)
+
+    dispatch(node, InputState(16, 15, true))   // A
+    rerender(node)
+    layout(node, Rect(0, 0, 200, 100))
+    render(node)
+
+    dispatch(node, InputState(80, 15, true))   // C
+    rerender(node)
+    layout(node, Rect(0, 0, 200, 100))
+    render(node)
+    0
