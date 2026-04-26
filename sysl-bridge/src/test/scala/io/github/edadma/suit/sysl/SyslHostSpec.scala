@@ -553,12 +553,9 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
     // Keyed reconcile must move the existing fibers (and their state)
     // into their new slots, so post-swap the publish order is the
     // counter values in swapped order, NOT the seed values.
-    // Sysl bug: a closure-typed local declared inside another
-    // closure's body raises "undefined variable" at lookup time. The
-    // same pattern at top-level-fn scope works (see counter() in
-    // engine-counter.sysl). Repro at probes/closure-in-closure.sysl.
-    // Marked ignore until the interpreter is fixed.
-    "probe — closure-in-closure local resolution (sysl bug, ignored)" ignore {
+    // Was an `ignore` for the closure-in-closure interpreter bug;
+    // fix landed sysl-side. Now flipped back to `in`.
+    "probe — closure-in-closure local resolution (was sysl bug, fixed)" in {
       val publishes = mutable.ArrayBuffer.empty[Long]
       val host = new SyslHost(resourcesDir)
       host.register("host_publish", {
