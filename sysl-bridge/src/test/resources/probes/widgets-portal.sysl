@@ -1,0 +1,40 @@
+// Phase η1 probe — Portal + Backdrop + AbsolutePosition through
+// run_loop. Tree shape:
+//
+//   Stack(0, [
+//     Text("base"),
+//     Portal(Stack(0, [
+//       Backdrop(rgba(20,20,30,200)),
+//       AbsolutePosition(Text("modal"), 50, 30, 100, 20),
+//     ])),
+//   ])
+//
+// The Portal's child is laid out against screen_frame and its render
+// is deferred to render_overlays() — so the draw-command sequence
+// goes: main tree first (base text), then overlay pass (backdrop
+// fill, then modal text). Confirms overlays draw on top of the
+// underlying tree regardless of declaration position.
+//
+// One frame, then QUIT. Expected emit sequence:
+//   text   0,14 'base'                       base tree row 0
+//   fill   0, 0 200x80 rgba(20,20,30,200)    backdrop full screen
+//   text  50,44 'modal'                      absolute (50, 30) +
+//                                            INPUT_PAD_Y? no — Text
+//                                            renders at y + 14,
+//                                            so (50, 30+14) = (50, 44)
+
+import suit.{View, Text, Stack, Portal, AbsolutePosition, Backdrop, Color, Rect}
+import suit.{mount, run_loop}
+
+main() -> int
+    val overlay_kids = (new [2]View)[:]
+    overlay_kids[0] = Backdrop(Color(20, 20, 30, 200))
+    overlay_kids[1] = AbsolutePosition(Text("modal"), 50, 30, 100, 20)
+
+    val base_kids = (new [2]View)[:]
+    base_kids[0] = Text("base")
+    base_kids[1] = Portal(Stack(0, overlay_kids))
+
+    val node = mount(Stack(0, base_kids))
+    run_loop(node, Rect(0, 0, 200, 80), 2)
+    0

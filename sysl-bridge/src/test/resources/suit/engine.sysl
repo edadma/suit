@@ -123,6 +123,44 @@ const INPUT_PAD_Y:  int = 4
 var next_focus_id: int = 0
 var focused_id:    int = 0
 
+// Overlay machinery — Portals defer their child's render to a second
+// pass that runs after the main tree. The queue is rebuilt every
+// frame: render() pushes Portal children, render_overlays() drains
+// it. Layout and dispatch still walk Portal children inline (so
+// bounds + hit-tests work on the same frame as the click), only the
+// draw command emission is deferred.
+//
+// `screen_frame` carries the run_loop's outer rect so Portals can
+// lay out their children against the full screen even when the
+// declaring Component sits in some narrow corner of the tree. Set
+// by run_loop at the top of each frame; defaults to (0, 0, 0, 0)
+// which makes Portal layout a no-op when the engine is driven
+// outside run_loop (e.g. unit tests that just call mount + render).
+const OVERLAY_CAPACITY: int = 16
+var overlay_queue: []Node
+var overlay_count: int = 0
+var overlay_initialized: bool = false
+var screen_frame: Rect
+
+ensure_overlay_init() -> int
+    if !overlay_initialized then
+        overlay_queue = (new [OVERLAY_CAPACITY]Node)[:]
+        screen_frame = Rect(0, 0, 0, 0)
+        overlay_initialized = true
+        0
+    else 0
+
+set_screen_frame(f: Rect) -> int
+    ensure_overlay_init()
+    screen_frame = f
+    0
+
+push_overlay(n: Node) -> int
+    ensure_overlay_init()
+    overlay_queue[overlay_count] = n
+    overlay_count = overlay_count + 1
+    0
+
 new_focus_id() -> int
     next_focus_id = next_focus_id + 1
     next_focus_id
@@ -159,6 +197,9 @@ enum View
     Center(child: View)
     Box(child: View, color: Color, padding: Insets)
     Stack(gap: int, children: []View)
+    Portal(child: View)
+    AbsolutePosition(child: View, ax: int, ay: int, aw: int, ah: int)
+    Backdrop(color: Color)
     Component(render: (Fiber) -> View)
     ContextProvider(key: int, value: HookValue, child: View)
     Keyed(key: int, child: View)
@@ -218,6 +259,20 @@ struct StackNodeState
     gap: int
     children: []Node
 
+struct PortalNodeState
+    view: View
+    bounds: Rect
+    child: Node
+
+struct AbsolutePositionState
+    view: View
+    bounds: Rect
+    child: Node
+
+struct BackdropNodeState
+    view: View
+    bounds: Rect
+
 struct ComponentNodeState
     view: View
     bounds: Rect
@@ -250,6 +305,9 @@ enum Node
     CenterNode(s: CenterNodeState)
     BoxNode(s: BoxNodeState)
     StackNode(s: StackNodeState)
+    PortalNode(s: PortalNodeState)
+    AbsolutePositionNode(s: AbsolutePositionState)
+    BackdropNode(s: BackdropNodeState)
     ComponentNode(s: ComponentNodeState)
     ContextProviderNode(s: ContextProviderState)
     KeyedNode(s: KeyedNodeState)
@@ -320,6 +378,9 @@ mount(v: View) -> Node
                 nodes[i] = mount(kids[i])
                 i = i + 1
             StackNode(StackNodeState(v, Rect(0, 0, 0, 0), g, nodes))
+        Portal(c)              -> PortalNode(PortalNodeState(v, Rect(0, 0, 0, 0), mount(c)))
+        AbsolutePosition(c, _, _, _, _) -> AbsolutePositionNode(AbsolutePositionState(v, Rect(0, 0, 0, 0), mount(c)))
+        Backdrop(_)            -> BackdropNode(BackdropNodeState(v, Rect(0, 0, 0, 0)))
         Component(render_fn) ->
             val f = new_fiber()
             f.hook_index = 0
@@ -405,6 +466,13 @@ measure(n: Node) -> Size
                 if i > 0 then h = h + s.gap
                 i = i + 1
             Size(w, h)
+        // Portal/Absolute/Backdrop are out-of-flow — they don't take
+        // up space in their parent's Stack-flex calculations. Always
+        // measure as zero so non-flex Stack children's natural-height
+        // sums skip them entirely.
+        PortalNode(_)           -> Size(0, 0)
+        AbsolutePositionNode(_) -> Size(0, 0)
+        BackdropNode(_)         -> Size(0, 0)
         ComponentNode(s)        -> measure(s.child)
         ContextProviderNode(s)  -> measure(s.child)
         KeyedNode(s)            -> measure(s.child)
@@ -481,6 +549,26 @@ layout(n: Node, frame: Rect) -> int
                 if i < n_kids - 1 then pos = pos + s.gap
                 i = i + 1
             0
+        PortalNode(s) ->
+            // Lays the child out against the screen frame, ignoring
+            // the caller's parent frame. This is the whole point of a
+            // Portal — render in the foreground regardless of where in
+            // the tree it was declared. Bounds for hit-testing follow
+            // the child so a click on the portaled content reaches it
+            // through the normal dispatch walk.
+            ensure_overlay_init()
+            layout(s.child, screen_frame)
+            set_rect(s.bounds, screen_frame)
+        AbsolutePositionNode(s) ->
+            s.view match
+                AbsolutePosition(_, ax, ay, aw, ah) ->
+                    val r = Rect(ax, ay, aw, ah)
+                    set_rect(s.bounds, r)
+                    layout(s.child, r)
+                _ -> 0
+        BackdropNode(s) ->
+            ensure_overlay_init()
+            set_rect(s.bounds, screen_frame)
         ComponentNode(s) ->
             set_rect(s.bounds, frame)
             layout(s.child, frame)
@@ -604,6 +692,9 @@ dispatch(n: Node, input: InputState) -> int
                 dispatch(s.children[i], input)
                 i = i + 1
             0
+        PortalNode(s)          -> dispatch(s.child, input)
+        AbsolutePositionNode(s) -> dispatch(s.child, input)
+        BackdropNode(_)        -> 0
         ComponentNode(s)       -> dispatch(s.child, input)
         ContextProviderNode(s) -> dispatch(s.child, input)
         KeyedNode(s)           -> dispatch(s.child, input)
@@ -767,6 +858,26 @@ reconcile(old: Node, v: View) -> Node
                     state.children = reconcile_children(state.children, kids)
                     old
                 _ -> mount(v)
+        PortalNode(state) ->
+            v match
+                Portal(c) ->
+                    state.view  = v
+                    state.child = reconcile(state.child, c)
+                    old
+                _ -> mount(v)
+        AbsolutePositionNode(state) ->
+            v match
+                AbsolutePosition(c, _, _, _, _) ->
+                    state.view  = v
+                    state.child = reconcile(state.child, c)
+                    old
+                _ -> mount(v)
+        BackdropNode(state) ->
+            v match
+                Backdrop(_) ->
+                    state.view = v
+                    old
+                _ -> mount(v)
         ComponentNode(state) ->
             v match
                 Component(_) ->
@@ -819,9 +930,11 @@ rerender(n: Node) -> int
                 rerender(s.children[i])
                 i = i + 1
             0
-        SizedNode(s)  -> rerender(s.child)
-        CenterNode(s) -> rerender(s.child)
-        BoxNode(s)    -> rerender(s.child)
+        SizedNode(s)            -> rerender(s.child)
+        CenterNode(s)           -> rerender(s.child)
+        BoxNode(s)              -> rerender(s.child)
+        PortalNode(s)           -> rerender(s.child)
+        AbsolutePositionNode(s) -> rerender(s.child)
         ContextProviderNode(s) ->
             push_context(s.key, s.value)
             rerender(s.child)
@@ -918,9 +1031,37 @@ render(n: Node) -> int
                 render(s.children[i])
                 i = i + 1
             0
+        PortalNode(s) ->
+            // Defer render to the overlay pass. Push the child node
+            // (already laid out against screen_frame in layout()) and
+            // rely on render_overlays() to drain after the main tree
+            // has finished — that's what gets the Portal's content
+            // drawn on top of everything else.
+            push_overlay(s.child)
+            0
+        AbsolutePositionNode(s) -> render(s.child)
+        BackdropNode(s) ->
+            s.view match
+                Backdrop(c) ->
+                    host_fill_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, c.r, c.g, c.b, c.a)
+                    0
+                _ -> 0
         ComponentNode(s)       -> render(s.child)
         ContextProviderNode(s) -> render(s.child)
         KeyedNode(s)           -> render(s.child)
+
+// Drain the overlay queue. Called by run_loop after render(node) so
+// portaled content draws on top of the main tree. Each frame builds
+// a fresh queue — count is reset here so the next render() pass
+// starts clean.
+render_overlays() -> int
+    ensure_overlay_init()
+    var i = 0
+    while i < overlay_count do
+        render(overlay_queue[i])
+        i = i + 1
+    overlay_count = 0
+    0
 
 // run_loop drives the engine the way an app's main() would in
 // production: drain events from the host, dispatch them through the
@@ -938,6 +1079,10 @@ run_loop(node: Node, frame: Rect, max_frames: int) -> int
     val input = InputState(0, 0, false)
     var frame_idx = 0
     var quit = false
+    // The screen frame is what Portals lay out their children
+    // against. Set it once up front; if the host ever supports
+    // resize, this would update on each frame.
+    set_screen_frame(frame)
     // Initial layout so event hit-tests have valid bounds before the
     // first frame's render produces them.
     layout(node, frame)
@@ -980,6 +1125,7 @@ run_loop(node: Node, frame: Rect, max_frames: int) -> int
             rerender(node)
             layout(node, frame)
             render(node)
+            render_overlays()
             host_present_frame()
             host_sleep_until_next_frame()
             0
