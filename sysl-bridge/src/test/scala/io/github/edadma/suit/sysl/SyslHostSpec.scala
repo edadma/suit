@@ -519,12 +519,10 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       publishes.toList shouldBe List(15L, 107L)
     }
 
-    // Sysl bug 2026-04-25: a local closure whose name collides with
-    // an imported global of the same name silently corrupts the
-    // closure's call chain — fn-pointer-param calls inside the
-    // closure return 0. Renaming the local fixes it. Marked ignore
-    // until the analyzer is fixed; see dispatch-name-shadow.sysl.
-    "probe — name-collision between inner closure + imported fn (sysl bug, ignored)" ignore {
+    // Was an `ignore` for the sysl name-shadow bug, fixed at
+    // sysl@b2ca927a (VarRefAST now checks locals before globals,
+    // companion to the prior CallAST fix). Now flipped back to `in`.
+    "probe — name-collision between inner closure + imported fn (was sysl bug, fixed)" in {
       val publishes = mutable.ArrayBuffer.empty[Long]
       val host = new SyslHost(resourcesDir)
       host.register("host_publish", {

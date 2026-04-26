@@ -133,19 +133,14 @@ use_reducer_int(f: Fiber, reducer: (int, int) -> int, initial: int) -> (int, (in
             f.cells[i] = IntCell(initial)
             initial
         _ -> initial
-    // Inner closure name avoids `dispatch` because that's also exported
-    // by suit.engine; sysl 2026-04-25 has a name-resolution bug where a
-    // local closure named `dispatch` confuses the caller-side resolver
-    // when the caller has imported `suit.dispatch` (engine event fn).
-    // See probes/dispatch-name-shadow.sysl + the matching ignored test.
-    do_dispatch = (action: int) ->
+    dispatch = (action: int) ->
         val cur = f.cells[i] match
             IntCell(v) -> v
             _ -> initial
         val next = reducer(cur, action)
         f.cells[i] = IntCell(next)
         next
-    return current, do_dispatch
+    return current, dispatch
 
 // useRef(int) — returns an IntRef the component can mutate without
 // triggering a re-render. The struct is allocated once on the first
