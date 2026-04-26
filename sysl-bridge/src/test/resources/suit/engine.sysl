@@ -1032,12 +1032,13 @@ render(n: Node) -> int
                     host_draw_text(s.bounds.x, s.bounds.y + 14, c, 220, 220, 240, 255)
                     0
                 _ -> 0
-        // Buttons emit no draw commands at this layer — the host's
-        // chrome (theme-aware fill + label) is layered in by the
-        // environment's render adapter, not the engine. Keeping
-        // ButtonNode silent means probes that only exercise Button +
-        // Text need just host_draw_text registered.
-        ButtonNode(_) -> 0
+        ButtonNode(s) ->
+            s.view match
+                Button(l, _) ->
+                    host_fill_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, 40, 40, 55, 255)
+                    host_draw_text(s.bounds.x + BTN_PAD_X, s.bounds.y + BTN_PAD_Y + 14, l, 220, 220, 240, 255)
+                    0
+                _ -> 0
         SpacerNode(_) -> 0
         ImageNode(s) ->
             s.view match

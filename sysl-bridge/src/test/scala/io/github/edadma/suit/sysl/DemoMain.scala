@@ -9,9 +9,14 @@ package io.github.edadma.suit.sysl
 //   sbt "suitSysl/Test/runMain io.github.edadma.suit.sysl.DemoMain"
 object DemoMain:
   def main(args: Array[String]): Unit =
-    val url = getClass.getClassLoader.getResource("hello.sysl")
-    require(url != null, "hello.sysl not on classpath — run via sbt suitSysl/Test/runMain")
-    val resourcesDir = java.nio.file.Paths.get(url.toURI).getParent.toString
+    // SyslHost reads source files off disk (not via the classloader),
+    // so we need a real filesystem path to the test-resources tree.
+    // sbt's fork-jvm cwd is the subproject base (sysl-bridge/), so
+    // the resources resolve relative to that. The optional first arg
+    // overrides for non-sbt launches.
+    val resourcesDir =
+      if args.nonEmpty then args(0)
+      else System.getProperty("user.dir") + "/src/test/resources"
 
     val host       = new SyslHost(resourcesDir)
     val engineHost = new SyslEngineHost("Suit demo (sysl)", 720, 560, host)

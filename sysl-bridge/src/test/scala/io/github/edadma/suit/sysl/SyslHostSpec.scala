@@ -478,6 +478,7 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
 
       val host = new SyslHost(resourcesDir)
       host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_fill_rect", { case _ => SyslHost.unit })
       host.register("host_record", {
         case List(s) => records += SyslHost.asString(s); SyslHost.unit
         case other   => fail(s"host_record: $other")
@@ -586,6 +587,7 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
 
       val host = new SyslHost(resourcesDir)
       host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_fill_rect", { case _ => SyslHost.unit })
       host.register("host_publish", {
         case List(n) => publishes += SyslHost.asLong(n); SyslHost.unit
         case other   => fail(s"host_publish: $other")
@@ -648,6 +650,7 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
 
       val host = new SyslHost(resourcesDir)
       host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_fill_rect", { case _ => SyslHost.unit })
       host.register("host_publish", {
         case List(n) => publishes += SyslHost.asLong(n); SyslHost.unit
         case other   => fail(s"host_publish: $other")
@@ -1140,6 +1143,7 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
 
       val host = new SyslHost(resourcesDir)
       host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_fill_rect", { case _ => SyslHost.unit })
       host.register("host_publish", {
         case List(i) => publishes += SyslHost.asLong(i); SyslHost.unit
         case other   => fail(s"host_publish: $other")
@@ -1270,6 +1274,7 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
 
       val host = new SyslHost(resourcesDir)
       host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_fill_rect", { case _ => SyslHost.unit })
       host.register("host_publish", {
         case List(n) => publishes += SyslHost.asLong(n); SyslHost.unit
         case other   => fail(s"host_publish: $other")
@@ -1317,6 +1322,7 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
 
       val host = new SyslHost(resourcesDir)
       host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_fill_rect", { case _ => SyslHost.unit })
       host.register("host_publish", {
         case List(n) => publishes += SyslHost.asLong(n); SyslHost.unit
         case other   => fail(s"host_publish: $other")
@@ -1336,6 +1342,7 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
 
       val host = new SyslHost(resourcesDir)
       host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_fill_rect", { case _ => SyslHost.unit })
       host.register("host_publish", {
         case List(n) => publishes += SyslHost.asLong(n); SyslHost.unit
         case other   => fail(s"host_publish: bad args $other")
@@ -1360,6 +1367,7 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
 
       val host = new SyslHost(resourcesDir)
       host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_fill_rect", { case _ => SyslHost.unit })
       host.register("host_publish", {
         case List(n, r) => publishes += ((SyslHost.asLong(n), SyslHost.asLong(r))); SyslHost.unit
         case other      => fail(s"host_publish: bad args $other")
@@ -1411,9 +1419,15 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       val texts = mutable.ArrayBuffer.empty[String]
 
       val host = new SyslHost(resourcesDir)
+      host.register("host_fill_rect", { case _ => SyslHost.unit })
       host.register("host_draw_text", {
         case List(_, _, text, _, _, _, _) =>
-          texts += SyslHost.asString(text); SyslHost.unit
+          // Filter out the "+" button labels — they render at the
+          // same engine layer now that ButtonNode emits chrome+text.
+          // The test cares about the count digits, not the buttons.
+          val s = SyslHost.asString(text)
+          if s != "+" then texts += s
+          SyslHost.unit
         case other => fail(s"host_draw_text: bad args $other")
       })
 
@@ -1423,9 +1437,9 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
         "engine-counter.sysl",
       )))
 
-      // Two Counter children → each render emits two Text commands.
-      // Click sequence A,A,B,A,B drives counters to (3, 2) over 5 clicks
-      // + one initial render = 6 frames × 2 = 12 emissions.
+      // Two Counter children → each render emits two count Texts (one
+      // per Counter). Click sequence A,A,B,A,B drives counters to
+      // (3, 2) over 5 clicks + one initial render = 6 frames × 2 = 12.
       texts.toList shouldBe List(
         "0", "0",   // initial mount
         "1", "0",   // click A
