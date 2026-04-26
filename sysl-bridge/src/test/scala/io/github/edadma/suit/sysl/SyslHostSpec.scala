@@ -566,6 +566,68 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       publishes.toList shouldBe List(7L)
     }
 
+    // Phase ε1 — run_loop drives the engine off a host event queue.
+    // Stub host returns the queue: PRESS(50,60), NONE, PRESS(50,60),
+    // NONE, QUIT, NONE... The probe Counter publishes its state per
+    // render. Mount publishes 0; each click+rerender publishes the
+    // incremented value; QUIT exits before another render fires.
+    "run_loop drains events, dispatches, exits on QUIT" in {
+      val publishes = mutable.ArrayBuffer.empty[Long]
+      val events = scala.collection.mutable.Queue[(Long, Long, Long)](
+        // (tag, x, y)
+        (2L, 50L, 60L),  // PRESS
+        (0L, 0L, 0L),    // NONE → end of frame 0 drain
+        (2L, 50L, 60L),  // PRESS
+        (0L, 0L, 0L),    // NONE → end of frame 1 drain
+        (1L, 0L, 0L),    // QUIT
+      )
+      var lastEvent: (Long, Long, Long) = (0L, 0L, 0L)
+      var presents = 0L
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_publish", {
+        case List(n) => publishes += SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"host_publish: $other")
+      })
+      host.register("host_poll_event", {
+        case Nil =>
+          val ev = if events.nonEmpty then events.dequeue() else (0L, 0L, 0L)
+          lastEvent = ev
+          SyslHost.long(ev._1)
+        case other => fail(s"host_poll_event: $other")
+      })
+      host.register("host_event_x", {
+        case Nil   => SyslHost.long(lastEvent._2)
+        case other => fail(s"host_event_x: $other")
+      })
+      host.register("host_event_y", {
+        case Nil   => SyslHost.long(lastEvent._3)
+        case other => fail(s"host_event_y: $other")
+      })
+      host.register("host_now_ms", {
+        case Nil   => SyslHost.long(0L)
+        case other => fail(s"host_now_ms: $other")
+      })
+      host.register("host_present_frame", {
+        case Nil   => presents += 1; SyslHost.unit
+        case other => fail(s"host_present_frame: $other")
+      })
+      host.register("host_sleep_until_next_frame", {
+        case Nil   => SyslHost.unit
+        case other => fail(s"host_sleep_until_next_frame: $other")
+      })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "probes/run-loop.sysl",
+      )))
+
+      publishes.toList shouldBe List(0L, 1L, 2L)
+      presents shouldBe 2L            // 2 full frames before QUIT
+    }
+
     "Keyed children preserve state across reorder" in {
       val publishes = mutable.ArrayBuffer.empty[Long]
 

@@ -1,0 +1,33 @@
+// run_loop probe — a single-Counter Component driven by the engine's
+// run_loop with events injected by the JVM-side test stub.
+//
+// Each render publishes the counter state via host_publish. Mount
+// publishes 0; the first MOUSE_PRESS event bumps the counter to 1
+// and the frame's rerender publishes 1; same for the second click.
+// The third event drained is EVENT_QUIT, which exits the loop
+// without rendering. host_publish receives [0, 1, 2].
+//
+// Layout: 200x80 single Stack of [Text, Button]. Button at y 40..80
+// so PRESS at (50, 60) hits it.
+
+import suit.{View, Text, Button, Stack, Component, Fiber, Rect, InputState}
+import suit.{mount, run_loop}
+import suit.{use_state_int}
+
+extern host_publish(n: int) -> int
+
+counter(f: Fiber) -> View
+    val n, set_n = use_state_int(f, 0)
+    host_publish(n)
+    on_inc = () ->
+        set_n(n + 1)
+        0
+    val kids = (new [2]View)[:]
+    kids[0] = Text(s"$n")
+    kids[1] = Button("+", on_inc)
+    Stack(kids)
+
+main() -> int
+    val node = mount(Component(counter))
+    run_loop(node, Rect(0, 0, 200, 80), 10)
+    0

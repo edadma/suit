@@ -10,6 +10,28 @@ module suit
 
 extern host_draw_text(x: int, y: int, text: string, r: int, g: int, b: int, a: int) -> int
 
+// OS-facing event/render loop contract — implemented by the host (JVM
+// dev shell, OS layer, or test stub). Tags are the int returned by
+// host_poll_event; coords for the latest mouse event are read via
+// host_event_x / host_event_y. host_now_ms is a monotonic ms clock
+// for animations. host_present_frame flushes the draw buffer to the
+// screen; host_sleep_until_next_frame paces to vsync.
+extern host_poll_event() -> int
+extern host_event_x() -> int
+extern host_event_y() -> int
+extern host_now_ms() -> int
+extern host_present_frame() -> int
+extern host_sleep_until_next_frame() -> int
+
+const EVENT_NONE:        int = 0
+const EVENT_QUIT:        int = 1
+const EVENT_MOUSE_PRESS: int = 2
+const EVENT_MOUSE_REL:   int = 3
+const EVENT_MOUSE_MOVE:  int = 4
+const EVENT_KEY_DOWN:    int = 5
+const EVENT_KEY_UP:      int = 6
+const EVENT_FRAME:       int = 7
+
 struct Rect
     x: int
     y: int
@@ -373,3 +395,52 @@ render(n: Node) -> int
         ComponentNode(s) -> render(s.child)
         ContextProviderNode(s) -> render(s.child)
         KeyedNode(s) -> render(s.child)
+
+// run_loop drives the engine the way an app's main() would in
+// production: drain events from the host, dispatch them through the
+// tree, then rerender/layout/render/present once per frame. Returns
+// the frame index at exit. `max_frames` lets tests bound the loop;
+// pass a large constant for "run forever" — the loop still exits
+// early on EVENT_QUIT.
+//
+// One InputState is reused across frames so a press-and-hold persists
+// the mouse_pressed bit across multiple dispatches until the
+// matching MOUSE_REL arrives. The engine doesn't yet do focus /
+// pointer-capture; whichever ButtonNode contains the press point
+// fires its on_click on each MOUSE_PRESS.
+run_loop(node: Node, frame: Rect, max_frames: int) -> int
+    val input = InputState(0, 0, false)
+    var frame_idx = 0
+    var quit = false
+    // Initial layout so event hit-tests have valid bounds before the
+    // first frame's render produces them.
+    layout(node, frame)
+    while !quit && frame_idx < max_frames do
+        var tag = host_poll_event()
+        while tag != EVENT_NONE && !quit do
+            if tag == EVENT_QUIT then
+                quit = true
+            else if tag == EVENT_MOUSE_PRESS then
+                input.mouse_x = host_event_x()
+                input.mouse_y = host_event_y()
+                input.mouse_pressed = true
+                dispatch(node, input)
+                0
+            else if tag == EVENT_MOUSE_REL then
+                input.mouse_pressed = false
+                0
+            else if tag == EVENT_MOUSE_MOVE then
+                input.mouse_x = host_event_x()
+                input.mouse_y = host_event_y()
+                0
+            else 0
+            tag = host_poll_event()
+        if !quit then
+            rerender(node)
+            layout(node, frame)
+            render(node)
+            host_present_frame()
+            host_sleep_until_next_frame()
+            0
+        frame_idx = frame_idx + 1
+    frame_idx
