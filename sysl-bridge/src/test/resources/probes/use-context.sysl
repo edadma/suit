@@ -1,0 +1,54 @@
+// useContext probe — a Theme provider injects an int colour, a leaf
+// Component reads it via use_context and publishes the value. A
+// nested second ContextProvider with the same key shadows the outer
+// one for the inner subtree, demonstrating the stack-based lookup.
+//
+// Tree:
+//   Stack
+//     ContextProvider(KEY_THEME, IntCell(11), Component(reader))   → 11
+//     ContextProvider(KEY_THEME, IntCell(22),
+//         ContextProvider(KEY_THEME, IntCell(33),
+//             Component(reader)))                                   → 33
+//     Component(reader_no_provider)                                 → -1 (Empty)
+//
+// host_publish gets one int per Component render. Mount publishes
+// three entries; no rerenders are driven so we stop after the first
+// frame.
+
+import suit.{View, Text, Button, Stack, Component, ContextProvider, Fiber, HookValue, IntCell, Empty}
+import suit.{Rect}
+import suit.{mount, layout, render}
+import suit.{use_context}
+
+extern host_publish(n: int) -> int
+extern host_draw_text(x: int, y: int, text: string, r: int, g: int, b: int, a: int) -> int
+
+const KEY_THEME: int = 1
+
+reader(f: Fiber) -> View
+    val theme_val = use_context(f, KEY_THEME)
+    val n = theme_val match
+        IntCell(v) -> v
+        _          -> -1
+    host_publish(n)
+    Text(s"$n")
+
+main() -> int
+    val outer = ContextProvider(KEY_THEME, IntCell(11), Component(reader))
+
+    val inner_inner = Component(reader)
+    val inner_mid   = ContextProvider(KEY_THEME, IntCell(33), inner_inner)
+    val inner_outer = ContextProvider(KEY_THEME, IntCell(22), inner_mid)
+
+    val no_provider = Component(reader)
+
+    val kids = (new [3]View)[:]
+    kids[0] = outer
+    kids[1] = inner_outer
+    kids[2] = no_provider
+
+    val app = Stack(kids)
+    val node = mount(app)
+    layout(node, Rect(0, 0, 200, 90))
+    render(node)
+    0

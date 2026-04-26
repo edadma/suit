@@ -1,0 +1,60 @@
+// Context-update probe: a controller Component owns a state cell;
+// the same Component returns a ContextProvider whose value depends
+// on its state. A consumer Component reads via use_context. When
+// the controller's state changes, rerender re-runs the controller
+// (now producing a new ContextProvider value), reconcile updates the
+// ContextProviderState's value field, and the consumer sees fresh.
+//
+// Layout: 200×80 single Stack of 1 child (Component(controller)).
+// The button hits at y 60. After mount:
+//   render 0: theme=10, consumer publishes 10
+// After click+rerender:
+//   render 1: theme=11, consumer publishes 11
+// After click+rerender:
+//   render 2: theme=12, consumer publishes 12
+
+import suit.{View, Text, Button, Stack, Component, ContextProvider, Fiber, HookValue, IntCell}
+import suit.{Rect, InputState}
+import suit.{mount, layout, dispatch, rerender, render}
+import suit.{use_state_int, use_context}
+
+extern host_publish(n: int) -> int
+extern host_draw_text(x: int, y: int, text: string, r: int, g: int, b: int, a: int) -> int
+
+const KEY_THEME: int = 1
+
+consumer(f: Fiber) -> View
+    val theme_val = use_context(f, KEY_THEME)
+    val n = theme_val match
+        IntCell(v) -> v
+        _          -> -999
+    host_publish(n)
+    Text(s"$n")
+
+controller(f: Fiber) -> View
+    val n, set_n = use_state_int(f, 10)
+    on_inc = () ->
+        set_n(n + 1)
+        0
+    val inner_kids = (new [2]View)[:]
+    inner_kids[0] = Component(consumer)
+    inner_kids[1] = Button("+", on_inc)
+    ContextProvider(KEY_THEME, IntCell(n), Stack(inner_kids))
+
+main() -> int
+    val app = Component(controller)
+    val node = mount(app)
+
+    layout(node, Rect(0, 0, 200, 80))
+    render(node)                               // theme=10 → publish 10
+
+    dispatch(node, InputState(50, 60, true))   // click +
+    rerender(node)
+    layout(node, Rect(0, 0, 200, 80))
+    render(node)                               // theme=11 → publish 11
+
+    dispatch(node, InputState(50, 60, true))
+    rerender(node)
+    layout(node, Rect(0, 0, 200, 80))
+    render(node)                               // theme=12 → publish 12
+    0

@@ -26,6 +26,7 @@ enum View
     Button(label: string, on_click: () -> int)
     Stack(children: []View)
     Component(render: (Fiber) -> View)
+    ContextProvider(key: int, value: HookValue, child: View)
 
 struct TextNodeState
     view: View
@@ -46,11 +47,64 @@ struct ComponentNodeState
     fiber: Fiber
     child: Node
 
+struct ContextProviderState
+    view: View
+    bounds: Rect
+    key: int
+    value: HookValue
+    child: Node
+
 enum Node
     TextNode(s: TextNodeState)
     ButtonNode(s: ButtonNodeState)
     StackNode(s: StackNodeState)
     ComponentNode(s: ComponentNodeState)
+    ContextProviderNode(s: ContextProviderState)
+
+// Module-level context stack — pushed when mount/rerender enters a
+// ContextProvider's subtree, popped on the way back. use_context walks
+// from top of stack down so nearest provider for a given key wins
+// (matches React's nested-Provider shadowing).
+const CONTEXT_STACK_CAPACITY: int = 32
+
+struct ContextEntry
+    key: int
+    value: HookValue
+
+var context_stack: []ContextEntry
+var context_depth: int = 0
+var context_initialized: bool = false
+
+ensure_context_init() -> int
+    if !context_initialized then
+        context_stack = (new [CONTEXT_STACK_CAPACITY]ContextEntry)[:]
+        context_initialized = true
+        0
+    else 0
+
+push_context(key: int, value: HookValue) -> int
+    ensure_context_init()
+    context_stack[context_depth] = ContextEntry(key, value)
+    context_depth = context_depth + 1
+    0
+
+pop_context() -> int
+    context_depth = context_depth - 1
+    0
+
+read_context(key: int) -> HookValue
+    var i = context_depth - 1
+    while i >= 0 do
+        if context_stack[i].key == key then
+            return context_stack[i].value
+        i = i - 1
+    Empty
+
+// use_context — looks up the nearest enclosing provider for `key`.
+// Doesn't consume a hook cell index because it has no per-fiber state;
+// safe to call zero or many times per render.
+use_context(f: Fiber, key: int) -> HookValue
+    read_context(key)
 
 mount(v: View) -> Node
     v match
@@ -69,6 +123,11 @@ mount(v: View) -> Node
             f.hook_index = 0
             val root = render_fn(f)
             ComponentNode(ComponentNodeState(v, Rect(0, 0, 0, 0), f, mount(root)))
+        ContextProvider(key, value, child) ->
+            push_context(key, value)
+            val mounted_child = mount(child)
+            pop_context()
+            ContextProviderNode(ContextProviderState(v, Rect(0, 0, 0, 0), key, value, mounted_child))
 
 set_rect(b: Rect, frame: Rect) -> int
     b.x = frame.x
@@ -95,6 +154,9 @@ layout(n: Node, frame: Rect) -> int
         ComponentNode(s) ->
             set_rect(s.bounds, frame)
             layout(s.child, frame)
+        ContextProviderNode(s) ->
+            set_rect(s.bounds, frame)
+            layout(s.child, frame)
 
 contains(b: Rect, x: int, y: int) -> bool
     x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h
@@ -116,6 +178,7 @@ dispatch(n: Node, input: InputState) -> int
                 i = i + 1
             0
         ComponentNode(s) -> dispatch(s.child, input)
+        ContextProviderNode(s) -> dispatch(s.child, input)
         _ -> 0
 
 reconcile(old: Node, v: View) -> Node
@@ -147,8 +210,23 @@ reconcile(old: Node, v: View) -> Node
         ComponentNode(state) ->
             v match
                 Component(_) ->
+                    // Update the view ref; do NOT call rerender(old) here.
+                    // The caller of reconcile (rerender) walks the tree
+                    // afterwards and re-runs every Component, so calling
+                    // rerender from inside reconcile produced a double-
+                    // render of nested Components.
                     state.view = v
-                    rerender(old)
+                    old
+                _ -> mount(v)
+        ContextProviderNode(state) ->
+            v match
+                ContextProvider(key, value, child_view) ->
+                    state.view = v
+                    state.key = key
+                    state.value = value
+                    push_context(key, value)
+                    state.child = reconcile(state.child, child_view)
+                    pop_context()
                     old
                 _ -> mount(v)
 
@@ -173,6 +251,11 @@ rerender(n: Node) -> int
                 rerender(s.children[i])
                 i = i + 1
             0
+        ContextProviderNode(s) ->
+            push_context(s.key, s.value)
+            rerender(s.child)
+            pop_context()
+            0
         _ -> 0
 
 render(n: Node) -> int
@@ -191,3 +274,4 @@ render(n: Node) -> int
                 i = i + 1
             0
         ComponentNode(s) -> render(s.child)
+        ContextProviderNode(s) -> render(s.child)

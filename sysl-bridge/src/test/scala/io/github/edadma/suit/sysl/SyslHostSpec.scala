@@ -540,6 +540,58 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       publishes.toList shouldBe List(100L, 107L)
     }
 
+    // Phase γ — ContextProvider injects an int into the subtree.
+    // A leaf reader Component picks it up via use_context. The middle
+    // subtree wraps a second provider with the same key, so the
+    // inner reader sees 33 instead of 22 (nearest-provider wins,
+    // matching React's stacked-Provider semantics).
+    //
+    // Tree publishes (one per reader render at mount):
+    //   outer reader        → 11
+    //   nested-inner reader → 33
+    //   no-provider reader  → -1 (sentinel for Empty)
+    "ContextProvider injects values; nested providers shadow" in {
+      val publishes = mutable.ArrayBuffer.empty[Long]
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_publish", {
+        case List(n) => publishes += SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"host_publish: $other")
+      })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "probes/use-context.sysl",
+      )))
+
+      publishes.toList shouldBe List(11L, 33L, -1L)
+    }
+
+    // Phase γ — controller Component owns state, returns a
+    // ContextProvider whose value tracks state. Consumer reads via
+    // use_context. State increment → rerender → reconcile updates
+    // ContextProviderState.value → consumer sees fresh.
+    "ContextProvider value updates propagate to consumer across rerenders" in {
+      val publishes = mutable.ArrayBuffer.empty[Long]
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_publish", {
+        case List(n) => publishes += SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"host_publish: $other")
+      })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "probes/context-update.sysl",
+      )))
+
+      publishes.toList shouldBe List(10L, 11L, 12L)
+    }
+
     "useReducer dispatch reads fresh state on each call" in {
       val publishes = mutable.ArrayBuffer.empty[Long]
 
