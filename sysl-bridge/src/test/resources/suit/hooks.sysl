@@ -14,6 +14,13 @@ module suit
 struct EffectState
     deps_hash: int
 
+// Mutable int container backing useRef(int). Heap-allocated so each
+// IntRef survives across renders and the user can write `ref.current`
+// without triggering a re-render. Wrapped in a RefIntCell variant so
+// the same fiber cell array can hold any hook flavor positionally.
+struct IntRef
+    current: int
+
 enum HookValue
     Empty
     IntCell(v: int)
@@ -21,6 +28,7 @@ enum HookValue
     StringCell(v: string)
     EffectCell(s: EffectState)
     IdCell(id: string)
+    RefIntCell(r: IntRef)
 
 struct Fiber
     cells: []HookValue
@@ -108,6 +116,52 @@ use_effect(f: Fiber, setup: () -> int, deps_hash: int) -> int
             f.cells[i] = EffectCell(EffectState(deps_hash))
             0
         _ -> 0
+
+// useReducer(int) — Redux-style state hook. Reuses IntCell (same
+// storage as use_state_int), but the dispatch closure reads the cell
+// fresh on every call so successive dispatches in the same render see
+// the previous dispatch's update. That fixes the "stale closure"
+// hazard that bites when several actions are fired before the next
+// render. Reducer is `(state, action) -> next_state`, both ints.
+use_reducer_int(f: Fiber, reducer: (int, int) -> int, initial: int) -> (int, (int) -> int)
+    val i = f.hook_index
+    f.hook_index = i + 1
+    val cell = f.cells[i]
+    val current = cell match
+        IntCell(v) -> v
+        Empty ->
+            f.cells[i] = IntCell(initial)
+            initial
+        _ -> initial
+    // Inner closure name avoids `dispatch` because that's also exported
+    // by suit.engine; sysl 2026-04-25 has a name-resolution bug where a
+    // local closure named `dispatch` confuses the caller-side resolver
+    // when the caller has imported `suit.dispatch` (engine event fn).
+    // See probes/dispatch-name-shadow.sysl + the matching ignored test.
+    do_dispatch = (action: int) ->
+        val cur = f.cells[i] match
+            IntCell(v) -> v
+            _ -> initial
+        val next = reducer(cur, action)
+        f.cells[i] = IntCell(next)
+        next
+    return current, do_dispatch
+
+// useRef(int) — returns an IntRef the component can mutate without
+// triggering a re-render. The struct is allocated once on the first
+// call (Empty cell) and reused thereafter (RefIntCell carries the
+// same heap pointer across all renders for this fiber slot).
+use_ref_int(f: Fiber, initial: int) -> IntRef
+    val i = f.hook_index
+    f.hook_index = i + 1
+    val cell = f.cells[i]
+    cell match
+        RefIntCell(r) -> r
+        Empty ->
+            val r = IntRef(initial)
+            f.cells[i] = RefIntCell(r)
+            r
+        _ -> IntRef(initial)
 
 // useId — returns a stable string keyed on (fiber_id, cell_index).
 // Survives across renders because the cell is initialized once and read

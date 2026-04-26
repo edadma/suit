@@ -1,0 +1,25 @@
+// Probe: function-pointer parameter, captured into a closure that's
+// then returned from the outer fn and invoked separately. The bug is
+// that the captured `f` returns 0 instead of f(args) when called
+// from inside the returned closure.
+
+extern host_publish(n: int) -> int
+
+inc(state: int, action: int) -> int
+    state + action
+
+make_dispatch(f: (int, int) -> int, base: int) -> (int) -> int
+    cb = (a: int) ->
+        f(base, a)
+    cb
+
+main() -> int
+    // direct call works:
+    val direct = inc(10, 5)
+    host_publish(direct)             // expect 15
+
+    // call via closure that captures fn-ptr param:
+    val cb = make_dispatch(inc, 100)
+    val viaclosure = cb(7)
+    host_publish(viaclosure)         // expect 107
+    0

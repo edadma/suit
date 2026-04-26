@@ -1,0 +1,46 @@
+// useReducer probe — verifies that two dispatches inside the same
+// event handler compose. Layout: 200x80, Stack of 2 → Text 0..40,
+// Button 40..80. Click at y=60 hits the button; its handler fires
+// dispatch_action(ACTION_INC) twice. With the read-fresh-cell logic,
+// the second call sees the first call's write, so net is +2 per click.
+// host_publish in render exposes the state at each render.
+
+import suit.{Fiber, View, Text, Button, Stack, Component, Rect, InputState}
+import suit.{mount, layout, dispatch, rerender, render}
+import suit.{use_reducer_int}
+
+extern host_publish(n: int) -> int
+
+const ACTION_INC: int = 1
+
+reduce(state: int, action: int) -> int
+    if action == ACTION_INC then state + 1
+    else state
+
+counter(f: Fiber) -> View
+    val n, dispatch_action = use_reducer_int(f, reduce, 0)
+    host_publish(n)
+    on_double_inc = () ->
+        // Two dispatches back-to-back. read-fresh logic in
+        // do_dispatch means the second sees the first's update.
+        dispatch_action(ACTION_INC)
+        dispatch_action(ACTION_INC)
+        0
+    val kids = (new [2]View)[:]
+    kids[0] = Text(s"$n")
+    kids[1] = Button("++", on_double_inc)
+    Stack(kids)
+
+main() -> int
+    val app = Component(counter)
+    val node = mount(app)
+
+    layout(node, Rect(0, 0, 200, 80))
+    render(node)                                  // host_publish(0)
+
+    dispatch(node, InputState(50, 60, true))      // hits button at y 40..80
+    rerender(node)                                // host_publish(2)
+
+    dispatch(node, InputState(50, 60, true))
+    rerender(node)                                // host_publish(4)
+    0

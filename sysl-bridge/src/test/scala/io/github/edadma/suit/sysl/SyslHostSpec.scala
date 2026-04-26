@@ -502,6 +502,95 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       )
     }
 
+    // Phase β — useReducer dispatches reduce against fresh cell state,
+    // so two dispatches inside the same event handler compose. The
+    // probe wires a single Button whose onClick fires INC twice; the
+    // counter advances by 2 per click. Three renders → publish [0, 2, 4].
+    // Positive control: fn-pointer parameter captured into a returned
+    // closure works for the simple case (no name shadow).
+    "probe — fn-ptr parameter captured into closure" in {
+      val publishes = mutable.ArrayBuffer.empty[Long]
+      val host = new SyslHost(resourcesDir)
+      host.register("host_publish", {
+        case List(n) => publishes += SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"host_publish: $other")
+      })
+      host.run(host.compileFile("probes/fnptr-in-closure.sysl"))
+      publishes.toList shouldBe List(15L, 107L)
+    }
+
+    // Sysl bug 2026-04-25: a local closure whose name collides with
+    // an imported global of the same name silently corrupts the
+    // closure's call chain — fn-pointer-param calls inside the
+    // closure return 0. Renaming the local fixes it. Marked ignore
+    // until the analyzer is fixed; see dispatch-name-shadow.sysl.
+    "probe — name-collision between inner closure + imported fn (sysl bug, ignored)" ignore {
+      val publishes = mutable.ArrayBuffer.empty[Long]
+      val host = new SyslHost(resourcesDir)
+      host.register("host_publish", {
+        case List(n) => publishes += SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"host_publish: $other")
+      })
+      host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "probes/dispatch-name-shadow.sysl",
+      )))
+      publishes.toList shouldBe List(100L, 107L)
+    }
+
+    "useReducer dispatch reads fresh state on each call" in {
+      val publishes = mutable.ArrayBuffer.empty[Long]
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_publish", {
+        case List(n) => publishes += SyslHost.asLong(n); SyslHost.unit
+        case other   => fail(s"host_publish: bad args $other")
+      })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "probes/use-reducer.sysl",
+      )))
+
+      publishes.toList shouldBe List(0L, 2L, 4L)
+    }
+
+    // Phase β — useRef.current persists across rerenders. The probe
+    // bumps ref.current on every click and reads it in render(). At
+    // ref==3 and ref==6 the component also calls set_n, demonstrating
+    // ref + state co-existence in one fiber. Engine rerenders
+    // unconditionally so we publish on every click.
+    "useRef.current persists across rerenders" in {
+      val publishes = mutable.ArrayBuffer.empty[(Long, Long)]
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_publish", {
+        case List(n, r) => publishes += ((SyslHost.asLong(n), SyslHost.asLong(r))); SyslHost.unit
+        case other      => fail(s"host_publish: bad args $other")
+      })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "probes/use-ref.sysl",
+      )))
+
+      publishes.toList shouldBe List(
+        (0L, 0L),  // mount
+        (0L, 1L),  // click 1
+        (0L, 2L),  // click 2
+        (1L, 3L),  // click 3 — ref hits 3, set_n(1)
+        (1L, 4L),  // click 4
+        (1L, 5L),  // click 5
+        (2L, 6L),  // click 6 — ref hits 6, set_n(2)
+      )
+    }
+
     // Phase α prep — verifies the bridge can hand the driver multiple
     // sources in one compile() call and that intra-module + cross-module
     // visibility both resolve. util.sysl + mathx.sysl share `module

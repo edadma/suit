@@ -1,0 +1,33 @@
+// Sysl bug repro (2026-04-25): when an inner closure local is named
+// `dispatch` AND the importing module also imports a function named
+// `dispatch` (here from suit.engine), the closure call chain gets
+// confused — calls into the closure return wrong values, and inner
+// fn-pointer-parameter calls behave as if returning 0.
+//
+// Renaming the inner closure to anything other than `dispatch` (e.g.
+// `do_dispatch`) makes the bug disappear. The same shape with the
+// closure named `cb` works fine — see fnptr-rerender.sysl.
+//
+// Expected behaviour: same as fnptr-rerender, [100, 107]. Actual on
+// 2026-04-25: returns 0 from the closure call.
+
+import suit.{dispatch}    // name-clash with the inner closure below
+
+extern host_publish(n: int) -> int
+
+inc(state: int, action: int) -> int
+    state + action
+
+make_dispatch(reducer: (int, int) -> int, initial: int) -> (int, (int) -> int)
+    // INNER LOCAL NAMED `dispatch` — triggers the bug.
+    dispatch = (action: int) ->
+        val next = reducer(initial, action)
+        next
+    return initial, dispatch
+
+main() -> int
+    val cur, cb = make_dispatch(inc, 100)
+    host_publish(cur)
+    val r = cb(7)
+    host_publish(r)
+    0

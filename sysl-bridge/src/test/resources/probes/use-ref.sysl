@@ -1,0 +1,50 @@
+// useRef probe — demonstrates that an IntRef persists across renders
+// and ref.current writes survive a rerender pass. Note this engine
+// rerenders unconditionally, so the "no re-render on ref change" half
+// of useRef's React contract isn't exercised here — that's a property
+// of a dirty-bit scheduler we'll add later. What this probe tests is
+// the persistence invariant: ref.current set during render N is the
+// value seen at the start of render N+1.
+//
+// Component holds n via use_state_int + ref via use_ref_int. The
+// onClick bumps ref.current and conditionally calls set_n. Driver
+// clicks the button 6 times; expected publish sequence on each render:
+//   mount, click 1..6 — 7 renders total.
+
+import suit.{Fiber, View, Text, Button, Stack, Component, Rect, InputState}
+import suit.{mount, layout, dispatch, rerender, render}
+import suit.{use_state_int, use_ref_int}
+
+extern host_publish(n: int, ref_value: int) -> int
+
+counter(f: Fiber) -> View
+    val n, set_n = use_state_int(f, 0)
+    val ref = use_ref_int(f, 0)
+    host_publish(n, ref.current)
+    on_click = () ->
+        ref.current = ref.current + 1
+        if ref.current == 3 then
+            set_n(1)
+            0
+        else if ref.current == 6 then
+            set_n(2)
+            0
+        else 0
+    val kids = (new [2]View)[:]
+    kids[0] = Text(s"$n")
+    kids[1] = Button("click", on_click)
+    Stack(kids)
+
+main() -> int
+    val app = Component(counter)
+    val node = mount(app)
+
+    layout(node, Rect(0, 0, 200, 80))
+    render(node)                                  // mount: publish (0, 0)
+
+    var i = 0
+    while i < 6 do
+        dispatch(node, InputState(50, 60, true))
+        rerender(node)
+        i = i + 1
+    0
