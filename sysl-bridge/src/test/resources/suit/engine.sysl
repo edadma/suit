@@ -1250,6 +1250,12 @@ render(n: Node) -> int
                     val bg = if enabled then bg_norm else t.btn_disabled_bg
                     val border_else = if s.hover then t.input_hover_border else t.input_border
                     val br = if is_focused then t.focus_border else border_else
+                    // Focus ring: stroked round-rect 2px outside the input
+                    // bounds in focus_ring colour, drawn before the bg
+                    // fill so the ring sits below the widget chrome.
+                    if is_focused && enabled then
+                        val rg = t.focus_ring
+                        host_stroke_round_rect(s.bounds.x - 2, s.bounds.y - 2, s.bounds.w + 4, s.bounds.h + 4, t.input_radius + 2, rg.r, rg.g, rg.b, 255)
                     host_fill_round_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, t.input_radius, bg.r, bg.g, bg.b, 255)
                     host_stroke_round_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, t.input_radius, br.r, br.g, br.b, 255)
                     val tx = s.bounds.x + t.input_padding_x
