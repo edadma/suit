@@ -196,6 +196,8 @@ reconcile(old: Node, v: View) -> Node
 
 // Drive a Component's re-render: hook cursor reset, render() called,
 // the produced View is reconciled against the existing child Node.
+// Also recurses into Stack and other wrappers so rerender() at the
+// root re-runs every Component in the tree (single-pass dirty walk).
 rerender(n: Node) -> int
     n match
         ComponentNode(s) ->
@@ -204,8 +206,15 @@ rerender(n: Node) -> int
                     s.fiber.hook_index = 0
                     val root = render(s.fiber)
                     s.child = reconcile(s.child, root)
+                    rerender(s.child)
                     0
                 _ -> 0
+        StackNode(s) ->
+            var i = 0
+            while i < len(s.children) do
+                rerender(s.children[i])
+                i = i + 1
+            0
         _ -> 0
 
 render(n: Node) -> int
@@ -237,23 +246,54 @@ counter(f: Fiber) -> View
     kids[1] = Button("+", on_inc)
     Stack(kids)
 
-// ---- driver: render → click → rerender → render → click → rerender → render
+// ---- driver: two independent Counters in a Stack ------------------------
+//
+// Two Component(counter) children at positions 0 and 1 of a Stack. Each
+// gets its own Fiber via mount; clicking inside one Counter's button
+// must not perturb the other's state. Layout: Stack of 2 Counters fills
+// 200×160 → each gets 80 tall. Inside each Counter, Stack of 2 → Text
+// 0..40, Button 40..80 (relative to the Counter's frame).
+//
+//   Counter A (y 0..80):    Text@0..40,  Button@40..80
+//   Counter B (y 80..160):  Text@80..120, Button@120..160
+//
+// So `dispatch(InputState(50, 60, true))` hits Counter A's button;
+// `dispatch(InputState(50, 140, true))` hits Counter B's button.
+// Click sequence: A, A, B, A, B → A=3, B=2 → Texts emitted "0" "0",
+// then "1" "0", "2" "0", "2" "1", "3" "1", "3" "2".
 
 main() -> int
-    val app = Component(counter)
+    val kids = (new [2]View)[:]
+    kids[0] = Component(counter)
+    kids[1] = Component(counter)
+    val app = Stack(kids)
     val node = mount(app)
 
-    // Frame 200×80 → Stack 2 children: Text y=0..40, Button y=40..80.
-    layout(node, Rect(0, 0, 200, 80))
-    render(node)               // emits Text "0"
+    layout(node, Rect(0, 0, 200, 160))
+    render(node)                                        // "0", "0"
 
-    dispatch(node, InputState(80, 60, true))   // click + button
+    dispatch(node, InputState(50, 60, true))            // click A
     rerender(node)
-    layout(node, Rect(0, 0, 200, 80))
-    render(node)               // emits Text "1"
+    layout(node, Rect(0, 0, 200, 160))
+    render(node)                                        // "1", "0"
 
-    dispatch(node, InputState(80, 60, true))
+    dispatch(node, InputState(50, 60, true))            // click A
     rerender(node)
-    layout(node, Rect(0, 0, 200, 80))
-    render(node)               // emits Text "2"
+    layout(node, Rect(0, 0, 200, 160))
+    render(node)                                        // "2", "0"
+
+    dispatch(node, InputState(50, 140, true))           // click B
+    rerender(node)
+    layout(node, Rect(0, 0, 200, 160))
+    render(node)                                        // "2", "1"
+
+    dispatch(node, InputState(50, 60, true))            // click A
+    rerender(node)
+    layout(node, Rect(0, 0, 200, 160))
+    render(node)                                        // "3", "1"
+
+    dispatch(node, InputState(50, 140, true))           // click B
+    rerender(node)
+    layout(node, Rect(0, 0, 200, 160))
+    render(node)                                        // "3", "2"
     0

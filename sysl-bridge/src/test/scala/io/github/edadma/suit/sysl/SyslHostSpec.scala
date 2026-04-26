@@ -469,7 +469,7 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
     // rerender → render across three frames; the Text content is the
     // hook value, so seeing "0", "1", "2" in the command stream proves
     // the full hook + reconcile + dispatch loop closes.
-    "drives a Counter component with use_state across three frames" in {
+    "drives two independent Counter components across six frames" in {
       val texts = mutable.ArrayBuffer.empty[String]
 
       val host = new SyslHost(resourcesDir)
@@ -481,7 +481,17 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
 
       host.run(host.compileFile("engine-counter.sysl"))
 
-      texts.toList shouldBe List("0", "1", "2")
+      // Two Counter children → each render emits two Text commands.
+      // Click sequence A,A,B,A,B drives counters to (3, 2) over 5 clicks
+      // + one initial render = 6 frames × 2 = 12 emissions.
+      texts.toList shouldBe List(
+        "0", "0",   // initial mount
+        "1", "0",   // click A
+        "2", "0",   // click A
+        "2", "1",   // click B
+        "3", "1",   // click A
+        "3", "2",   // click B
+      )
     }
 
     // Scope 2.G probe — useState-style hooks. Single-fiber, int-only.
