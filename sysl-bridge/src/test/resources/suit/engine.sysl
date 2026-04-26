@@ -11,6 +11,9 @@ module suit
 
 extern host_draw_text(x: int, y: int, text: string, r: int, g: int, b: int, a: int) -> int
 extern host_fill_rect(x: int, y: int, w: int, h: int, r: int, g: int, b: int, a: int) -> int
+extern host_stroke_rect(x: int, y: int, w: int, h: int, r: int, g: int, b: int, a: int) -> int
+extern host_fill_round_rect(x: int, y: int, w: int, h: int, radius: int, r: int, g: int, b: int, a: int) -> int
+extern host_stroke_round_rect(x: int, y: int, w: int, h: int, radius: int, r: int, g: int, b: int, a: int) -> int
 extern host_draw_image(x: int, y: int, w: int, h: int, source: string) -> int
 
 // OS-facing event/render loop contract — implemented by the host (JVM
@@ -1035,7 +1038,8 @@ render(n: Node) -> int
         ButtonNode(s) ->
             s.view match
                 Button(l, _) ->
-                    host_fill_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, 40, 40, 55, 255)
+                    host_fill_round_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, 4, 40, 40, 55, 255)
+                    host_stroke_round_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, 4, 80, 80, 100, 255)
                     host_draw_text(s.bounds.x + BTN_PAD_X, s.bounds.y + BTN_PAD_Y + 14, l, 220, 220, 240, 255)
                     0
                 _ -> 0
@@ -1049,33 +1053,42 @@ render(n: Node) -> int
         CheckboxNode(s) ->
             s.view match
                 Checkbox(l, checked, _) ->
-                    host_fill_rect(s.bounds.x, s.bounds.y, LINE_H, LINE_H, 60, 60, 80, 255)
+                    host_fill_round_rect(s.bounds.x, s.bounds.y, LINE_H, LINE_H, 3, 60, 60, 80, 255)
+                    host_stroke_round_rect(s.bounds.x, s.bounds.y, LINE_H, LINE_H, 3, 100, 100, 130, 255)
                     if checked then
-                        host_fill_rect(s.bounds.x + 4, s.bounds.y + 4, LINE_H - 8, LINE_H - 8, 220, 220, 240, 255)
+                        host_fill_round_rect(s.bounds.x + 4, s.bounds.y + 4, LINE_H - 8, LINE_H - 8, 2, 220, 220, 240, 255)
                     host_draw_text(s.bounds.x + LINE_H + CHK_GAP, s.bounds.y + 14, l, 220, 220, 240, 255)
                     0
                 _ -> 0
         RadioNode(s) ->
-            // Drawn as a square ring (since fill_rect is the only shape
-            // primitive); a real backend swaps these for circle ops.
-            // Inner mark is centered (4px inset) when selected.
+            // Circular: outer ring is a round-rect with radius=LINE_H/2
+            // (a corner radius equal to half the side gives a circle).
+            // Inner dot is a smaller circle, centered in the ring.
             s.view match
                 Radio(l, selected, _) ->
-                    host_fill_rect(s.bounds.x, s.bounds.y, LINE_H, LINE_H, 60, 60, 80, 255)
+                    val r = LINE_H / 2
+                    host_fill_round_rect(s.bounds.x, s.bounds.y, LINE_H, LINE_H, r, 60, 60, 80, 255)
+                    host_stroke_round_rect(s.bounds.x, s.bounds.y, LINE_H, LINE_H, r, 100, 100, 130, 255)
                     if selected then
-                        host_fill_rect(s.bounds.x + 4, s.bounds.y + 4, LINE_H - 8, LINE_H - 8, 220, 220, 240, 255)
+                        val inner = LINE_H - 8
+                        host_fill_round_rect(s.bounds.x + 4, s.bounds.y + 4, inner, inner, inner / 2, 220, 220, 240, 255)
                     host_draw_text(s.bounds.x + LINE_H + RADIO_GAP, s.bounds.y + 14, l, 220, 220, 240, 255)
                     0
                 _ -> 0
         InputNode(s) ->
-            // Background fill (slightly lighter when focused, like the
-            // Scala suit's input theme). Then the value (or placeholder
-            // if the value is empty), drawn at the Input's standard
-            // pad inset.
+            // Rounded background. Border colour switches when focused
+            // (mirrors Theme.scala's inputFocusBorder vs inputBorder).
+            // Then the value (or placeholder), drawn at the Input's
+            // standard pad inset.
             s.view match
                 Input(value, placeholder, _, _) ->
-                    val bg_lit = if focused_id == s.focus_id then 80 else 60
-                    host_fill_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, bg_lit, bg_lit, 90, 255)
+                    val is_focused = focused_id == s.focus_id
+                    val bg_lit = if is_focused then 80 else 60
+                    host_fill_round_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, 4, bg_lit, bg_lit, 90, 255)
+                    val br = if is_focused then 140 else 100
+                    val bg = if is_focused then 160 else 100
+                    val bb = if is_focused then 220 else 130
+                    host_stroke_round_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, 4, br, bg, bb, 255)
                     val shown = if len(value) > 0 then value else placeholder
                     val tx = s.bounds.x + INPUT_PAD_X
                     val ty = s.bounds.y + INPUT_PAD_Y + 14
@@ -1083,19 +1096,19 @@ render(n: Node) -> int
                     0
                 _ -> 0
         SliderNode(s) ->
-            // Track is a thin filled rect spanning the full bounds width;
+            // Track is a thin rounded bar spanning the full bounds width;
             // thumb sits at the value's normalized position. Match the
             // dispatch math so a value emitted by a click renders the
             // thumb at exactly the click's x.
             s.view match
                 Slider(value, vmin, vmax, _, _) ->
                     val track_y = s.bounds.y + (SLIDER_H - SLIDER_TRACK) / 2
-                    host_fill_rect(s.bounds.x, track_y, s.bounds.w, SLIDER_TRACK, 60, 60, 80, 255)
+                    host_fill_round_rect(s.bounds.x, track_y, s.bounds.w, SLIDER_TRACK, SLIDER_TRACK / 2, 60, 60, 80, 255)
                     val range = vmax - vmin
                     val tw    = s.bounds.w - SLIDER_THUMB
                     val rel   = if range > 0 && tw > 0 then (value - vmin) * tw / range else 0
                     val tx    = s.bounds.x + rel
-                    host_fill_rect(tx, s.bounds.y, SLIDER_THUMB, SLIDER_H, 220, 220, 240, 255)
+                    host_fill_round_rect(tx, s.bounds.y, SLIDER_THUMB, SLIDER_H, SLIDER_THUMB / 2, 220, 220, 240, 255)
                     0
                 _ -> 0
         SizedNode(s)  -> render(s.child)

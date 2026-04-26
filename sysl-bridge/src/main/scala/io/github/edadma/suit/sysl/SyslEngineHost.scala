@@ -3,7 +3,7 @@ package io.github.edadma.suit.sysl
 import io.github.edadma.trisc.TProgram
 
 import java.awt.event.{KeyAdapter, KeyEvent, MouseAdapter, MouseEvent, MouseMotionAdapter, WindowAdapter, WindowEvent}
-import java.awt.{Color as AwtColor, Dimension, Font, Graphics, Graphics2D, RenderingHints}
+import java.awt.{BasicStroke, Color as AwtColor, Dimension, Font, Graphics, Graphics2D, RenderingHints}
 import java.util.concurrent.LinkedBlockingQueue
 import javax.swing.{JFrame, JPanel, SwingUtilities, WindowConstants}
 
@@ -43,9 +43,12 @@ final class SyslEngineHost(title: String, screenW: Int, screenH: Int, host: Sysl
   @volatile private var lastEvent: HostEvent = HostEvent(0L, 0L, 0L, 0L, "")
 
   private sealed trait DrawCmd
-  private case class FillRect(x: Int, y: Int, w: Int, h: Int, color: AwtColor) extends DrawCmd
-  private case class DrawText(x: Int, y: Int, text: String, color: AwtColor)   extends DrawCmd
-  private case class DrawImage(x: Int, y: Int, w: Int, h: Int, source: String) extends DrawCmd
+  private case class FillRect(x: Int, y: Int, w: Int, h: Int, color: AwtColor)                  extends DrawCmd
+  private case class StrokeRect(x: Int, y: Int, w: Int, h: Int, color: AwtColor)                extends DrawCmd
+  private case class FillRoundRect(x: Int, y: Int, w: Int, h: Int, r: Int, color: AwtColor)     extends DrawCmd
+  private case class StrokeRoundRect(x: Int, y: Int, w: Int, h: Int, r: Int, color: AwtColor)   extends DrawCmd
+  private case class DrawText(x: Int, y: Int, text: String, color: AwtColor)                    extends DrawCmd
+  private case class DrawImage(x: Int, y: Int, w: Int, h: Int, source: String)                  extends DrawCmd
 
   private var pending = ArrayBuffer.empty[DrawCmd]
   private var current = ArrayBuffer.empty[DrawCmd]
@@ -64,10 +67,21 @@ final class SyslEngineHost(title: String, screenW: Int, screenH: Int, host: Sysl
       g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
       g2.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14))
       val cmds = bufferLock.synchronized(current.toArray)
+      val savedStroke = g2.getStroke
+      g2.setStroke(new BasicStroke(1f))
       cmds.foreach {
         case FillRect(x, y, w, h, c) =>
           g2.setColor(c)
           g2.fillRect(x, y, w, h)
+        case StrokeRect(x, y, w, h, c) =>
+          g2.setColor(c)
+          g2.drawRect(x, y, w - 1, h - 1)
+        case FillRoundRect(x, y, w, h, r, c) =>
+          g2.setColor(c)
+          g2.fillRoundRect(x, y, w, h, r * 2, r * 2)
+        case StrokeRoundRect(x, y, w, h, r, c) =>
+          g2.setColor(c)
+          g2.drawRoundRect(x, y, w - 1, h - 1, r * 2, r * 2)
         case DrawText(x, y, t, c) =>
           g2.setColor(c)
           g2.drawString(t, x, y)
@@ -80,6 +94,7 @@ final class SyslEngineHost(title: String, screenW: Int, screenH: Int, host: Sysl
           g2.setColor(new AwtColor(180, 180, 200))
           g2.drawString(s"[$src]", x + 4, y + 16)
       }
+      g2.setStroke(savedStroke)
 
   canvas.addMouseListener(new MouseAdapter:
     override def mousePressed(e: MouseEvent): Unit =
@@ -159,6 +174,47 @@ final class SyslEngineHost(title: String, screenW: Int, screenH: Int, host: Sysl
       )
       SyslHost.unit
     case other => sys.error(s"host_fill_rect: $other")
+  })
+  host.register("host_stroke_rect", {
+    case List(x, y, w, h, r, g, b, a) =>
+      pending += StrokeRect(
+        SyslHost.asLong(x).toInt, SyslHost.asLong(y).toInt,
+        SyslHost.asLong(w).toInt, SyslHost.asLong(h).toInt,
+        new AwtColor(
+          SyslHost.asLong(r).toInt, SyslHost.asLong(g).toInt,
+          SyslHost.asLong(b).toInt, SyslHost.asLong(a).toInt,
+        ),
+      )
+      SyslHost.unit
+    case other => sys.error(s"host_stroke_rect: $other")
+  })
+  host.register("host_fill_round_rect", {
+    case List(x, y, w, h, rad, r, g, b, a) =>
+      pending += FillRoundRect(
+        SyslHost.asLong(x).toInt, SyslHost.asLong(y).toInt,
+        SyslHost.asLong(w).toInt, SyslHost.asLong(h).toInt,
+        SyslHost.asLong(rad).toInt,
+        new AwtColor(
+          SyslHost.asLong(r).toInt, SyslHost.asLong(g).toInt,
+          SyslHost.asLong(b).toInt, SyslHost.asLong(a).toInt,
+        ),
+      )
+      SyslHost.unit
+    case other => sys.error(s"host_fill_round_rect: $other")
+  })
+  host.register("host_stroke_round_rect", {
+    case List(x, y, w, h, rad, r, g, b, a) =>
+      pending += StrokeRoundRect(
+        SyslHost.asLong(x).toInt, SyslHost.asLong(y).toInt,
+        SyslHost.asLong(w).toInt, SyslHost.asLong(h).toInt,
+        SyslHost.asLong(rad).toInt,
+        new AwtColor(
+          SyslHost.asLong(r).toInt, SyslHost.asLong(g).toInt,
+          SyslHost.asLong(b).toInt, SyslHost.asLong(a).toInt,
+        ),
+      )
+      SyslHost.unit
+    case other => sys.error(s"host_stroke_round_rect: $other")
   })
   host.register("host_draw_text", {
     case List(x, y, text, r, g, b, a) =>

@@ -479,6 +479,9 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       val host = new SyslHost(resourcesDir)
       host.register("host_draw_text", { case _ => SyslHost.unit })
       host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_rect", { case _ => SyslHost.unit })
+      host.register("host_fill_round_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_round_rect", { case _ => SyslHost.unit })
       host.register("host_record", {
         case List(s) => records += SyslHost.asString(s); SyslHost.unit
         case other   => fail(s"host_record: $other")
@@ -588,6 +591,9 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       val host = new SyslHost(resourcesDir)
       host.register("host_draw_text", { case _ => SyslHost.unit })
       host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_rect", { case _ => SyslHost.unit })
+      host.register("host_fill_round_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_round_rect", { case _ => SyslHost.unit })
       host.register("host_publish", {
         case List(n) => publishes += SyslHost.asLong(n); SyslHost.unit
         case other   => fail(s"host_publish: $other")
@@ -651,6 +657,9 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       val host = new SyslHost(resourcesDir)
       host.register("host_draw_text", { case _ => SyslHost.unit })
       host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_rect", { case _ => SyslHost.unit })
+      host.register("host_fill_round_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_round_rect", { case _ => SyslHost.unit })
       host.register("host_publish", {
         case List(n) => publishes += SyslHost.asLong(n); SyslHost.unit
         case other   => fail(s"host_publish: $other")
@@ -709,6 +718,23 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
           SyslHost.unit
         case other => fail(s"host_fill_rect: $other")
       })
+      host.register("host_fill_round_rect", {
+        case List(x, y, w, h, rad, r, g, b, a) =>
+          cmds += s"fillR ${SyslHost.asLong(x)},${SyslHost.asLong(y)} " +
+                  s"${SyslHost.asLong(w)}x${SyslHost.asLong(h)} r=${SyslHost.asLong(rad)} " +
+                  s"rgba(${SyslHost.asLong(r)},${SyslHost.asLong(g)},${SyslHost.asLong(b)},${SyslHost.asLong(a)})"
+          SyslHost.unit
+        case other => fail(s"host_fill_round_rect: $other")
+      })
+      host.register("host_stroke_round_rect", {
+        case List(x, y, w, h, rad, r, g, b, a) =>
+          cmds += s"strokeR ${SyslHost.asLong(x)},${SyslHost.asLong(y)} " +
+                  s"${SyslHost.asLong(w)}x${SyslHost.asLong(h)} r=${SyslHost.asLong(rad)} " +
+                  s"rgba(${SyslHost.asLong(r)},${SyslHost.asLong(g)},${SyslHost.asLong(b)},${SyslHost.asLong(a)})"
+          SyslHost.unit
+        case other => fail(s"host_stroke_round_rect: $other")
+      })
+      host.register("host_stroke_rect", { case _ => SyslHost.unit })
       host.register("host_draw_text", {
         case List(x, y, text, _, _, _, _) =>
           cmds += s"text ${SyslHost.asLong(x)},${SyslHost.asLong(y)} '${SyslHost.asString(text)}'"
@@ -733,8 +759,10 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
         "text 0,14 'title'",
         "image 84,24 32x32 'icon.png'",
         "fill 0,56 200x26 rgba(80,120,200,255)",
-        "fill 4,60 18x18 rgba(60,60,80,255)",
-        "fill 8,64 10x10 rgba(220,220,240,255)",
+        // Checkbox: rounded box, stroked border, rounded inner check, label
+        "fillR 4,60 18x18 r=3 rgba(60,60,80,255)",
+        "strokeR 4,60 18x18 r=3 rgba(100,100,130,255)",
+        "fillR 8,64 10x10 r=2 rgba(220,220,240,255)",
         "text 28,74 'agree'",
       )
     }
@@ -802,6 +830,9 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
 
       val host = new SyslHost(resourcesDir)
       host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_rect", { case _ => SyslHost.unit })
+      host.register("host_fill_round_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_round_rect", { case _ => SyslHost.unit })
       host.register("host_draw_text", { case _ => SyslHost.unit })
       host.register("host_publish", {
         case List(idx) => publishes += SyslHost.asLong(idx); SyslHost.unit
@@ -828,6 +859,9 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
 
       val host = new SyslHost(resourcesDir)
       host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_rect", { case _ => SyslHost.unit })
+      host.register("host_fill_round_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_round_rect", { case _ => SyslHost.unit })
       host.register("host_draw_text", { case _ => SyslHost.unit })
       host.register("host_publish", {
         case List(v) => publishes += SyslHost.asLong(v); SyslHost.unit
@@ -863,6 +897,9 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
 
       val host = new SyslHost(resourcesDir)
       host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_rect", { case _ => SyslHost.unit })
+      host.register("host_fill_round_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_round_rect", { case _ => SyslHost.unit })
       host.register("host_draw_text", { case _ => SyslHost.unit })
       host.register("host_publish", {
         case List(v) => publishes += SyslHost.asLong(v); SyslHost.unit
@@ -917,6 +954,9 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
 
       val host = new SyslHost(resourcesDir)
       host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_rect", { case _ => SyslHost.unit })
+      host.register("host_fill_round_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_round_rect", { case _ => SyslHost.unit })
       host.register("host_draw_text", { case _ => SyslHost.unit })
       host.register("host_publish", {
         case List(s) => publishes += SyslHost.asString(s); SyslHost.unit
@@ -1073,6 +1113,9 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
 
       val host = new SyslHost(resourcesDir)
       host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_rect", { case _ => SyslHost.unit })
+      host.register("host_fill_round_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_round_rect", { case _ => SyslHost.unit })
       host.register("host_draw_text", { case _ => SyslHost.unit })
       host.register("host_publish", {
         case List(i) => publishes += SyslHost.asLong(i); SyslHost.unit
@@ -1144,6 +1187,9 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       val host = new SyslHost(resourcesDir)
       host.register("host_draw_text", { case _ => SyslHost.unit })
       host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_rect", { case _ => SyslHost.unit })
+      host.register("host_fill_round_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_round_rect", { case _ => SyslHost.unit })
       host.register("host_publish", {
         case List(i) => publishes += SyslHost.asLong(i); SyslHost.unit
         case other   => fail(s"host_publish: $other")
@@ -1175,6 +1221,9 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
 
       val host = new SyslHost(resourcesDir)
       host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_rect", { case _ => SyslHost.unit })
+      host.register("host_fill_round_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_round_rect", { case _ => SyslHost.unit })
       host.register("host_draw_text", { case _ => SyslHost.unit })
       host.register("host_draw_image", { case _ => SyslHost.unit })
       host.register("host_record", {
@@ -1236,6 +1285,9 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
 
       val host = new SyslHost(resourcesDir)
       host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_rect", { case _ => SyslHost.unit })
+      host.register("host_fill_round_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_round_rect", { case _ => SyslHost.unit })
       host.register("host_draw_text", { case _ => SyslHost.unit })
       host.register("host_draw_image", { case _ => SyslHost.unit })
       host.register("host_record", {
@@ -1275,6 +1327,9 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       val host = new SyslHost(resourcesDir)
       host.register("host_draw_text", { case _ => SyslHost.unit })
       host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_rect", { case _ => SyslHost.unit })
+      host.register("host_fill_round_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_round_rect", { case _ => SyslHost.unit })
       host.register("host_publish", {
         case List(n) => publishes += SyslHost.asLong(n); SyslHost.unit
         case other   => fail(s"host_publish: $other")
@@ -1323,6 +1378,9 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       val host = new SyslHost(resourcesDir)
       host.register("host_draw_text", { case _ => SyslHost.unit })
       host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_rect", { case _ => SyslHost.unit })
+      host.register("host_fill_round_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_round_rect", { case _ => SyslHost.unit })
       host.register("host_publish", {
         case List(n) => publishes += SyslHost.asLong(n); SyslHost.unit
         case other   => fail(s"host_publish: $other")
@@ -1343,6 +1401,9 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       val host = new SyslHost(resourcesDir)
       host.register("host_draw_text", { case _ => SyslHost.unit })
       host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_rect", { case _ => SyslHost.unit })
+      host.register("host_fill_round_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_round_rect", { case _ => SyslHost.unit })
       host.register("host_publish", {
         case List(n) => publishes += SyslHost.asLong(n); SyslHost.unit
         case other   => fail(s"host_publish: bad args $other")
@@ -1368,6 +1429,9 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       val host = new SyslHost(resourcesDir)
       host.register("host_draw_text", { case _ => SyslHost.unit })
       host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_rect", { case _ => SyslHost.unit })
+      host.register("host_fill_round_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_round_rect", { case _ => SyslHost.unit })
       host.register("host_publish", {
         case List(n, r) => publishes += ((SyslHost.asLong(n), SyslHost.asLong(r))); SyslHost.unit
         case other      => fail(s"host_publish: bad args $other")
@@ -1420,6 +1484,9 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
 
       val host = new SyslHost(resourcesDir)
       host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_rect", { case _ => SyslHost.unit })
+      host.register("host_fill_round_rect", { case _ => SyslHost.unit })
+      host.register("host_stroke_round_rect", { case _ => SyslHost.unit })
       host.register("host_draw_text", {
         case List(_, _, text, _, _, _, _) =>
           // Filter out the "+" button labels — they render at the
