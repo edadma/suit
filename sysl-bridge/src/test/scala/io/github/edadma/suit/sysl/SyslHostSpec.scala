@@ -759,10 +759,13 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
         "text 0,14 'title'",
         "image 84,24 32x32 'icon.png'",
         "fill 0,56 200x26 rgba(80,120,200,255)",
-        // Checkbox: rounded box, stroked border, rounded inner check, label
-        "fillR 4,60 18x18 r=3 rgba(60,60,80,255)",
-        "strokeR 4,60 18x18 r=3 rgba(100,100,130,255)",
-        "fillR 8,64 10x10 r=2 rgba(220,220,240,255)",
+        // Checkbox (theme-driven, checked → accent fill, accent_text bar):
+        // box at (4,60) lineHeight²=18, check_radius=3, border = input_border.
+        // The inner mark is now a tiny accent-text rect across the centre,
+        // matching Scala renderCheckbox.
+        "fillR 4,60 18x18 r=3 rgba(60,130,255,255)",
+        "strokeR 4,60 18x18 r=3 rgba(60,60,80,255)",
+        "fill 9,68 8x2 rgba(255,255,255,255)",
         "text 28,74 'agree'",
       )
     }
@@ -1037,6 +1040,7 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       )))
 
       cmds.toList shouldBe List(
+        "fill 0,0 200x80 rgba(22,22,32,255)",    // theme.bg pre-clear (κ2)
         "text 0,14 'base'",                      // base tree
         "fill 0,0 200x80 rgba(20,20,30,200)",    // backdrop full screen
         "text 50,44 'modal'",                    // (50, 30) + 14 baseline
@@ -1093,6 +1097,7 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       )))
 
       cmds.toList shouldBe List(
+        "fill 0,0 200x80 rgba(22,22,32,255)",  // theme.bg pre-clear (κ2)
         "text 0,14 'base'",
         "fill 0,0 200x80 rgba(0,0,0,160)",
         "text 92,45 'ok'",

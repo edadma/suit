@@ -30,6 +30,7 @@ import suit.{Slider, Radio, Input, Fiber, Rect}
 import suit.{mount, run_loop}
 import suit.{use_state_int, use_state_bool, use_state_string, use_id, use_effect, use_context, use_transition}
 import suit.{modal, tabs}
+import suit.{set_theme, default_dark_theme, default_light_theme}
 
 extern host_record(s: string) -> int
 
@@ -156,11 +157,22 @@ form_panel(f: Fiber) -> View
 // the roster via add/remove buttons — keyed reconcile coverage
 // is in the keyed-reorder probe).
 app(f: Fiber) -> View
-    val theme, set_theme = use_state_int(f, 0)
+    val theme, set_theme_idx = use_state_int(f, 0)
     host_record(s"app:theme=$theme")
 
+    // Apply the chosen palette before rendering. Done here at the top
+    // of app()'s render so the current frame already sees the right
+    // colours; the next frame's render() call walks with the updated
+    // module-level current_theme.
+    if theme == 0 then
+        set_theme(default_dark_theme())
+        0
+    else
+        set_theme(default_light_theme())
+        0
+
     on_toggle = () ->
-        set_theme(1 - theme)
+        set_theme_idx(1 - theme)
         0
 
     val rows = (new [3]View)[:]

@@ -99,6 +99,40 @@ struct Insets
     bottom: int
     left: int
 
+// Theme — mirrors Theme.scala. One per running engine; the demo
+// switches between `default_dark_theme()` and `default_light_theme()`
+// by calling `set_theme(...)` from inside its theme-toggle handler.
+// Render arms read `theme()` to look up colors and metrics.
+struct Theme
+    bg:                  Color
+    fg:                  Color
+    muted:               Color
+    accent:              Color
+    accent_text:         Color
+    btn_bg:              Color
+    btn_hover_bg:        Color
+    btn_pressed_bg:      Color
+    btn_disabled_bg:     Color
+    input_bg:            Color
+    input_focus_bg:      Color
+    input_border:        Color
+    input_hover_border:  Color
+    focus_border:        Color
+    focus_ring:          Color
+    border:              Color
+    font_size:           int
+    char_width:          int
+    line_height:         int
+    padding:             int
+    spacing:             int
+    btn_padding_x:       int
+    btn_padding_y:       int
+    input_padding_x:     int
+    input_padding_y:     int
+    btn_radius:          int
+    input_radius:        int
+    check_radius:        int
+
 struct InputState
     mouse_x: int
     mouse_y: int
@@ -117,6 +151,79 @@ const SLIDER_TRACK: int = 4
 const SLIDER_THUMB: int = 8
 const INPUT_PAD_X:  int = 6
 const INPUT_PAD_Y:  int = 4
+
+// Theme — one global theme per engine. Module-level slot is lazy-init
+// to default_dark_theme on first access; the demo flips it via
+// set_theme(). Every render arm reads through `theme()` so the next
+// frame after a switch picks up the new palette.
+var current_theme: Theme
+var theme_initialized: bool = false
+
+ensure_theme_init() -> int
+    if !theme_initialized then
+        current_theme = default_dark_theme()
+        theme_initialized = true
+        0
+    else 0
+
+theme() -> Theme
+    ensure_theme_init()
+    current_theme
+
+set_theme(t: Theme) -> int
+    ensure_theme_init()
+    current_theme = t
+    0
+
+default_dark_theme() -> Theme
+    Theme(
+        Color(22, 22, 32, 255),       // bg
+        Color(220, 220, 240, 255),    // fg
+        Color(140, 140, 160, 255),    // muted
+        Color(60, 130, 255, 255),     // accent
+        Color(255, 255, 255, 255),    // accent_text
+        Color(40, 40, 55, 255),       // btn_bg
+        Color(55, 55, 75, 255),       // btn_hover_bg
+        Color(30, 30, 45, 255),       // btn_pressed_bg
+        Color(30, 30, 38, 255),       // btn_disabled_bg
+        Color(15, 15, 22, 255),       // input_bg
+        Color(20, 22, 32, 255),       // input_focus_bg
+        Color(60, 60, 80, 255),       // input_border
+        Color(95, 95, 130, 255),      // input_hover_border
+        Color(60, 130, 255, 255),     // focus_border
+        Color(40, 95, 200, 255),      // focus_ring
+        Color(60, 60, 80, 255),       // border
+        13, 8, 18,                    // font_size, char_width, line_height
+        8, 6,                         // padding, spacing
+        12, 6,                        // btn_padding_x/y
+        6, 4,                         // input_padding_x/y
+        4, 4, 3                       // btn_radius, input_radius, check_radius
+    )
+
+default_light_theme() -> Theme
+    Theme(
+        Color(245, 245, 250, 255),    // bg
+        Color(20, 20, 30, 255),       // fg
+        Color(110, 110, 130, 255),    // muted
+        Color(60, 130, 255, 255),     // accent
+        Color(255, 255, 255, 255),    // accent_text
+        Color(225, 225, 235, 255),    // btn_bg
+        Color(210, 210, 225, 255),    // btn_hover_bg
+        Color(195, 195, 215, 255),    // btn_pressed_bg
+        Color(235, 235, 240, 255),    // btn_disabled_bg
+        Color(255, 255, 255, 255),    // input_bg
+        Color(250, 250, 255, 255),    // input_focus_bg
+        Color(195, 195, 210, 255),    // input_border
+        Color(160, 160, 185, 255),    // input_hover_border
+        Color(60, 130, 255, 255),     // focus_border
+        Color(150, 185, 240, 255),    // focus_ring
+        Color(195, 195, 210, 255),    // border
+        13, 8, 18,                    // font_size, char_width, line_height
+        8, 6,                         // padding, spacing
+        12, 6,                        // btn_padding_x/y
+        6, 4,                         // input_padding_x/y
+        4, 4, 3                       // btn_radius, input_radius, check_radius
+    )
 
 // Focus identity — every focusable Node mints a unique non-zero id at
 // mount time. `focused_id == 0` means "nothing focused". This dodges
@@ -1028,19 +1135,22 @@ rerender(n: Node) -> int
         _ -> 0
 
 render(n: Node) -> int
+    val t = theme()
     n match
         TextNode(s) ->
             s.view match
                 Text(c) ->
-                    host_draw_text(s.bounds.x, s.bounds.y + 14, c, 220, 220, 240, 255)
+                    host_draw_text(s.bounds.x, s.bounds.y + 14, c, t.fg.r, t.fg.g, t.fg.b, 255)
                     0
                 _ -> 0
         ButtonNode(s) ->
             s.view match
                 Button(l, _) ->
-                    host_fill_round_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, 4, 40, 40, 55, 255)
-                    host_stroke_round_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, 4, 80, 80, 100, 255)
-                    host_draw_text(s.bounds.x + BTN_PAD_X, s.bounds.y + BTN_PAD_Y + 14, l, 220, 220, 240, 255)
+                    val bg = t.btn_bg
+                    val br = t.border
+                    host_fill_round_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, t.btn_radius, bg.r, bg.g, bg.b, 255)
+                    host_stroke_round_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, t.btn_radius, br.r, br.g, br.b, 255)
+                    host_draw_text(s.bounds.x + t.btn_padding_x, s.bounds.y + t.btn_padding_y + 14, l, t.fg.r, t.fg.g, t.fg.b, 255)
                     0
                 _ -> 0
         SpacerNode(_) -> 0
@@ -1053,62 +1163,84 @@ render(n: Node) -> int
         CheckboxNode(s) ->
             s.view match
                 Checkbox(l, checked, _) ->
-                    host_fill_round_rect(s.bounds.x, s.bounds.y, LINE_H, LINE_H, 3, 60, 60, 80, 255)
-                    host_stroke_round_rect(s.bounds.x, s.bounds.y, LINE_H, LINE_H, 3, 100, 100, 130, 255)
+                    val box  = t.line_height
+                    val bg   = if checked then t.accent else t.input_bg
+                    val br   = t.input_border
+                    host_fill_round_rect(s.bounds.x, s.bounds.y, box, box, t.check_radius, bg.r, bg.g, bg.b, 255)
+                    host_stroke_round_rect(s.bounds.x, s.bounds.y, box, box, t.check_radius, br.r, br.g, br.b, 255)
                     if checked then
-                        host_fill_round_rect(s.bounds.x + 4, s.bounds.y + 4, LINE_H - 8, LINE_H - 8, 2, 220, 220, 240, 255)
-                    host_draw_text(s.bounds.x + LINE_H + CHK_GAP, s.bounds.y + 14, l, 220, 220, 240, 255)
+                        // Small accent-text bar across the middle (mirrors Scala).
+                        val cx = s.bounds.x + box / 2
+                        val cy = s.bounds.y + box / 2
+                        val mark = t.accent_text
+                        host_fill_rect(cx - 4, cy - 1, 8, 2, mark.r, mark.g, mark.b, 255)
+                    host_draw_text(s.bounds.x + box + CHK_GAP, s.bounds.y + 14, l, t.fg.r, t.fg.g, t.fg.b, 255)
                     0
                 _ -> 0
         RadioNode(s) ->
-            // Circular: outer ring is a round-rect with radius=LINE_H/2
-            // (a corner radius equal to half the side gives a circle).
-            // Inner dot is a smaller circle, centered in the ring.
+            // Circular outer ring (radius=box/2 makes a round-rect a circle),
+            // accent fill when selected, concentric inner dot via accent_text.
             s.view match
                 Radio(l, selected, _) ->
-                    val r = LINE_H / 2
-                    host_fill_round_rect(s.bounds.x, s.bounds.y, LINE_H, LINE_H, r, 60, 60, 80, 255)
-                    host_stroke_round_rect(s.bounds.x, s.bounds.y, LINE_H, LINE_H, r, 100, 100, 130, 255)
+                    val box = t.line_height
+                    val r   = box / 2
+                    val bg  = if selected then t.accent else t.input_bg
+                    val br  = t.input_border
+                    host_fill_round_rect(s.bounds.x, s.bounds.y, box, box, r, bg.r, bg.g, bg.b, 255)
+                    host_stroke_round_rect(s.bounds.x, s.bounds.y, box, box, r, br.r, br.g, br.b, 255)
                     if selected then
-                        val inner = LINE_H - 8
-                        host_fill_round_rect(s.bounds.x + 4, s.bounds.y + 4, inner, inner, inner / 2, 220, 220, 240, 255)
-                    host_draw_text(s.bounds.x + LINE_H + RADIO_GAP, s.bounds.y + 14, l, 220, 220, 240, 255)
+                        val inner = box / 3
+                        val ix = s.bounds.x + (box - inner) / 2
+                        val iy = s.bounds.y + (box - inner) / 2
+                        val dot = t.accent_text
+                        host_fill_round_rect(ix, iy, inner, inner, inner / 2, dot.r, dot.g, dot.b, 255)
+                    host_draw_text(s.bounds.x + box + RADIO_GAP, s.bounds.y + 14, l, t.fg.r, t.fg.g, t.fg.b, 255)
                     0
                 _ -> 0
         InputNode(s) ->
-            // Rounded background. Border colour switches when focused
-            // (mirrors Theme.scala's inputFocusBorder vs inputBorder).
-            // Then the value (or placeholder), drawn at the Input's
-            // standard pad inset.
+            // Theme-driven bg + border. focus_border highlights the
+            // currently-focused field; otherwise input_border. Placeholder
+            // text uses muted colour, real value uses fg.
             s.view match
                 Input(value, placeholder, _, _) ->
                     val is_focused = focused_id == s.focus_id
-                    val bg_lit = if is_focused then 80 else 60
-                    host_fill_round_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, 4, bg_lit, bg_lit, 90, 255)
-                    val br = if is_focused then 140 else 100
-                    val bg = if is_focused then 160 else 100
-                    val bb = if is_focused then 220 else 130
-                    host_stroke_round_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, 4, br, bg, bb, 255)
-                    val shown = if len(value) > 0 then value else placeholder
-                    val tx = s.bounds.x + INPUT_PAD_X
-                    val ty = s.bounds.y + INPUT_PAD_Y + 14
-                    host_draw_text(tx, ty, shown, 220, 220, 240, 255)
+                    val bg = if is_focused then t.input_focus_bg else t.input_bg
+                    val br = if is_focused then t.focus_border   else t.input_border
+                    host_fill_round_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, t.input_radius, bg.r, bg.g, bg.b, 255)
+                    host_stroke_round_rect(s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h, t.input_radius, br.r, br.g, br.b, 255)
+                    val tx = s.bounds.x + t.input_padding_x
+                    val ty = s.bounds.y + t.input_padding_y + 14
+                    if len(value) > 0 then
+                        host_draw_text(tx, ty, value, t.fg.r, t.fg.g, t.fg.b, 255)
+                    else
+                        host_draw_text(tx, ty, placeholder, t.muted.r, t.muted.g, t.muted.b, 255)
                     0
                 _ -> 0
         SliderNode(s) ->
-            // Track is a thin rounded bar spanning the full bounds width;
-            // thumb sits at the value's normalized position. Match the
-            // dispatch math so a value emitted by a click renders the
-            // thumb at exactly the click's x.
+            // Track is a rounded bar; the portion to the left of the
+            // thumb-center is filled with accent (so the slider visually
+            // reads its current value). Thumb follows btn theme — a
+            // mini-button you can drag.
             s.view match
                 Slider(value, vmin, vmax, _, _) ->
                     val track_y = s.bounds.y + (SLIDER_H - SLIDER_TRACK) / 2
-                    host_fill_round_rect(s.bounds.x, track_y, s.bounds.w, SLIDER_TRACK, SLIDER_TRACK / 2, 60, 60, 80, 255)
+                    val tbg = t.input_bg
+                    val tbr = t.input_border
+                    host_fill_round_rect(s.bounds.x, track_y, s.bounds.w, SLIDER_TRACK, SLIDER_TRACK / 2, tbg.r, tbg.g, tbg.b, 255)
+                    host_stroke_round_rect(s.bounds.x, track_y, s.bounds.w, SLIDER_TRACK, SLIDER_TRACK / 2, tbr.r, tbr.g, tbr.b, 255)
                     val range = vmax - vmin
                     val tw    = s.bounds.w - SLIDER_THUMB
                     val rel   = if range > 0 && tw > 0 then (value - vmin) * tw / range else 0
                     val tx    = s.bounds.x + rel
-                    host_fill_round_rect(tx, s.bounds.y, SLIDER_THUMB, SLIDER_H, SLIDER_THUMB / 2, 220, 220, 240, 255)
+                    val center_x = tx + SLIDER_THUMB / 2
+                    val fill_w   = center_x - s.bounds.x
+                    if fill_w > 0 then
+                        val ac = t.accent
+                        host_fill_round_rect(s.bounds.x, track_y, fill_w, SLIDER_TRACK, SLIDER_TRACK / 2, ac.r, ac.g, ac.b, 255)
+                    val thbg = t.btn_bg
+                    val thbr = t.border
+                    host_fill_round_rect(tx, s.bounds.y, SLIDER_THUMB, SLIDER_H, t.btn_radius, thbg.r, thbg.g, thbg.b, 255)
+                    host_stroke_round_rect(tx, s.bounds.y, SLIDER_THUMB, SLIDER_H, t.btn_radius, thbr.r, thbr.g, thbr.b, 255)
                     0
                 _ -> 0
         SizedNode(s)  -> render(s.child)
@@ -1225,6 +1357,10 @@ run_loop(node: Node, frame: Rect, max_frames: int) -> int
         if !quit then
             rerender(node)
             layout(node, frame)
+            // Clear to theme bg before each frame's draws. Mirrors the
+            // Scala Engine's drawList header (Engine.scala renderRoot).
+            val bg = theme().bg
+            host_fill_rect(frame.x, frame.y, frame.w, frame.h, bg.r, bg.g, bg.b, 255)
             render(node)
             render_overlays()
             host_present_frame()
