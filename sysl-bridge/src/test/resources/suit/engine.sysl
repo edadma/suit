@@ -35,6 +35,27 @@ const EVENT_KEY_DOWN:    int = 5
 const EVENT_KEY_UP:      int = 6
 const EVENT_FRAME:       int = 7
 
+// Dispatch phase — distinguishes a fresh PRESS from a DRAG (move while
+// pressed) or REL (release). Existing widgets (Button/Checkbox/Radio)
+// only act on PRESS; Slider uses DRAG to keep emitting values as the
+// thumb is dragged and REL to clear its dragging latch.
+//
+// Module-level so InputState's struct shape stays backward-compatible —
+// probes that only synthesize press events don't have to thread the
+// phase through their dispatch calls. Defaults to PHASE_PRESS so a
+// raw `dispatch(node, InputState(x, y, true))` call still triggers
+// click-style widgets without any setup.
+const PHASE_IDLE:  int = 0
+const PHASE_PRESS: int = 1
+const PHASE_DRAG:  int = 2
+const PHASE_REL:   int = 3
+
+var current_phase: int = 1   // PHASE_PRESS
+
+set_phase(p: int) -> int
+    current_phase = p
+    0
+
 struct Rect
     x: int
     y: int
@@ -117,6 +138,7 @@ struct RadioNodeState
 struct SliderNodeState
     view: View
     bounds: Rect
+    dragging: bool
 
 struct SizedNodeState
     view: View
@@ -227,7 +249,7 @@ mount(v: View) -> Node
         Image(_, _, _)    -> ImageNode(ImageNodeState(v, Rect(0, 0, 0, 0)))
         Checkbox(_, _, _) -> CheckboxNode(CheckboxNodeState(v, Rect(0, 0, 0, 0)))
         Radio(_, _, _)        -> RadioNode(RadioNodeState(v, Rect(0, 0, 0, 0)))
-        Slider(_, _, _, _, _) -> SliderNode(SliderNodeState(v, Rect(0, 0, 0, 0)))
+        Slider(_, _, _, _, _) -> SliderNode(SliderNodeState(v, Rect(0, 0, 0, 0), false))
         Sized(c, _, _)    -> SizedNode(SizedNodeState(v, Rect(0, 0, 0, 0), mount(c)))
         Center(c)         -> CenterNode(CenterNodeState(v, Rect(0, 0, 0, 0), mount(c)))
         Box(c, _, _)      -> BoxNode(BoxNodeState(v, Rect(0, 0, 0, 0), mount(c)))
@@ -411,7 +433,7 @@ contains(b: Rect, x: int, y: int) -> bool
 dispatch(n: Node, input: InputState) -> int
     n match
         ButtonNode(s) ->
-            if input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
+            if current_phase == PHASE_PRESS && input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
                 s.view match
                     Button(_, on_click) ->
                         on_click()
@@ -419,7 +441,7 @@ dispatch(n: Node, input: InputState) -> int
                     _ -> 0
             else 0
         CheckboxNode(s) ->
-            if input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
+            if current_phase == PHASE_PRESS && input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
                 s.view match
                     Checkbox(_, checked, on_toggle) ->
                         on_toggle(!checked)
@@ -433,7 +455,7 @@ dispatch(n: Node, input: InputState) -> int
             // re-firing on_select. Group exclusivity is the parent's job:
             // the controller flips one Radio's `selected` to true and
             // others to false on each emission.
-            if input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
+            if current_phase == PHASE_PRESS && input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
                 s.view match
                     Radio(_, selected, on_select) ->
                         if !selected then on_select() else 0
@@ -441,17 +463,23 @@ dispatch(n: Node, input: InputState) -> int
                     _ -> 0
             else 0
         SliderNode(s) ->
-            // Click-to-jump: project the press's x coordinate onto the
-            // [vmin, vmax] track and emit the new value via on_change.
-            // The track usable area shrinks by a half-thumb at each end
-            // so the visible thumb-rect endpoints map exactly to the
-            // value extremes (matches Scala suit emitSliderValue). Drag
-            // tracking (mouse_pressed && MOUSE_MOVE) lands in ζ3.
-            if input.mouse_pressed && contains(s.bounds, input.mouse_x, input.mouse_y) then
-                s.view match
-                    Slider(value, vmin, vmax, on_change, _) ->
-                        val range = vmax - vmin
-                        val tw    = s.bounds.w - SLIDER_THUMB
+            // Three-phase handling. PRESS arms the dragging latch and
+            // emits the projected value at the click point. DRAG (a
+            // MOUSE_MOVE while still pressed) keeps emitting whenever
+            // the cursor moves — without a contains() check, since the
+            // user may drag past the bounds and we still track. REL
+            // clears the latch.
+            //
+            // The projection math (track_width = bounds.w - SLIDER_THUMB;
+            // origin = bounds.x + SLIDER_THUMB/2) matches render's thumb
+            // placement so the click point lines up with the rendered
+            // thumb position.
+            s.view match
+                Slider(value, vmin, vmax, on_change, _) ->
+                    val range = vmax - vmin
+                    val tw    = s.bounds.w - SLIDER_THUMB
+                    if current_phase == PHASE_PRESS && contains(s.bounds, input.mouse_x, input.mouse_y) then
+                        s.dragging = true
                         if range > 0 && tw > 0 then
                             val tx0  = s.bounds.x + SLIDER_THUMB / 2
                             val rel0 = (input.mouse_x - tx0) * range / tw
@@ -460,8 +488,20 @@ dispatch(n: Node, input: InputState) -> int
                             if v != value then on_change(v) else 0
                             0
                         else 0
-                    _ -> 0
-            else 0
+                    else if current_phase == PHASE_DRAG && s.dragging then
+                        if range > 0 && tw > 0 then
+                            val tx0  = s.bounds.x + SLIDER_THUMB / 2
+                            val rel0 = (input.mouse_x - tx0) * range / tw
+                            val rel  = if rel0 < 0 then 0 else if rel0 > range then range else rel0
+                            val v    = vmin + rel
+                            if v != value then on_change(v) else 0
+                            0
+                        else 0
+                    else if current_phase == PHASE_REL then
+                        s.dragging = false
+                        0
+                    else 0
+                _ -> 0
         SizedNode(s)  -> dispatch(s.child, input)
         CenterNode(s) -> dispatch(s.child, input)
         BoxNode(s)    -> dispatch(s.child, input)
@@ -796,15 +836,24 @@ run_loop(node: Node, frame: Rect, max_frames: int) -> int
                 input.mouse_x = host_event_x()
                 input.mouse_y = host_event_y()
                 input.mouse_pressed = true
+                set_phase(PHASE_PRESS)
                 dispatch(node, input)
                 0
             else if tag == EVENT_MOUSE_REL then
                 input.mouse_pressed = false
+                set_phase(PHASE_REL)
+                dispatch(node, input)
+                set_phase(PHASE_PRESS)   // restore default for synthesized presses
                 0
             else if tag == EVENT_MOUSE_MOVE then
                 input.mouse_x = host_event_x()
                 input.mouse_y = host_event_y()
-                0
+                if input.mouse_pressed then
+                    set_phase(PHASE_DRAG)
+                    dispatch(node, input)
+                    set_phase(PHASE_PRESS)
+                    0
+                else 0
             else 0
             tag = host_poll_event()
         if !quit then

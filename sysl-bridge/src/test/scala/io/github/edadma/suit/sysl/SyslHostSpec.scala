@@ -840,6 +840,53 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       publishes.toList shouldBe List(0L, 50L, 100L)
     }
 
+    // Phase ζ3 — Slider drag tracking through run_loop. PRESS arms
+    // the latch and emits at the click point; subsequent MOVE-while-
+    // pressed events emit re-projected values without re-checking
+    // bounds; REL clears the latch. A final MOVE after REL emits
+    // nothing (latch cleared).
+    "ζ3 — Slider drag emits across MOVE; REL clears latch" in {
+      val publishes = mutable.ArrayBuffer.empty[Long]
+      val events = scala.collection.mutable.Queue[(Long, Long, Long)](
+        (2L,   4L, 8L),  // PRESS at x=4   → emit 0
+        (4L, 100L, 8L),  // MOVE  at x=100 → drag emit 50
+        (4L, 196L, 8L),  // MOVE  at x=196 → drag emit 100
+        (3L,   0L, 0L),  // REL — clears latch
+        (4L,   4L, 8L),  // MOVE  at x=4   → no emit (not dragging)
+        (0L,   0L, 0L),  // NONE — end frame 0
+        (1L,   0L, 0L),  // QUIT — frame 1
+      )
+      var lastEvent: (Long, Long, Long) = (0L, 0L, 0L)
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_publish", {
+        case List(v) => publishes += SyslHost.asLong(v); SyslHost.unit
+        case other   => fail(s"host_publish: $other")
+      })
+      host.register("host_poll_event", {
+        case Nil =>
+          val ev = if events.nonEmpty then events.dequeue() else (0L, 0L, 0L)
+          lastEvent = ev
+          SyslHost.long(ev._1)
+        case other => fail(s"host_poll_event: $other")
+      })
+      host.register("host_event_x", { case Nil => SyslHost.long(lastEvent._2); case other => fail(s"$other") })
+      host.register("host_event_y", { case Nil => SyslHost.long(lastEvent._3); case other => fail(s"$other") })
+      host.register("host_now_ms",  { case Nil => SyslHost.long(0L);            case other => fail(s"$other") })
+      host.register("host_present_frame",          { case Nil => SyslHost.unit; case other => fail(s"$other") })
+      host.register("host_sleep_until_next_frame", { case Nil => SyslHost.unit; case other => fail(s"$other") })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "probes/widgets-slider-drag.sysl",
+      )))
+
+      publishes.toList shouldBe List(0L, 50L, 100L)
+    }
+
     "Keyed children preserve state across reorder" in {
       val publishes = mutable.ArrayBuffer.empty[Long]
 

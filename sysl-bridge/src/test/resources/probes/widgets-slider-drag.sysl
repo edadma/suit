@@ -1,0 +1,38 @@
+// Phase ζ3 probe — Slider drag tracking through run_loop. The host
+// scripts the event sequence:
+//   PRESS  at x=4   → arms drag, emits 0
+//   MOVE   at x=100 → DRAG emits 50
+//   MOVE   at x=196 → DRAG emits 100
+//   REL                → clears drag
+//   MOVE   at x=4   → no emit (not dragging)
+//   QUIT
+//
+// host_publish records emitted values. Expected: [0, 50, 100].
+//
+// The PRESS lands inside bounds (200×18 at origin), so dragging=true.
+// Subsequent MOVE-while-pressed events fire dispatch with PHASE_DRAG,
+// which re-projects mouse_x without a contains check — the cursor
+// could drift outside the bounds and tracking would still work. After
+// REL, the dragging latch is cleared, so a final MOVE at x=4 produces
+// no emit.
+
+import suit.{View, Slider, Stack, Component, Fiber, Rect}
+import suit.{mount, run_loop}
+import suit.{use_state_int}
+
+extern host_publish(value: int) -> int
+
+controller(f: Fiber) -> View
+    val v, set_v = use_state_int(f, 1)
+    on_change = (next: int) ->
+        host_publish(next)
+        set_v(next)
+        0
+    val kids = (new [1]View)[:]
+    kids[0] = Slider(v, 0, 100, on_change, 200)
+    Stack(0, kids)
+
+main() -> int
+    val node = mount(Component(controller))
+    run_loop(node, Rect(0, 0, 200, 18), 20)
+    0
