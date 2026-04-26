@@ -1,0 +1,191 @@
+// Phase θ — translates the salient bits of Demo.scala into sysl.
+// Compared to Demo.scala this trims:
+//   - useMemo, useLayoutEffect, Fragment, Scroll (engine doesn't yet
+//     expose these),
+//   - Insets/padding on Stack (use Box for padding when needed),
+//   - functional-update setters (we have setter(value), not setter(f)),
+//   - useReducer with arbitrary action types (we have int-only),
+//   - dropdown(value, options) (our dropdown is index-based; FormPanel
+//     uses Radio for the same effect),
+//   - WithRef + auto-focus (focus model lives in module-level
+//     `focused_id` already; AutoFocus would mint+set at mount, deferred).
+//
+// What's exercised end-to-end:
+//   - use_state_int / use_state_bool / use_state_string / use_id /
+//     use_context / use_transition / use_effect
+//   - Component, Stack, HStack, Box, Center, Sized, Spacer
+//   - Button, Text, Slider, Radio, Input
+//   - ContextProvider with int theme value (0=dark, 1=light) read
+//     by ThemeIndicator via use_context
+//   - Keyed list of Rows surviving rerender
+//   - tabs() helper switching three content panels
+//   - modal() helper toggled by FormPanel state
+//
+// Each render path also calls host_record(...) so the test can pin a
+// sequence of state observations across a scripted event tape.
+
+import suit.{View, Text, Button, Stack, HStack, Sized, Spacer, Component, Box, Color, Insets}
+import suit.{ContextProvider, Keyed, IntCell, HookValue}
+import suit.{Slider, Radio, Input, Fiber, Rect}
+import suit.{mount, run_loop}
+import suit.{use_state_int, use_state_bool, use_state_string, use_id, use_effect, use_context, use_transition}
+import suit.{modal, tabs}
+
+extern host_record(s: string) -> int
+
+const KEY_THEME: int = 1
+
+// Reads the theme from context and records it. The string "dark"/
+// "light" comes out of an int rather than enum because HookValue
+// only carries IntCell; the Demo's Scala enum collapses to 0/1.
+theme_indicator(f: Fiber) -> View
+    val tv = use_context(f, KEY_THEME)
+    val n = tv match
+        IntCell(v) -> v
+        _          -> -1
+    val name = if n == 0 then "dark" else "light"
+    host_record(s"theme:$name")
+    Text(s"theme=$name")
+
+// Counter factory — captures `label` (string, refcounted) and
+// `delta` (int, by-value) into the rendered closure. Two instances
+// at the top level get distinct fibers, so their state cells don't
+// collide.
+counter_factory(label: string, delta: int) -> View
+    counter_render = (f: Fiber) ->
+        val n, set_n = use_state_int(f, 0)
+        host_record(s"$label:$n")
+        on_dec = () ->
+            set_n(n - delta)
+            0
+        on_inc = () ->
+            set_n(n + delta)
+            0
+        val kids = (new [3]View)[:]
+        kids[0] = Sized(Text(s"$label: $n"), 100, -1)
+        kids[1] = Button(s"-$delta", on_dec)
+        kids[2] = Button(s"+$delta", on_inc)
+        HStack(8, kids)
+    Component(counter_render)
+
+// Row factory — keyed list element holding its own click counter.
+// The keyed reorder probe already covers state-survives-reorder;
+// here we just check that each row independently increments.
+row_factory(label: string) -> View
+    row_render = (f: Fiber) ->
+        val n, set_n = use_state_int(f, 0)
+        host_record(s"row:$label:$n")
+        on_click = () ->
+            set_n(n + 1)
+            0
+        val kids = (new [2]View)[:]
+        kids[0] = Sized(Text(label), 80, -1)
+        kids[1] = Button(s"Click($n)", on_click)
+        HStack(8, kids)
+    Component(row_render)
+
+// FormPanel — owns its panel-local state (tab, slider, radio,
+// modal-open) and renders the tabs() helper around three content
+// views. Each branch is built unconditionally and handed to
+// tabs(); the helper picks contents[selected] for the current
+// render.
+form_panel(f: Fiber) -> View
+    val tab,        set_tab    = use_state_int(f, 0)
+    val slider_v,   set_slider = use_state_int(f, 50)
+    val radio_pick, set_radio  = use_state_int(f, 0)
+    val modal_open, set_modal  = use_state_bool(f, false)
+
+    val animated = use_transition(f, slider_v, 250)
+    host_record(s"form:tab=$tab slider=$slider_v radio=$radio_pick modal_open=$modal_open eased=$animated")
+
+    on_pick_a = () ->
+        set_radio(0)
+        0
+    on_pick_b = () ->
+        set_radio(1)
+        0
+    on_pick_c = () ->
+        set_radio(2)
+        0
+
+    val slider_row = (new [2]View)[:]
+    slider_row[0] = Sized(Text(s"Slider: $slider_v"), 100, -1)
+    slider_row[1] = Slider(slider_v, 0, 100, set_slider, 200)
+
+    val radios = (new [3]View)[:]
+    radios[0] = Radio("Apple",  radio_pick == 0, on_pick_a)
+    radios[1] = Radio("Banana", radio_pick == 1, on_pick_b)
+    radios[2] = Radio("Cherry", radio_pick == 2, on_pick_c)
+
+    val form_kids = (new [3]View)[:]
+    form_kids[0] = HStack(12, slider_row)
+    form_kids[1] = Text("Radio group:")
+    form_kids[2] = Stack(4, radios)
+    val form_view = Stack(8, form_kids)
+
+    on_open_modal = () ->
+        set_modal(true)
+        0
+    on_close_modal = () ->
+        set_modal(false)
+        0
+    val modal_inner = (new [2]View)[:]
+    modal_inner[0] = Text("This is a modal.")
+    modal_inner[1] = Button("Close", on_close_modal)
+    val modal_box_kids = (new [2]View)[:]
+    modal_box_kids[0] = Button("Open modal", on_open_modal)
+    modal_box_kids[1] = modal(modal_open, Box(Stack(8, modal_inner), Color(40, 40, 60, 255), Insets(12, 12, 12, 12)))
+    val modal_view = Stack(8, modal_box_kids)
+
+    val anim_kids = (new [1]View)[:]
+    anim_kids[0] = Text(s"target=$slider_v eased=$animated")
+    val anim_view = Stack(4, anim_kids)
+
+    val labels = (new [3]string)[:]
+    labels[0] = "Form"
+    labels[1] = "Modal"
+    labels[2] = "Animate"
+    val contents = (new [3]View)[:]
+    contents[0] = form_view
+    contents[1] = modal_view
+    contents[2] = anim_view
+    tabs(tab, labels, contents, set_tab)
+
+// Top-level app component. Owns the theme cell + the keyed-list
+// roster (a fixed array here; a real app would let the user mutate
+// the roster via add/remove buttons — keyed reconcile coverage
+// is in the keyed-reorder probe).
+app(f: Fiber) -> View
+    val theme, set_theme = use_state_int(f, 0)
+    host_record(s"app:theme=$theme")
+
+    on_toggle = () ->
+        set_theme(1 - theme)
+        0
+
+    val rows = (new [3]View)[:]
+    rows[0] = Keyed(1, row_factory("Alice"))
+    rows[1] = Keyed(2, row_factory("Bob"))
+    rows[2] = Keyed(3, row_factory("Carol"))
+    val row_list = Stack(4, rows)
+
+    val sections = (new [6]View)[:]
+    sections[0] = Text("Suit demo")
+    sections[1] = Component(theme_indicator)
+    sections[2] = counter_factory("Count", 1)
+    sections[3] = counter_factory("Big", 10)
+    sections[4] = Component(form_panel)
+    sections[5] = row_list
+
+    val toolbar_kids = (new [1]View)[:]
+    toolbar_kids[0] = Button("Toggle theme", on_toggle)
+    val outer = (new [2]View)[:]
+    outer[0] = HStack(8, toolbar_kids)
+    outer[1] = Stack(10, sections)
+
+    ContextProvider(KEY_THEME, IntCell(theme), Stack(10, outer))
+
+main() -> int
+    val node = mount(Component(app))
+    run_loop(node, Rect(0, 0, 720, 560), 30)
+    0

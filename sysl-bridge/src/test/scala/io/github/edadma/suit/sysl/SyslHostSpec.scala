@@ -1155,6 +1155,66 @@ class SyslHostSpec extends AnyFreeSpec with Matchers:
       publishes.toList shouldBe List(1L, 0L, 2L)
     }
 
+    // Phase θ — translates the salient bits of Demo.scala into a
+    // single sysl driver and runs it through suit.engine end-to-end.
+    // Each Component records its state via host_record on every
+    // render; the test asserts the mount-time tape (8 records, one
+    // per Component instance in the tree-walk order). After mount
+    // the run_loop drains a single QUIT event and exits before any
+    // rerender, so the tape stays at its initial-render shape.
+    "θ — full demo translation: mount tape covers every Component" in {
+      val records = mutable.ArrayBuffer.empty[String]
+      val events = scala.collection.mutable.Queue[(Long, Long, Long)](
+        (1L, 0L, 0L),  // QUIT — exits run_loop before any rerender
+      )
+      var lastEvent: (Long, Long, Long) = (0L, 0L, 0L)
+
+      val host = new SyslHost(resourcesDir)
+      host.register("host_fill_rect", { case _ => SyslHost.unit })
+      host.register("host_draw_text", { case _ => SyslHost.unit })
+      host.register("host_draw_image", { case _ => SyslHost.unit })
+      host.register("host_record", {
+        case List(s) => records += SyslHost.asString(s); SyslHost.unit
+        case other   => fail(s"host_record: $other")
+      })
+      host.register("host_poll_event", {
+        case Nil =>
+          val ev = if events.nonEmpty then events.dequeue() else (0L, 0L, 0L)
+          lastEvent = ev
+          SyslHost.long(ev._1)
+        case other => fail(s"host_poll_event: $other")
+      })
+      host.register("host_event_x",    { case Nil => SyslHost.long(lastEvent._2);  case other => fail(s"$other") })
+      host.register("host_event_y",    { case Nil => SyslHost.long(lastEvent._3);  case other => fail(s"$other") })
+      host.register("host_event_key",  { case Nil => SyslHost.long(0L);            case other => fail(s"$other") })
+      host.register("host_event_text", { case Nil => SyslHost.string("");           case other => fail(s"$other") })
+      host.register("host_now_ms",     { case Nil => SyslHost.long(0L);            case other => fail(s"$other") })
+      host.register("host_present_frame",          { case Nil => SyslHost.unit; case other => fail(s"$other") })
+      host.register("host_sleep_until_next_frame", { case Nil => SyslHost.unit; case other => fail(s"$other") })
+
+      host.run(host.compileFiles(Seq(
+        "suit/hooks.sysl",
+        "suit/engine.sysl",
+        "suit/widgets.sysl",
+        "probes/demo.sysl",
+      )))
+
+      // mount tree-walk order: app → theme_indicator → Count counter →
+      // Big counter → form_panel → Alice row → Bob row → Carol row.
+      // Each one records its initial state during the mount-time
+      // render call (Component's render_fn fires inside mount()).
+      records.toList shouldBe List(
+        "app:theme=0",
+        "theme:dark",
+        "Count:0",
+        "Big:0",
+        "form:tab=0 slider=50 radio=0 modal_open=0 eased=50",
+        "row:Alice:0",
+        "row:Bob:0",
+        "row:Carol:0",
+      )
+    }
+
     "Keyed children preserve state across reorder" in {
       val publishes = mutable.ArrayBuffer.empty[Long]
 
