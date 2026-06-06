@@ -19,13 +19,17 @@ final class SuitHostConfig extends HostConfig:
 
   // --- node creation -------------------------------------------------------
 
-  // The tag names the kind of RenderObject to create. The skeleton knows one visual
-  // element, `box`; the DSL widens this vocabulary (row, col, text, …) as the layout
-  // engine and widgets land. Unknown tags fall back to a box so an early DSL addition
-  // renders as a plain rectangle rather than crashing.
+  // The tag names the kind of RenderObject to create — each DSL builder emits the tag
+  // for the layout primitive it wants. Unknown tags fall back to a box so an as-yet
+  // unmapped builder renders as a plain rectangle rather than crashing.
   def createElement(tag: String, namespace: String | Null): AnyRef = tag match
-    case "box" => new RenderBox
-    case _     => new RenderBox
+    case "box"      => new RenderBox
+    case "row"      => new RenderFlex(Axis.Horizontal)
+    case "col"      => new RenderFlex(Axis.Vertical)
+    case "padding"  => new RenderPadding
+    case "sizedBox" => new RenderConstrained
+    case "stack"    => new RenderStack
+    case _          => new RenderBox
 
   def createText(text: String): AnyRef    = new RenderText(text)
   def createAnchor(label: String): AnyRef = new RenderAnchor(label)
@@ -70,17 +74,77 @@ final class SuitHostConfig extends HostConfig:
   def removeAttribute(node: AnyRef, name: String): Unit            = ()
 
   // Typed properties are how the render tree receives real values from the DSL: a
-  // colour, a size, an enum — handed over by vdom's PropValue channel with their
-  // actual types, never stringified. On removal the reconciler passes `null`, which
-  // resets the field.
+  // colour, a size, an inset, an alignment, an enum — handed over by vdom's PropValue
+  // channel with their actual types, never stringified. On removal the reconciler
+  // passes `null`, and each conversion below maps that back to the field's default, so
+  // dropping a prop restores the unset state.
   def setProperty(node: AnyRef, name: String, value: Any): Unit =
-    (ro(node), name) match
-      case (b: RenderBox, "bg") =>
-        b.background = value match
-          case c: Color => c
-          case _        => null
-        b.markDirty()
+    val obj = ro(node)
+    (obj, name) match
+      // `flex` is parent data meaningful on any object inside a row/column.
+      case (o, "flex") => o.flex = asInt(value)
+
+      case (b: RenderBox, "bg")          => b.background = asColorOrNull(value)
+      case (b: RenderBox, "border")      => b.borderColor = asColorOrNull(value)
+      case (b: RenderBox, "borderWidth") => b.borderWidth = asDouble(value)
+      case (b: RenderBox, "width")       => b.width = asDoubleOpt(value)
+      case (b: RenderBox, "height")      => b.height = asDoubleOpt(value)
+      case (b: RenderBox, "padding")     => b.padding = asInsets(value)
+
+      case (c: RenderConstrained, "width")  => c.width = asDoubleOpt(value)
+      case (c: RenderConstrained, "height") => c.height = asDoubleOpt(value)
+
+      case (p: RenderPadding, "padding") => p.padding = asInsets(value)
+
+      case (s: RenderStack, "alignment") => s.alignment = asAlignment(value)
+
+      case (f: RenderFlex, "mainAxisAlignment") =>
+        f.mainAxisAlignment = value match
+          case m: MainAxisAlignment => m
+          case _                    => MainAxisAlignment.Start
+      case (f: RenderFlex, "crossAxisAlignment") =>
+        f.crossAxisAlignment = value match
+          case c: CrossAxisAlignment => c
+          case _                     => CrossAxisAlignment.Start
+      case (f: RenderFlex, "mainAxisSize") =>
+        f.mainAxisSize = value match
+          case s: MainAxisSize => s
+          case _               => MainAxisSize.Max
+      case (f: RenderFlex, "spacing") => f.spacing = asDouble(value)
+
       case _ => ()
+    obj.markDirty()
+
+  // --- typed-property coercions --------------------------------------------
+  // The reconciler delivers each prop as `Any` (the value the DSL wrapped in a
+  // PropValue) or `null` on removal. These map both cases to a render-tree field.
+
+  private def asColorOrNull(v: Any): Color | Null = v match
+    case c: Color => c
+    case _        => null
+
+  private def asDoubleOpt(v: Any): Option[Double] = v match
+    case d: Double => Some(d)
+    case i: Int    => Some(i.toDouble)
+    case _         => None
+
+  private def asDouble(v: Any): Double = v match
+    case d: Double => d
+    case i: Int    => i.toDouble
+    case _         => 0.0
+
+  private def asInt(v: Any): Int = v match
+    case i: Int    => i
+    case d: Double => d.toInt
+    case _         => 0
+
+  private def asInsets(v: Any): EdgeInsets = v match
+    case e: EdgeInsets => e
+    case _             => EdgeInsets.zero
+
+  private def asAlignment(v: Any): Alignment = v match
+    case a: Alignment => a
+    case _            => Alignment.topLeft
 
   // Inline CSS styles and inner HTML are DOM concepts with no render-tree equivalent.
   def setStyle(node: AnyRef, decls: Map[String, String]): Unit = ()

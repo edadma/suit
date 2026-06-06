@@ -8,12 +8,7 @@ import scala.collection.mutable
 // painted, with no SDL window in the loop. Pure Scala, so it (and the layout engine
 // it exercises) is testable off-device.
 final class RecordingCanvas extends Canvas:
-
-  enum Command:
-    case FillRect(rect: Rect, color: Color)
-    case StrokeRect(rect: Rect, color: Color, width: Double)
-    case FillCircle(center: Offset, radius: Double, color: Color)
-    case Line(a: Offset, b: Offset, width: Double, color: Color)
+  import RecordingCanvas.Command
 
   val commands: mutable.ArrayBuffer[Command] = mutable.ArrayBuffer.empty
 
@@ -28,3 +23,13 @@ final class RecordingCanvas extends Canvas:
 
   def line(a: Offset, b: Offset, width: Double, color: Color): Unit =
     commands += Command.Line(a, b, width, color)
+
+object RecordingCanvas:
+  /** One recorded paint call. Defined on the companion rather than nested in the
+    * instance so tests can name `RecordingCanvas.Command.FillRect(...)` to assert
+    * against the captured list. */
+  enum Command:
+    case FillRect(rect: Rect, color: Color)
+    case StrokeRect(rect: Rect, color: Color, width: Double)
+    case FillCircle(center: Offset, radius: Double, color: Color)
+    case Line(a: Offset, b: Offset, width: Double, color: Color)

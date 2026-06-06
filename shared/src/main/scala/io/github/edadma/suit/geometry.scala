@@ -42,6 +42,34 @@ object EdgeInsets:
   def symmetric(horizontal: Double, vertical: Double): EdgeInsets =
     EdgeInsets(vertical, horizontal, vertical, horizontal)
 
+/** A point inside a box, given in fractional coordinates independent of the box's
+  * size: `(-1, -1)` is the top-left corner, `(0, 0)` the centre, `(1, 1)` the
+  * bottom-right. This is SwiftUI's and Flutter's alignment model — the same value
+  * positions a child in a container of any size, which is exactly what alignment,
+  * centring, and z-stacks need. */
+final case class Alignment(x: Double, y: Double):
+
+  /** The offset that places a `child` of the given size inside `container` so the
+    * child sits at this alignment. With `Alignment.center` the child is centred; with
+    * `topLeft` it lands at the origin; with `bottomRight` its far corner meets the
+    * container's. */
+  def inscribe(child: Size, container: Size): Offset =
+    Offset(
+      (container.width - child.width) * (x + 1) / 2,
+      (container.height - child.height) * (y + 1) / 2,
+    )
+
+object Alignment:
+  val topLeft: Alignment      = Alignment(-1, -1)
+  val topCenter: Alignment    = Alignment(0, -1)
+  val topRight: Alignment     = Alignment(1, -1)
+  val centerLeft: Alignment   = Alignment(-1, 0)
+  val center: Alignment       = Alignment(0, 0)
+  val centerRight: Alignment  = Alignment(1, 0)
+  val bottomLeft: Alignment   = Alignment(-1, 1)
+  val bottomCenter: Alignment = Alignment(0, 1)
+  val bottomRight: Alignment  = Alignment(1, 1)
+
 /** An RGBA colour, each channel 0–255. */
 final case class Color(r: Int, g: Int, b: Int, a: Int = 255):
   def withAlpha(newA: Int): Color = copy(a = newA)
