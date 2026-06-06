@@ -83,7 +83,9 @@ final class SuitHostConfig extends HostConfig:
     val obj = ro(node)
     (obj, name) match
       // `flex` is parent data meaningful on any object inside a row/column.
-      case (o, "flex") => o.flex = asInt(value)
+      case (o, "flex")      => o.flex = asInt(value)
+      // `focusable` applies to any object that should be able to take keyboard focus.
+      case (o, "focusable") => o.focusable = value == true
 
       case (b: RenderBox, "bg")          => b.background = asColorOrNull(value)
       case (b: RenderBox, "border")      => b.borderColor = asColorOrNull(value)

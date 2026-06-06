@@ -21,16 +21,26 @@ object dsl:
   private def sized(props: Map[String, Prop], name: String, v: Double): Map[String, Prop] =
     if v.isNaN then props else props.updated(name, PropValue(v))
 
-  // Pointer handlers reach the application as a typed `PointerEvent`. vdom carries a
-  // handler as `Any => Unit`, so each registration adapts the typed callback by casting
-  // the delivered value — the router only ever sends a PointerEvent under these keys.
-  private def pointer(
+  // Input handlers reach the application as typed events (`PointerEvent`, `ScrollEvent`,
+  // `KeyEvent`). vdom carries a handler as `Any => Unit`, so each registration adapts
+  // the typed callback by casting the delivered value — the routers only ever send the
+  // matching event type under each key.
+  private def typed[E](
       props: Map[String, Prop],
       event: String,
-      fn:    (PointerEvent => Unit) | Null,
+      fn:    (E => Unit) | Null,
   ): Map[String, Prop] =
     if fn == null then props
-    else props.updated(s"on:$event", Handler((a: Any) => fn(a.asInstanceOf[PointerEvent])))
+    else props.updated(s"on:$event", Handler((a: Any) => fn.asInstanceOf[E => Unit](a.asInstanceOf[E])))
+
+  // Focus and blur carry no payload, so their callbacks are nullary.
+  private def focus(
+      props: Map[String, Prop],
+      event: String,
+      fn:    (() => Unit) | Null,
+  ): Map[String, Prop] =
+    if fn == null then props
+    else props.updated(s"on:$event", Handler((_: Any) => fn.asInstanceOf[() => Unit]()))
 
   /** The styled container. `bg`/`border`/`borderWidth` give it appearance; `width`/
     * `height` fix its size (omit to fill a tight parent or wrap a loose one); `padding`
@@ -44,12 +54,18 @@ object dsl:
       height:       Double                         = Double.NaN,
       padding:      EdgeInsets | Null              = null,
       flex:         Int                            = 0,
+      focusable:    Boolean                        = false,
       onClick:      (PointerEvent => Unit) | Null  = null,
       onMouseDown:  (PointerEvent => Unit) | Null  = null,
       onMouseUp:    (PointerEvent => Unit) | Null  = null,
       onMouseMove:  (PointerEvent => Unit) | Null  = null,
       onMouseEnter: (PointerEvent => Unit) | Null  = null,
       onMouseLeave: (PointerEvent => Unit) | Null  = null,
+      onWheel:      (ScrollEvent => Unit)  | Null  = null,
+      onKeyDown:    (KeyEvent => Unit)     | Null  = null,
+      onKeyUp:      (KeyEvent => Unit)     | Null  = null,
+      onFocus:      (() => Unit)           | Null  = null,
+      onBlur:       (() => Unit)           | Null  = null,
   )(children: VNode*): VNode =
     var props = Map.empty[String, Prop]
     if bg != null then props = props.updated("bg", PropValue(bg))
@@ -59,12 +75,18 @@ object dsl:
     props = sized(props, "height", height)
     if padding != null then props = props.updated("padding", PropValue(padding))
     if flex != 0 then props = props.updated("flex", PropValue(flex))
-    props = pointer(props, "click", onClick)
-    props = pointer(props, "mousedown", onMouseDown)
-    props = pointer(props, "mouseup", onMouseUp)
-    props = pointer(props, "mousemove", onMouseMove)
-    props = pointer(props, "mouseenter", onMouseEnter)
-    props = pointer(props, "mouseleave", onMouseLeave)
+    if focusable then props = props.updated("focusable", PropValue(true))
+    props = typed[PointerEvent](props, "click", onClick)
+    props = typed[PointerEvent](props, "mousedown", onMouseDown)
+    props = typed[PointerEvent](props, "mouseup", onMouseUp)
+    props = typed[PointerEvent](props, "mousemove", onMouseMove)
+    props = typed[PointerEvent](props, "mouseenter", onMouseEnter)
+    props = typed[PointerEvent](props, "mouseleave", onMouseLeave)
+    props = typed[ScrollEvent](props, "wheel", onWheel)
+    props = typed[KeyEvent](props, "keydown", onKeyDown)
+    props = typed[KeyEvent](props, "keyup", onKeyUp)
+    props = focus(props, "focus", onFocus)
+    props = focus(props, "blur", onBlur)
     el("box", props, children)
 
   /** A run of text in `color` at point `size`. Single-line: it measures and paints as

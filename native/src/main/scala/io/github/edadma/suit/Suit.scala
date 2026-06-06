@@ -67,8 +67,16 @@ object Suit:
     root.layout(Constraints.tight(root.windowSize))
     root.dirty = true
 
-    val router     = new PointerRouter(root)
-    val clearColor = SdlColor(24, 24, 28)
+    // Pointer events route by hit-test; key events route to whatever the focus manager
+    // currently holds (a press updates focus through the same pointer router).
+    val focusManager = new FocusManager
+    val router       = new PointerRouter(root, focusManager)
+    val keyRouter    = new KeyRouter(focusManager)
+    val clearColor   = SdlColor(24, 24, 28)
+
+    // The wheel event does not carry the cursor position in the bound accessors, so the
+    // last position seen from a motion event is used to route the scroll.
+    var lastMouse = Offset.zero
 
     var running = true
     while running do
@@ -76,11 +84,16 @@ object Suit:
       while event.isDefined do
         val e = event.get
         e.kind match
-          case QUIT             => running = false
+          case QUIT              => running = false
           case MOUSE_BUTTON_DOWN => router.down(Offset(e.mouseX, e.mouseY), e.mouseButton)
           case MOUSE_BUTTON_UP   => router.up(Offset(e.mouseX, e.mouseY), e.mouseButton)
-          case MOUSE_MOTION      => router.move(Offset(e.mouseX, e.mouseY))
-          case _                 => ()
+          case MOUSE_MOTION =>
+            lastMouse = Offset(e.mouseX, e.mouseY)
+            router.move(lastMouse)
+          case MOUSE_WHEEL => router.wheel(lastMouse, e.wheelX, e.wheelY)
+          case KEY_DOWN    => keyRouter.down(e.keyScancode, e.keyRepeat)
+          case KEY_UP      => keyRouter.up(e.keyScancode)
+          case _           => ()
         event = pollEvent()
 
       // Run whatever the handlers produced (state updates, effects) before painting.

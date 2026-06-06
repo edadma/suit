@@ -31,6 +31,12 @@ abstract class RenderObject:
     * The runtime's input dispatch looks them up after a hit-test. */
   val handlers: mutable.Map[String, Any => Unit] = mutable.Map.empty
 
+  /** Whether this object can take keyboard focus. A press routes focus to the nearest
+    * focusable ancestor of the hit object (see [[FocusManager.pointerFocus]]), so the
+    * widgets that handle keys (buttons, checkboxes, sliders, text fields) set this on
+    * their outer object. */
+  var focusable: Boolean = false
+
   /** Constraints down, size up. An implementation must set `size` and position any
     * children. */
   def layout(constraints: Constraints): Unit
@@ -51,6 +57,18 @@ abstract class RenderObject:
     * sized box). */
   protected def soleChild: RenderObject | Null =
     if children.nonEmpty then children(0) else null
+
+  /** This object's absolute top-left, summing `offset` up the parent chain to the root.
+    * Input routing uses it to express a pointer's position in the receiving object's own
+    * coordinate space. Valid only after a layout pass has positioned the tree. */
+  def absoluteOffset: Offset =
+    var acc                     = Offset.zero
+    var n: RenderObject | Null = this
+    while n != null do
+      val r = n.asInstanceOf[RenderObject]
+      acc = acc + r.offset
+      n = r.parent
+    acc
 
   // --- tree edits (driven by the reconciler via SuitHostConfig) --------------
 

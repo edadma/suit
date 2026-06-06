@@ -3,9 +3,10 @@ package io.github.edadma.suit
 import org.scalatest.funsuite.AnyFunSuite
 import scala.collection.mutable
 
-// Headless tests for pointer routing. The router needs only `hitTest` and the handler
-// maps, both pure, so the press→release→click and hover enter/leave behaviour is
-// verified on the JVM against a laid-out tree with no device.
+// Headless tests for input routing. The routers need only `hitTest`, the parent chain,
+// and the handler maps — all pure — so press→release→click, pointer capture during a
+// drag, hover enter/leave, event bubbling, focus, and keyboard dispatch are all verified
+// on the JVM against a laid-out tree with no device.
 class InputSpec extends AnyFunSuite:
 
   private def fixed(w: Double, h: Double): RenderBox =
@@ -15,8 +16,8 @@ class InputSpec extends AnyFunSuite:
     b
 
   /** Build a row of two 50×100 boxes laid out in a 200×100 space: box A spans x 0–50,
-    * box B spans x 50–100, and x ≥ 100 hits the row itself. Returns the row and the two
-    * boxes, each fitted with handlers that append `"<name>:<label>"` to `log`. */
+    * box B spans x 50–100, and x ≥ 100 hits the row itself. Each box is fitted with
+    * handlers that append `"<event>:<label>"` to `log`. */
   private def tree(log: mutable.ArrayBuffer[String]): (RenderFlex, RenderBox, RenderBox) =
     val row = new RenderFlex(Axis.Horizontal)
     val a   = fixed(50, 100)
@@ -32,35 +33,47 @@ class InputSpec extends AnyFunSuite:
     (row, a, b)
 
   test("a press then release on the same object is a click"):
-    val log        = mutable.ArrayBuffer.empty[String]
+    val log         = mutable.ArrayBuffer.empty[String]
     val (row, _, _) = tree(log)
-    val router     = new PointerRouter(row)
+    val router      = new PointerRouter(row)
     router.down(Offset(10, 10), 1)
     router.up(Offset(10, 10), 1)
     assert(log.toList == List("mousedown:a", "mouseup:a", "click:a"))
 
-  test("a press and release on different objects is not a click"):
-    val log        = mutable.ArrayBuffer.empty[String]
+  test("a captured pointer delivers release and click to the press target"):
+    // Press on A, release over B: with pointer capture the up goes to A (the captor),
+    // and there is no click because press and release resolve to different objects.
+    val log         = mutable.ArrayBuffer.empty[String]
     val (row, _, _) = tree(log)
-    val router     = new PointerRouter(row)
-    router.down(Offset(10, 10), 1)  // press on a
-    router.up(Offset(60, 10), 1)    // release on b
-    assert(log.toList == List("mousedown:a", "mouseup:b"))
+    val router      = new PointerRouter(row)
+    router.down(Offset(10, 10), 1)
+    router.up(Offset(60, 10), 1)
+    assert(log.toList == List("mousedown:a", "mouseup:a"))
 
-  test("the delivered event carries position and button"):
-    val seen   = mutable.ArrayBuffer.empty[PointerEvent]
-    val a      = fixed(50, 100)
+  test("a drag delivers moves to the captor even after the cursor leaves it"):
+    val log         = mutable.ArrayBuffer.empty[String]
+    val (row, _, _) = tree(log)
+    val router      = new PointerRouter(row)
+    router.down(Offset(10, 10), 1) // press on a
+    router.move(Offset(60, 10))    // cursor now over b, but a captured the pointer
+    router.move(Offset(120, 10))   // cursor over the row, still captured by a
+    router.up(Offset(60, 10), 1)
+    assert(log.toList == List("mousedown:a", "mousemove:a", "mousemove:a", "mouseup:a"))
+
+  test("the delivered event carries absolute and local position, size, and button"):
+    val seen = mutable.ArrayBuffer.empty[PointerEvent]
+    val a    = fixed(50, 100)
     a.handlers("mousedown") = e => seen += e.asInstanceOf[PointerEvent]
     val row = new RenderFlex(Axis.Horizontal)
     row.insertChild(a, null)
     row.layout(Constraints.tight(Size(200, 100)))
     new PointerRouter(row).down(Offset(12, 34), 3)
-    assert(seen.toList == List(PointerEvent(Offset(12, 34), 3)))
+    assert(seen.toList == List(PointerEvent(Offset(12, 34), Offset(12, 34), Size(50, 100), 3)))
 
   test("moving across a boundary fires leave then enter then move"):
-    val log        = mutable.ArrayBuffer.empty[String]
+    val log         = mutable.ArrayBuffer.empty[String]
     val (row, _, _) = tree(log)
-    val router     = new PointerRouter(row)
+    val router      = new PointerRouter(row)
     router.move(Offset(10, 10)) // onto a
     router.move(Offset(60, 10)) // onto b
     assert(log.toList == List(
@@ -69,9 +82,73 @@ class InputSpec extends AnyFunSuite:
     ))
 
   test("moving within one object does not re-fire enter/leave"):
-    val log        = mutable.ArrayBuffer.empty[String]
+    val log         = mutable.ArrayBuffer.empty[String]
     val (row, _, _) = tree(log)
-    val router     = new PointerRouter(row)
+    val router      = new PointerRouter(row)
     router.move(Offset(10, 10))
     router.move(Offset(20, 10)) // still on a
     assert(log.toList == List("mouseenter:a", "mousemove:a", "mousemove:a"))
+
+  // --- bubbling ------------------------------------------------------------
+
+  test("an event bubbles to the nearest ancestor with a handler"):
+    // Outer 100×100 box holds the click handler; an inner decoration with none is what
+    // the cursor actually hits. The click must still reach the outer box, reported in
+    // the outer box's coordinate space.
+    val log   = mutable.ArrayBuffer.empty[PointerEvent]
+    val outer = fixed(100, 100)
+    val inner = fixed(80, 80)
+    outer.padding = EdgeInsets.all(10)
+    outer.insertChild(inner, null)
+    outer.handlers("click") = e => log += e.asInstanceOf[PointerEvent]
+    outer.layout(Constraints.tight(Size(100, 100)))
+    val router = new PointerRouter(outer)
+    router.down(Offset(40, 40), 1)
+    router.up(Offset(40, 40), 1)
+    assert(log.length == 1)
+    assert(log.head.size == Size(100, 100)) // resolved against the outer box, not the inner hit
+
+  // --- focus + keyboard ----------------------------------------------------
+
+  test("a press focuses the nearest focusable ancestor and blurs on empty space"):
+    val log   = mutable.ArrayBuffer.empty[String]
+    val outer = fixed(100, 100)
+    val inner = fixed(80, 80)
+    outer.padding = EdgeInsets.all(10)
+    outer.focusable = true
+    outer.handlers("focus") = _ => log += "focus"
+    outer.handlers("blur") = _ => log += "blur"
+    outer.insertChild(inner, null)
+    outer.layout(Constraints.tight(Size(100, 100)))
+    val focus  = new FocusManager
+    val router = new PointerRouter(outer, focus)
+    router.down(Offset(40, 40), 1) // press on inner → focus bubbles to outer
+    router.up(Offset(40, 40), 1)
+    assert(focus.isFocused(outer))
+    focus.blur()
+    assert(log.toList == List("focus", "blur"))
+
+  test("the key router dispatches to the focused object only"):
+    val log = mutable.ArrayBuffer.empty[String]
+    val a   = fixed(50, 50)
+    val b   = fixed(50, 50)
+    a.handlers("keydown") = e => log += s"a:${e.asInstanceOf[KeyEvent].scancode}"
+    b.handlers("keydown") = e => log += s"b:${e.asInstanceOf[KeyEvent].scancode}"
+    val focus     = new FocusManager
+    val keyRouter = new KeyRouter(focus)
+    keyRouter.down(Key.Enter, false) // nobody focused: dropped
+    focus.focus(b)
+    keyRouter.down(Key.Space, false)
+    assert(log.toList == List(s"b:${Key.Space}"))
+
+  // --- wheel ---------------------------------------------------------------
+
+  test("the wheel bubbles a scroll event to the nearest wheel handler"):
+    val seen  = mutable.ArrayBuffer.empty[ScrollEvent]
+    val outer = fixed(100, 100)
+    val inner = new RenderBox
+    outer.insertChild(inner, null)
+    outer.handlers("wheel") = e => seen += e.asInstanceOf[ScrollEvent]
+    outer.layout(Constraints.tight(Size(100, 100)))
+    new PointerRouter(outer).wheel(Offset(50, 50), 0, -3)
+    assert(seen.toList == List(ScrollEvent(Offset(50, 50), 0, -3)))
