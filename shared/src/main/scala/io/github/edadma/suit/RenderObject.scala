@@ -302,11 +302,19 @@ final class RenderFlex(val axis: Axis) extends RenderObject:
       cursor += mainOf(ch.size) + spacing + extra
       i += 1
 
-/** Text. A real implementation measures and paints glyphs via sdl3_ttf; until that
-  * lands it carries its string and occupies no space. */
+/** A run of text. It sizes itself by asking the installed [[TextMeasurer]] how big its
+  * string is in its [[TextStyle]] — the measurement seam that keeps layout off-device —
+  * and paints through the canvas's `drawText`, which the SDL backend rasterises and the
+  * recording backend captures. Layout is single-line; the measured size is clamped into
+  * the constraints the parent imposed. */
 final class RenderText(var text: String) extends RenderObject:
-  def layout(constraints: Constraints): Unit              = size = Size.zero
-  override def paint(canvas: Canvas, origin: Offset): Unit = ()
+  var style: TextStyle = TextStyle.default
+
+  def layout(constraints: Constraints): Unit =
+    size = constraints.constrain(TextMeasurer.installed.measure(text, style))
+
+  override def paint(canvas: Canvas, origin: Offset): Unit =
+    if text.nonEmpty then canvas.drawText(origin, text, style)
 
 /** A non-visual node that only holds a position in the sibling order — vdom anchors
   * fragments, portals, and empty renders on one. Zero size, never painted, never a

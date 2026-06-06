@@ -46,7 +46,10 @@ lazy val suit = crossProject(JVMPlatform, NativePlatform)
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test,
   )
   .nativeSettings(
-    libraryDependencies += "io.github.edadma" %%% "sdl3" % "0.2.0",
+    libraryDependencies ++= Seq(
+      "io.github.edadma" %%% "sdl3"     % "0.2.0",
+      "io.github.edadma" %%% "sdl3_ttf" % "0.2.0",
+    ),
   )
 
 lazy val suitJVM    = suit.jvm

@@ -3,6 +3,7 @@ package io.github.edadma.suit
 import scala.collection.mutable
 import io.github.edadma.vdom.{Host, Scheduler, VNode, createRoot}
 import io.github.edadma.sdl3.{Color => SdlColor, *}
+import io.github.edadma.sdl3_ttf.{ttfInit, ttfQuit}
 
 // The runtime. It owns the SDL window and renderer, installs the vdom host and
 // scheduler seams, mounts the application, and runs the frame loop.
@@ -18,18 +19,31 @@ import io.github.edadma.sdl3.{Color => SdlColor, *}
 // idle UI costs nothing but event polling.
 object Suit:
 
+  /** A system font used when the caller does not supply one. Present on macOS, where
+    * suit is developed; pass an explicit `fontPath` on other platforms. */
+  val defaultFont = "/System/Library/Fonts/Helvetica.ttc"
+
   /** Open a window of the given size and run `app` in it until the window is closed.
-    * Blocks on the frame loop for the lifetime of the window. */
-  def run(title: String, width: Int, height: Int)(app: VNode): Unit =
+    * Blocks on the frame loop for the lifetime of the window. `fontPath` is the TrueType
+    * (or collection) file text is rendered with. */
+  def run(title: String, width: Int, height: Int, fontPath: String = defaultFont)(app: VNode): Unit =
     setMainReady()
     if !init(INIT_VIDEO) then
       System.err.println(s"suit: SDL_Init failed: ${error}")
+      return
+    if !ttfInit() then
+      System.err.println(s"suit: TTF_Init failed: ${error}")
       return
 
     val window   = createWindow(title, width, height)
     val renderer = window.createRenderer()
     renderer.setVSync(true)
-    val canvas = new SdlCanvas(renderer)
+
+    // Text needs fonts both to measure (at layout) and to paint. One book serves both:
+    // the measurer the layout pass consults and the canvas that rasterises glyphs.
+    val fonts = new FontBook(fontPath)
+    TextMeasurer.installed = new SdlTextMeasurer(fonts)
+    val canvas = new SdlCanvas(renderer, fonts)
 
     val root = new RenderRoot(Size(width.toDouble, height.toDouble))
 
@@ -48,6 +62,12 @@ object Suit:
     createRoot(root).render(app)
     drainScheduler() // commit any effects the initial mount queued
 
+    // Lay out once before entering the loop so the very first pointer event hit-tests
+    // against a positioned tree rather than zero-size objects.
+    root.layout(Constraints.tight(root.windowSize))
+    root.dirty = true
+
+    val router     = new PointerRouter(root)
     val clearColor = SdlColor(24, 24, 28)
 
     var running = true
@@ -56,12 +76,11 @@ object Suit:
       while event.isDefined do
         val e = event.get
         e.kind match
-          case QUIT => running = false
-          case MOUSE_BUTTON_DOWN =>
-            root.hitTest(Offset(e.mouseX, e.mouseY), Offset.zero) match
-              case hit: RenderObject => hit.handlers.get("click").foreach(_.apply(e))
-              case null              => ()
-          case _ => ()
+          case QUIT             => running = false
+          case MOUSE_BUTTON_DOWN => router.down(Offset(e.mouseX, e.mouseY), e.mouseButton)
+          case MOUSE_BUTTON_UP   => router.up(Offset(e.mouseX, e.mouseY), e.mouseButton)
+          case MOUSE_MOTION      => router.move(Offset(e.mouseX, e.mouseY))
+          case _                 => ()
         event = pollEvent()
 
       // Run whatever the handlers produced (state updates, effects) before painting.
@@ -76,6 +95,8 @@ object Suit:
       else
         delay(8) // idle: yield instead of busy-spinning when nothing changed
 
+    fonts.close()
     renderer.destroy()
     window.destroy()
+    ttfQuit()
     quit()

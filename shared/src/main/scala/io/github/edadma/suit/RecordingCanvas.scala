@@ -24,6 +24,9 @@ final class RecordingCanvas extends Canvas:
   def line(a: Offset, b: Offset, width: Double, color: Color): Unit =
     commands += Command.Line(a, b, width, color)
 
+  def drawText(origin: Offset, text: String, style: TextStyle): Unit =
+    commands += Command.DrawText(origin, text, style)
+
 object RecordingCanvas:
   /** One recorded paint call. Defined on the companion rather than nested in the
     * instance so tests can name `RecordingCanvas.Command.FillRect(...)` to assert
@@ -33,3 +36,4 @@ object RecordingCanvas:
     case StrokeRect(rect: Rect, color: Color, width: Double)
     case FillCircle(center: Offset, radius: Double, color: Color)
     case Line(a: Offset, b: Offset, width: Double, color: Color)
+    case DrawText(origin: Offset, text: String, style: TextStyle)

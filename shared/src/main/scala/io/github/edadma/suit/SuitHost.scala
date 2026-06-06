@@ -29,6 +29,7 @@ final class SuitHostConfig extends HostConfig:
     case "padding"  => new RenderPadding
     case "sizedBox" => new RenderConstrained
     case "stack"    => new RenderStack
+    case "text"     => new RenderText("")
     case _          => new RenderBox
 
   def createText(text: String): AnyRef    = new RenderText(text)
@@ -112,6 +113,13 @@ final class SuitHostConfig extends HostConfig:
           case _               => MainAxisSize.Max
       case (f: RenderFlex, "spacing") => f.spacing = asDouble(value)
 
+      case (t: RenderText, "content") => t.text = asString(value)
+      case (t: RenderText, "size")    => t.style = t.style.copy(size = asDouble(value))
+      case (t: RenderText, "color") =>
+        t.style = t.style.copy(color = asColorOrNull(value) match
+          case c: Color => c
+          case null     => TextStyle.default.color)
+
       case _ => ()
     obj.markDirty()
 
@@ -137,6 +145,10 @@ final class SuitHostConfig extends HostConfig:
     case i: Int    => i
     case d: Double => d.toInt
     case _         => 0
+
+  private def asString(v: Any): String = v match
+    case s: String => s
+    case _         => ""
 
   private def asInsets(v: Any): EdgeInsets = v match
     case e: EdgeInsets => e

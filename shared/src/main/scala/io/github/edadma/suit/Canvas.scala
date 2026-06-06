@@ -15,3 +15,9 @@ trait Canvas:
   def strokeRect(rect: Rect, color: Color, width: Double): Unit
   def fillCircle(center: Offset, radius: Double, color: Color): Unit
   def line(a: Offset, b: Offset, width: Double, color: Color): Unit
+
+  /** Draw a single line of `text` in `style` with its top-left at `origin`. The SDL
+    * backend rasterises glyphs through sdl3_ttf; the recording backend captures the
+    * call. The text's size on screen matches what [[TextMeasurer]] reported for the
+    * same string and style, so paint lands exactly where layout placed it. */
+  def drawText(origin: Offset, text: String, style: TextStyle): Unit
