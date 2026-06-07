@@ -3,7 +3,7 @@ title: suit
 splash: true
 heroTitle: A declarative UI toolkit for
 heroHighlight: Scala Native
-summary: Build native desktop UIs the way you build React components — declarative, reactive, composed from functions. suit pairs the vdom core (a React-shaped reconciler and hooks) with a Flutter-style constraint-layout engine that paints through SDL3. Write `col`, `row`, `box`, and `text`; let state drive the tree.
+summary: Build native desktop UIs the way you build React components — declarative, reactive, composed from functions. suit pairs the vdom core (a React-shaped reconciler and hooks) with a Flutter-style constraint-layout engine that draws with Cairo — fully anti-aliased — on top of SDL3. Write `col`, `row`, `box`, and `text`; let state drive the tree.
 ---
 
 ## What this is
@@ -17,7 +17,8 @@ existing pieces:
   It is host-agnostic: the same core drives the DOM in riposte and the screen here.
 - **suit** supplies the *rendering* layer vdom deliberately leaves to its host — a
   retained tree of **RenderObjects** that lay themselves out, paint, and answer
-  hit-tests — implemented over [SDL3](https://sdl3.edadma.dev/).
+  hit-tests — drawn through [Cairo](https://www.cairographics.org/) (a real anti-aliasing 2D
+  engine), with [SDL3](https://sdl3.edadma.dev/) for the window, input, and present.
 
 The result is "Flutter in Scala Native": components written with hooks, laid out by
 constraint negotiation, rendered to a native window.
@@ -65,6 +66,6 @@ geometry are **unit-tested headlessly on the JVM** against a recording canvas.
 
 ## Where to go next
 
-- **[Getting Started](/getting-started/)** — install Scala Native and SDL3, then run the demo.
+- **[Getting Started](/getting-started/)** — install Scala Native, SDL3, and Cairo, then run the demo.
 - **[Guide](/guide/)** — the three-tree architecture, the constraint-layout protocol, and the input model.
 - **[Reference](/reference/)** — the DSL builders and the widget library.

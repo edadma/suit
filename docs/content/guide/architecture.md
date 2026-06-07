@@ -89,10 +89,13 @@ trait Canvas:
   def drawText(origin: Offset, text: String, style: TextStyle): Unit
 ```
 
-On Native, `SdlCanvas` drives [SDL3](https://sdl3.edadma.dev/). In tests, `RecordingCanvas`
-captures the same calls so paint output can be asserted on. The same trait split lets
-`TextMeasurer` size text off-device (a deterministic fake in tests, an SDL3_ttf-backed
-measurer at runtime), which is what keeps the whole layout pass JVM-testable.
+On Native, `CairoCanvas` draws through [Cairo](https://www.cairographics.org/) — a real 2D
+vector engine, so every fill, stroke, and glyph is anti-aliased by its coverage rasteriser.
+[SDL3](https://sdl3.edadma.dev/) only creates the window, reads input, and presents the
+finished frame. In tests, `RecordingCanvas` captures the same calls so paint output can be
+asserted on. The same trait split lets `TextMeasurer` size text off-device (a deterministic
+fake in tests, a Cairo-backed measurer at runtime), which keeps the whole layout pass
+JVM-testable.
 
 ## Why JVM-testable matters
 
@@ -112,8 +115,9 @@ between vdom's React-style batched updates and a game-style render loop: vdom ne
 on its own — it enqueues work, the loop drains it, the tree is marked dirty, and the loop
 repaints **only when something changed**.
 
-One rendering detail is worth knowing: the frame is composited into a persistent off-screen
-target texture and that whole texture is blitted to the window each iteration. Drawing
-directly to the window's drawable and presenting every frame flickers on macOS/Metal (each
-present latches a drawable from a rotating pool that may not be the frame just drawn); a
-target texture removes that race and also fixes the first-frame blank.
+One rendering detail is worth knowing: Cairo draws the frame into an in-memory ARGB32 image
+surface, which is uploaded to an SDL streaming texture and blitted to the window each
+iteration (re-drawn only when the tree is dirty). Cairo's ARGB32 layout is byte-identical to
+SDL's `ARGB8888` on a little-endian host, so the upload is a straight copy with no
+conversion. SDL never draws a shape and Cairo never touches the OS — the clean split between
+the graphics engine and the platform layer.

@@ -4,12 +4,19 @@ ThisBuild / scalaVersion := "3.8.4"
 ThisBuild / organization := "io.github.edadma"
 ThisBuild / version      := "0.0.1-SNAPSHOT"
 
+// libcairo 0.0.3 pins freetype_face 0.0.1 while freetype 0.0.4 pins 0.0.2; coursier
+// selects 0.0.2, which is a binary-compatible patch of a stable pointer-type binding.
+// Resolving this app-level diamond here (a warning, as the bindings themselves use) is the
+// right place for it — the libraries are each consistent on their own.
+ThisBuild / evictionErrorLevel := Level.Warn
+
 // suit — a declarative, reactive UI toolkit for Scala Native that renders through
 // SDL3. The vdom core (https://github.com/edadma/riposte) supplies the Widget and
 // Element layers: the VNode model, the reconciler, and the hooks runtime. suit adds
 // the layer vdom deliberately leaves to its host — the RenderObject tree that lays
-// out, paints, and hit-tests — implemented over SDL3. This is the same division of
-// labour Flutter draws between its framework and its rendering library.
+// out, paints, and hit-tests. Drawing goes through Cairo (a real anti-aliasing 2D
+// engine); SDL3 is the platform layer (window, input, present, texture upload). This
+// is the same division of labour Flutter draws between its framework and its renderer.
 //
 // The build crosses two platforms:
 //   - Native is the product: the SDL3 host and the runnable application.
@@ -46,9 +53,14 @@ lazy val suit = crossProject(JVMPlatform, NativePlatform)
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test,
   )
   .nativeSettings(
+    // SDL3 is the platform layer (window, input, present, texture upload); Cairo is the
+    // drawing engine; FreeType loads the font files Cairo renders text from. sdl3_ttf is not
+    // needed. All three bindings come from Central; scala-native finds the Homebrew-installed
+    // libSDL3 / libcairo / libfreetype via each binding's `@link`.
     libraryDependencies ++= Seq(
-      "io.github.edadma" %%% "sdl3"     % "0.2.1",
-      "io.github.edadma" %%% "sdl3_ttf" % "0.2.1",
+      "io.github.edadma" %%% "sdl3"     % "0.2.2",
+      "io.github.edadma" %%% "libcairo" % "0.0.3",
+      "io.github.edadma" %%% "freetype" % "0.0.4",
     ),
   )
 

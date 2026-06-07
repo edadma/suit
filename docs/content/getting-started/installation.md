@@ -18,21 +18,20 @@ artifacts and a one-line dependency will come once the API stabilises.
 - Scala 3 with sbt
 - The `sbt-scala-native` and `sbt-scala-native-crossproject` plugins
 - LLVM/Clang (the Scala Native toolchain)
-- The **SDL3** and **SDL3_ttf** shared libraries on your system
+- The **SDL3**, **Cairo**, and **FreeType** shared libraries on your system
 
 ## Install the native libraries
 
-suit's runtime links against system SDL3 via `@link` (through the
-[sdl3 bindings](https://sdl3.edadma.dev/)), so the C libraries must be installed. On macOS
-with Homebrew:
+suit's runtime links against system libraries via `@link`: **SDL3** (window, input, present,
+through the [sdl3 bindings](https://sdl3.edadma.dev/)), **Cairo** (the drawing engine), and
+**FreeType** (font loading). On macOS with Homebrew:
 
 ```bash
-brew install sdl3 sdl3_ttf
+brew install sdl3 cairo
 ```
 
-On Linux, install the SDL3 and SDL3_ttf development packages from your distribution (or
-build them from source). Only `sdl3` and `sdl3_ttf` are needed — text rendering uses
-SDL3_ttf; image and audio are not required.
+Cairo depends on FreeType, so Homebrew pulls it in alongside. On Linux, install the SDL3,
+Cairo, and FreeType development packages from your distribution (or build them from source).
 
 ## Get the sources
 
@@ -41,8 +40,9 @@ suit depends on two sibling repositories, both checked out next to it:
 - **[riposte](https://github.com/edadma/riposte)** — supplies the `vdom` core. suit
   consumes its JVM and Native cross-targets as a **source dependency** (`vdomJVM` /
   `vdomNative`), because those targets are not published; only `vdom.js` is on Central.
-- **[sdl3](https://github.com/edadma/sdl3)** — the SDL3 bindings, pulled from Maven
-  Central (`sdl3` + `sdl3_ttf`).
+- **[sdl3](https://github.com/edadma/sdl3)**, **[libcairo](https://github.com/edadma/libcairo)**,
+  and **[freetype](https://github.com/edadma/freetype)** — the SDL3, Cairo, and FreeType
+  bindings, pulled from Maven Central.
 
 ```bash
 git clone https://github.com/edadma/riposte.git
@@ -69,8 +69,9 @@ and pulls SDL3 from Central:
 ```scala
 .nativeSettings(
   libraryDependencies ++= Seq(
-    "io.github.edadma" %%% "sdl3"     % "0.2.1",
-    "io.github.edadma" %%% "sdl3_ttf" % "0.2.1",
+    "io.github.edadma" %%% "sdl3"     % "0.2.2",
+    "io.github.edadma" %%% "libcairo" % "0.0.3",
+    "io.github.edadma" %%% "freetype" % "0.0.4",
   ),
 )
 ```

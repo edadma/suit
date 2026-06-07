@@ -72,11 +72,12 @@ model and the **[DSL reference](/reference/dsl/)** for every builder.
 
 ## Choosing a font
 
-Text is rendered through SDL3_ttf, which needs a real font file. `Suit.run` defaults to a
-system font present on macOS; pass an explicit path on other platforms:
+Text is rendered through Cairo. `Suit.run` uses the **Inter** font bundled into the binary by
+default — no installed font required, identical on every OS. Pass `fontPath` to load a
+specific TrueType/OpenType file through FreeType instead:
 
 ```scala
-Suit.run("my app", 640, 480, fontPath = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")(App())
+Suit.run("my app", 640, 480, fontPath = "/path/to/MyFont.ttf")(App())
 ```
 
 ## Handling input

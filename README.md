@@ -5,7 +5,8 @@
 ![Scala Native Version](https://img.shields.io/badge/Scala_Native-0.5.12-blue.svg)
 
 A declarative, reactive UI toolkit for [Scala Native](https://scala-native.org/) that
-renders through [SDL3](https://sdl3.edadma.dev/). suit pairs the host-agnostic
+renders with [Cairo](https://www.cairographics.org/) on top of
+[SDL3](https://sdl3.edadma.dev/). suit pairs the host-agnostic
 [**vdom**](https://github.com/edadma/riposte) core — a React-shaped reconciler and hooks —
 with a Flutter-style **constraint-layout** engine and a retained render tree. Write
 components with `useState`, lay them out with `col` / `row` / `box` / `text`, and let state
@@ -34,7 +35,7 @@ elements, and render objects:
 
 vdom is host-agnostic — the same core drives the browser DOM in
 [riposte](https://github.com/edadma/riposte) and the screen here. suit supplies only the
-rendering layer underneath, over SDL3.
+rendering layer underneath — drawn with Cairo, presented through SDL3.
 
 ## Why constraint layout, not flexbox
 
@@ -71,11 +72,11 @@ val App = view {
 ## Building
 
 suit depends on a [riposte](https://github.com/edadma/riposte) checkout next to it (for the
-`vdom` source dependency) and on the system SDL3 libraries.
+`vdom` source dependency) and on the system SDL3 and Cairo libraries.
 
 ```bash
 # native libraries (macOS / Homebrew)
-brew install sdl3 sdl3_ttf
+brew install sdl3 cairo
 
 # both repos side by side
 git clone https://github.com/edadma/riposte.git
@@ -88,3 +89,6 @@ sbt suitNative/run   # build and launch the widget demo
 ## License
 
 ISC.
+
+Bundles the [Inter](https://rsms.me/inter/) font (Inter 18pt Regular) under the SIL Open
+Font License — see [`fonts/OFL.txt`](fonts/OFL.txt).

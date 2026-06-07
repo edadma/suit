@@ -3,57 +3,73 @@ package io.github.edadma.suit
 import scala.collection.mutable
 import io.github.edadma.vdom.{Host, Scheduler}
 import io.github.edadma.sdl3.{Color => SdlColor, *}
-import io.github.edadma.sdl3_ttf.{ttfInit, ttfQuit}
+import io.github.edadma.libcairo.{Format, imageSurfaceCreate, fontFaceCreateForFTFace}
+import io.github.edadma.freetype.*
 
-// The runtime. It owns the SDL window and renderer, installs the vdom host and
-// scheduler seams, mounts the application, and runs the frame loop.
+// The runtime. It owns the SDL window and the Cairo drawing surface, installs the vdom
+// host and scheduler seams, mounts the application, and runs the frame loop.
 //
-// The frame loop is the bridge between vdom's React-style batched updates and a
-// game-style render loop. vdom never paints on its own; it requests work through two
-// injectable scheduler seams (a microtask queue for re-renders, a macrotask queue
-// for passive effects). Here those seams enqueue thunks that the loop drains once per
-// iteration. A state write therefore flows: handler → `useState` setter →
-// `Scheduler.enqueueUpdate` → microtask enqueued → loop drains it → reconciler
-// re-renders → render tree mutated → `markDirty` bubbles to the root → the next
-// iteration repaints. Painting happens only when the tree was marked dirty, so an
-// idle UI costs nothing but event polling.
+// The division of labour is the one every serious 2D toolkit uses: SDL is the
+// cross-platform plumbing — window, input, the present loop — and Cairo is the graphics
+// engine. Each frame is drawn by Cairo into an in-memory ARGB32 image surface (with real
+// anti-aliasing, since Cairo is a coverage rasteriser), then that surface is uploaded to a
+// streaming texture and blitted to the window. SDL never draws a shape; Cairo never talks
+// to the OS.
+//
+// The frame loop bridges vdom's React-style batched updates and a game-style render loop.
+// vdom never paints on its own; it requests work through two injectable scheduler seams (a
+// microtask queue for re-renders, a macrotask queue for passive effects). A state write
+// flows: handler -> useState setter -> Scheduler enqueue -> loop drains it -> reconciler
+// re-renders -> render tree mutated -> markDirty bubbles to the root -> the next iteration
+// repaints. Painting happens only when the tree was marked dirty, so an idle UI costs
+// nothing but event polling.
 object Suit:
 
-  /** A system font used when the caller does not supply one. Present on macOS, where
-    * suit is developed; pass an explicit `fontPath` on other platforms. */
-  val defaultFont = "/System/Library/Fonts/Helvetica.ttc"
-
-  /** Open a window of the given size and run `app` in it until the window is closed.
-    * Blocks on the frame loop for the lifetime of the window. `fontPath` is the TrueType
-    * (or collection) file text is rendered with. */
-  def run(title: String, width: Int, height: Int, fontPath: String = defaultFont)(app: VNode): Unit =
+  /** Open a window of the given size and run `app` in it until the window is closed. Blocks
+    * on the frame loop for the lifetime of the window. Text is rendered in the bundled Inter
+    * font by default; pass `fontPath` to load a specific TrueType/OpenType (or collection)
+    * file through FreeType instead. */
+  def run(title: String, width: Int, height: Int, fontPath: String | Null = null)(app: VNode): Unit =
     setMainReady()
     if !init(INIT_VIDEO) then
       System.err.println(s"suit: SDL_Init failed: ${error}")
-      return
-    if !ttfInit() then
-      System.err.println(s"suit: TTF_Init failed: ${error}")
       return
 
     val window   = createWindow(title, width, height)
     val renderer = window.createRenderer()
     renderer.setVSync(true)
 
-    // The frame is composited into an off-screen texture, then that whole texture is
-    // blitted to the window each iteration. Rendering directly to the window's drawable
-    // and presenting every frame flickers on macOS/Metal — each present acquires a fresh
-    // drawable from a rotating pool, so the display can latch one that isn't the frame
-    // just drawn. A persistent target texture removes that race: the UI is painted into
-    // it (only when the tree changes), and every present shows a complete, stable copy of
-    // it. It also fixes the first-frame blank, since the window always receives a full
-    // frame regardless of when it is mapped.
-    val target = renderer.createTexture(window.pixelFormat, TEXTUREACCESS_TARGET, width, height)
+    // Cairo draws into this ARGB32 image surface; the runtime uploads it to the streaming
+    // texture each dirty frame. ARGB32's little-endian byte layout is identical to SDL's
+    // ARGB8888, so the upload is a straight copy with no conversion. The texture is blitted
+    // to the window every iteration, so an expose or resize always shows a complete frame.
+    val surface = imageSurfaceCreate(Format.ARGB32, width, height)
+    val cr      = surface.create
+    val texture = renderer.createTexture(PIXELFORMAT_ARGB8888, TEXTUREACCESS_STREAMING, width, height)
 
-    // Text needs fonts both to measure (at layout) and to paint. One book serves both:
-    // the measurer the layout pass consults and the canvas that rasterises glyphs.
-    val fonts = new FontBook(fontPath)
-    TextMeasurer.installed = new SdlTextMeasurer(fonts)
-    val canvas = new SdlCanvas(renderer, fonts)
+    // Load the font through FreeType and wrap it as a Cairo font face — a specific typeface,
+    // not a platform-resolved family name. With no `fontPath`, the Inter font embedded in
+    // the binary is loaded straight from memory; otherwise the given file is read. The face
+    // is held for the app's lifetime (Cairo is reference-counted, and nothing here is created
+    // per frame); the FreeType handles are released at shutdown, after the Cairo contexts
+    // that use them.
+    val ftLib = initFreeType match
+      case Right(lib) => lib
+      case Left(err)  => System.err.println(s"suit: FreeType init failed ($err)"); return
+    val ftFace = (fontPath match
+      case null      => ftLib.newMemoryFace(InterFont.suit_inter_font_data(), InterFont.suit_inter_font_size().toLong, 0)
+      case p: String => ftLib.newFace(p, 0)
+    ) match
+      case Right(face) => face
+      case Left(err)   => System.err.println(s"suit: cannot load font ($err)"); return
+    val fontFace = fontFaceCreateForFTFace(ftFace.faceptr, 0)
+
+    // Cairo serves both halves of text: the measurer the layout pass consults and the canvas
+    // that rasterises glyphs, both using the same face, so a string measures and paints
+    // identically.
+    val measurer = new CairoTextMeasurer(fontFace)
+    TextMeasurer.installed = measurer
+    val canvas = new CairoCanvas(cr, fontFace)
 
     val root = new RenderRoot(Size(width.toDouble, height.toDouble))
 
@@ -74,16 +90,19 @@ object Suit:
     val focusManager = new FocusManager
     val router       = new PointerRouter(root, focusManager)
     val keyRouter    = new KeyRouter(focusManager)
-    val clearColor   = SdlColor(24, 24, 28)
+    val clearColor   = Color(24, 24, 28)
 
-    // Composite the current tree into the off-screen target. Called on startup and again
-    // whenever a layout change marks the tree dirty.
+    // Lay out and draw the current tree into the Cairo surface, then upload it. Called on
+    // startup and again whenever a layout change marks the tree dirty.
     def repaint(): Unit =
       root.layout(Constraints.tight(root.windowSize))
-      renderer.setTarget(target)
-      renderer.clear(clearColor)
+      // Fill the background opaque, then paint the tree on top. The opaque fill replaces
+      // the previous frame, so no separate clear is needed.
+      cr.setSourceRGBA(clearColor.r / 255.0, clearColor.g / 255.0, clearColor.b / 255.0, 1.0)
+      cr.paint()
       root.paint(canvas, Offset.zero)
-      renderer.resetTarget()
+      surface.flush()
+      texture.update(surface.getData, surface.getStride)
 
     createRoot(root).render(app)
     drainScheduler() // commit any effects the initial mount queued
@@ -114,17 +133,20 @@ object Suit:
       // Run whatever the handlers produced (state updates, effects) before painting.
       drainScheduler()
 
-      // Re-composite the off-screen target only when the tree changed; blit it to the
-      // window and present every frame so an expose or resize always shows a full frame.
+      // Re-draw and re-upload only when the tree changed; blit and present every frame so an
+      // expose or resize always shows a full frame.
       if root.dirty then
         root.dirty = false
         repaint()
-      renderer.copy(target)
+      renderer.copy(texture)
       renderer.present()
 
-    fonts.close()
-    target.destroy()
+    measurer.close()
+    cr.destroy()
+    surface.destroy()
+    texture.destroy()
     renderer.destroy()
     window.destroy()
-    ttfQuit()
+    ftFace.doneFace
+    ftLib.doneFreeType
     quit()
