@@ -110,20 +110,27 @@ abstract class RenderObject:
       this
 
 /** The styled container — suit's workhorse rectangle, the equivalent of Flutter's
-  * `Container` or a SwiftUI view with a background. It paints a background and an
-  * optional border, insets its child by `padding`, and sizes itself by a single rule:
-  * an axis with an explicit `width`/`height` takes that value; otherwise the axis
+  * `Container` or a SwiftUI view with a background. It paints a drop shadow, a (possibly
+  * gradient, possibly rounded) background, its children, and an optional border, all at an
+  * optional `opacity`; it insets its child by `padding`; and it sizes itself by a single
+  * rule: an axis with an explicit `width`/`height` takes that value; otherwise the axis
   * **fills** the space offered when the parent dictates one (a tight constraint) and
-  * **shrinks to its content** when the parent leaves it free (a loose constraint).
-  * That is why a box at the root fills the window, while a box inside a row wraps its
-  * contents. */
+  * **shrinks to its content** when the parent leaves it free (a loose constraint). That is
+  * why a box at the root fills the window, while a box inside a row wraps its contents.
+  *
+  * The decoration is a general set of independent properties (a `Paint` background, a
+  * `Paint` border, a corner radius, a shadow, an opacity), not a fixed widget look — the
+  * styling system applies them to this one generic box. */
 final class RenderBox extends RenderObject:
-  var background: Color | Null  = null
-  var borderColor: Color | Null = null
-  var borderWidth: Double       = 0.0
-  var width: Option[Double]     = None
-  var height: Option[Double]    = None
-  var padding: EdgeInsets       = EdgeInsets.zero
+  var background: Paint | Null   = null
+  var border: Paint | Null       = null
+  var borderWidth: Double        = 0.0
+  var borderRadius: BorderRadius = BorderRadius.zero
+  var shadow: Shadow | Null      = null
+  var opacity: Double            = 1.0
+  var width: Option[Double]      = None
+  var height: Option[Double]     = None
+  var padding: EdgeInsets        = EdgeInsets.zero
 
   def layout(constraints: Constraints): Unit =
     val outer = constraints.tighten(width, height)
@@ -141,13 +148,31 @@ final class RenderBox extends RenderObject:
     size = outer.constrain(natural)
 
   override def paint(canvas: Canvas, origin: Offset): Unit =
+    val rect    = Rect.at(origin, size)
+    val rounded = !borderRadius.isZero
+    val faded   = opacity < 1.0
+
+    // A translucent box composites itself and its children as one group, so overlapping
+    // shapes inside it don't double-expose through the fade.
+    if faded then canvas.pushOpacity(opacity)
+
+    shadow match
+      case s: Shadow => canvas.drawShadow(rect, borderRadius, s)
+      case null      => ()
+
     background match
-      case c: Color => canvas.fillRect(Rect.at(origin, size), c)
+      case p: Paint => if rounded then canvas.fillRoundedRect(rect, borderRadius, p) else canvas.fillRect(rect, p)
       case null     => ()
+
     paintChildren(canvas, origin)
-    borderColor match
-      case c: Color if borderWidth > 0 => canvas.strokeRect(Rect.at(origin, size), c, borderWidth)
-      case _                           => ()
+
+    border match
+      case p: Paint if borderWidth > 0 =>
+        if rounded then canvas.strokeRoundedRect(rect, borderRadius, p, borderWidth)
+        else canvas.strokeRect(rect, p, borderWidth)
+      case _ => ()
+
+    if faded then canvas.popOpacity()
 
 /** Forces a fixed size onto its child (SwiftUI's `.frame` / Flutter's `SizedBox`).
   * Each given axis is handed to the child as a tight constraint; an axis left unset

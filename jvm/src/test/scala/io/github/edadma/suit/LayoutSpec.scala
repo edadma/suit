@@ -175,14 +175,14 @@ class LayoutSpec extends AnyFunSuite:
   test("a box paints its background then its border"):
     val b = new RenderBox
     b.background = Color(255, 0, 0)
-    b.borderColor = Color(0, 0, 0)
+    b.border = Color(0, 0, 0)
     b.borderWidth = 2
     b.layout(Constraints.tight(Size(10, 10)))
     val canvas = new RecordingCanvas
     b.paint(canvas, Offset.zero)
     assert(canvas.commands.toList == List(
-      RecordingCanvas.Command.FillRect(Rect(0, 0, 10, 10), Color(255, 0, 0)),
-      RecordingCanvas.Command.StrokeRect(Rect(0, 0, 10, 10), Color(0, 0, 0), 2),
+      RecordingCanvas.Command.FillRect(Rect(0, 0, 10, 10), Solid(Color(255, 0, 0))),
+      RecordingCanvas.Command.StrokeRect(Rect(0, 0, 10, 10), Solid(Color(0, 0, 0)), 2),
     ))
 
   test("hit-testing a row returns the child under the point"):
@@ -211,7 +211,7 @@ class LayoutSpec extends AnyFunSuite:
     val box = b.asInstanceOf[RenderBox]
 
     h.setProperty(b, "bg", Color(255, 0, 0))
-    assert(box.background == Color(255, 0, 0))
+    assert(box.background == Solid(Color(255, 0, 0)))
     h.setProperty(b, "width", 100.0)
     assert(box.width == Some(100.0))
     h.setProperty(b, "padding", EdgeInsets.all(4))

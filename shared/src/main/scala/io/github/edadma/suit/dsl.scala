@@ -40,14 +40,21 @@ object dsl:
     if fn == null then props
     else props.updated(s"on:$event", Handler((_: Any) => fn.asInstanceOf[() => Unit]()))
 
-  /** The styled container. `bg`/`border`/`borderWidth` give it appearance; `width`/
-    * `height` fix its size (omit to fill a tight parent or wrap a loose one); `padding`
-    * insets its child; `flex` makes it expand inside a row/column; `onClick` fires when
-    * a pointer-press hit-tests to it. Children render inside, after the padding. */
+  /** The styled container. `bg`/`border`/`borderWidth`/`radius`/`shadow`/`opacity` give it
+    * appearance (a `Color` flows into `bg`/`border` as a solid paint, or pass a gradient);
+    * `width`/`height` fix its size (omit to fill a tight parent or wrap a loose one);
+    * `padding` insets its child; `flex` makes it expand inside a row/column; `onClick` fires
+    * when a pointer-press hit-tests to it. Children render inside, after the padding.
+    *
+    * `radius` rounds all four corners uniformly; pass `corners` for per-corner control. */
   def box(
-      bg:           Color | Null                  = null,
-      border:       Color | Null                  = null,
+      bg:           Paint | Null                  = null,
+      border:       Paint | Null                  = null,
       borderWidth:  Double                         = 0.0,
+      radius:       Double                         = 0.0,
+      corners:      BorderRadius | Null            = null,
+      shadow:       Shadow | Null                  = null,
+      opacity:      Double                         = 1.0,
       width:        Double                         = Double.NaN,
       height:       Double                         = Double.NaN,
       padding:      EdgeInsets | Null              = null,
@@ -69,6 +76,10 @@ object dsl:
     if bg != null then props = props.updated("bg", PropValue(bg))
     if border != null then props = props.updated("border", PropValue(border))
     if borderWidth != 0.0 then props = props.updated("borderWidth", PropValue(borderWidth))
+    val br: BorderRadius | Null = if corners != null then corners else if radius != 0.0 then BorderRadius.all(radius) else null
+    if br != null then props = props.updated("borderRadius", PropValue(br))
+    if shadow != null then props = props.updated("shadow", PropValue(shadow))
+    if opacity != 1.0 then props = props.updated("opacity", PropValue(opacity))
     props = sized(props, "width", width)
     props = sized(props, "height", height)
     if padding != null then props = props.updated("padding", PropValue(padding))

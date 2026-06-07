@@ -87,12 +87,15 @@ final class SuitHostConfig extends HostConfig:
       // `focusable` applies to any object that should be able to take keyboard focus.
       case (o, "focusable") => o.focusable = value == true
 
-      case (b: RenderBox, "bg")          => b.background = asColorOrNull(value)
-      case (b: RenderBox, "border")      => b.borderColor = asColorOrNull(value)
-      case (b: RenderBox, "borderWidth") => b.borderWidth = asDouble(value)
-      case (b: RenderBox, "width")       => b.width = asDoubleOpt(value)
-      case (b: RenderBox, "height")      => b.height = asDoubleOpt(value)
-      case (b: RenderBox, "padding")     => b.padding = asInsets(value)
+      case (b: RenderBox, "bg")           => b.background = asPaintOrNull(value)
+      case (b: RenderBox, "border")       => b.border = asPaintOrNull(value)
+      case (b: RenderBox, "borderWidth")  => b.borderWidth = asDouble(value)
+      case (b: RenderBox, "borderRadius") => b.borderRadius = asRadius(value)
+      case (b: RenderBox, "shadow")       => b.shadow = asShadowOrNull(value)
+      case (b: RenderBox, "opacity")      => b.opacity = asOpacity(value)
+      case (b: RenderBox, "width")        => b.width = asDoubleOpt(value)
+      case (b: RenderBox, "height")       => b.height = asDoubleOpt(value)
+      case (b: RenderBox, "padding")      => b.padding = asInsets(value)
 
       case (c: RenderConstrained, "width")  => c.width = asDoubleOpt(value)
       case (c: RenderConstrained, "height") => c.height = asDoubleOpt(value)
@@ -132,6 +135,28 @@ final class SuitHostConfig extends HostConfig:
   private def asColorOrNull(v: Any): Color | Null = v match
     case c: Color => c
     case _        => null
+
+  // A paint prop arrives as a Paint (the DSL converts a flat Color to Solid before
+  // wrapping), but tolerate a bare Color too so a colour set directly still reads.
+  private def asPaintOrNull(v: Any): Paint | Null = v match
+    case p: Paint => p
+    case c: Color => Solid(c)
+    case _        => null
+
+  private def asRadius(v: Any): BorderRadius = v match
+    case r: BorderRadius => r
+    case d: Double       => BorderRadius.all(d)
+    case i: Int          => BorderRadius.all(i.toDouble)
+    case _               => BorderRadius.zero
+
+  private def asShadowOrNull(v: Any): Shadow | Null = v match
+    case s: Shadow => s
+    case _         => null
+
+  private def asOpacity(v: Any): Double = v match
+    case d: Double => d
+    case i: Int    => i.toDouble
+    case _         => 1.0
 
   private def asDoubleOpt(v: Any): Option[Double] = v match
     case d: Double => Some(d)

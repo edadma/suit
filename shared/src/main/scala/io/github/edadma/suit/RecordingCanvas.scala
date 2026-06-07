@@ -5,35 +5,55 @@ import scala.collection.mutable
 // A Canvas that records every call instead of drawing — the headless paint target.
 // It is the analogue of suit-old's draw-command list: a test renders a tree against
 // a RecordingCanvas and asserts on `commands` to verify exactly what would be
-// painted, with no SDL window in the loop. Pure Scala, so it (and the layout engine
-// it exercises) is testable off-device.
+// painted, with no window in the loop. Pure Scala, so it (and the layout engine and
+// styling model it exercises) is testable off-device.
 final class RecordingCanvas extends Canvas:
   import RecordingCanvas.Command
 
   val commands: mutable.ArrayBuffer[Command] = mutable.ArrayBuffer.empty
 
-  def fillRect(rect: Rect, color: Color): Unit =
-    commands += Command.FillRect(rect, color)
+  def fillRect(rect: Rect, paint: Paint): Unit =
+    commands += Command.FillRect(rect, paint)
 
-  def strokeRect(rect: Rect, color: Color, width: Double): Unit =
-    commands += Command.StrokeRect(rect, color, width)
+  def strokeRect(rect: Rect, paint: Paint, width: Double): Unit =
+    commands += Command.StrokeRect(rect, paint, width)
 
-  def fillCircle(center: Offset, radius: Double, color: Color): Unit =
-    commands += Command.FillCircle(center, radius, color)
+  def fillRoundedRect(rect: Rect, radius: BorderRadius, paint: Paint): Unit =
+    commands += Command.FillRoundedRect(rect, radius, paint)
 
-  def line(a: Offset, b: Offset, width: Double, color: Color): Unit =
-    commands += Command.Line(a, b, width, color)
+  def strokeRoundedRect(rect: Rect, radius: BorderRadius, paint: Paint, width: Double): Unit =
+    commands += Command.StrokeRoundedRect(rect, radius, paint, width)
+
+  def fillCircle(center: Offset, radius: Double, paint: Paint): Unit =
+    commands += Command.FillCircle(center, radius, paint)
+
+  def line(a: Offset, b: Offset, width: Double, paint: Paint): Unit =
+    commands += Command.Line(a, b, width, paint)
+
+  def drawShadow(rect: Rect, radius: BorderRadius, shadow: Shadow): Unit =
+    commands += Command.DrawShadow(rect, radius, shadow)
 
   def drawText(origin: Offset, text: String, style: TextStyle): Unit =
     commands += Command.DrawText(origin, text, style)
+
+  def pushOpacity(alpha: Double): Unit =
+    commands += Command.PushOpacity(alpha)
+
+  def popOpacity(): Unit =
+    commands += Command.PopOpacity
 
 object RecordingCanvas:
   /** One recorded paint call. Defined on the companion rather than nested in the
     * instance so tests can name `RecordingCanvas.Command.FillRect(...)` to assert
     * against the captured list. */
   enum Command:
-    case FillRect(rect: Rect, color: Color)
-    case StrokeRect(rect: Rect, color: Color, width: Double)
-    case FillCircle(center: Offset, radius: Double, color: Color)
-    case Line(a: Offset, b: Offset, width: Double, color: Color)
+    case FillRect(rect: Rect, paint: Paint)
+    case StrokeRect(rect: Rect, paint: Paint, width: Double)
+    case FillRoundedRect(rect: Rect, radius: BorderRadius, paint: Paint)
+    case StrokeRoundedRect(rect: Rect, radius: BorderRadius, paint: Paint, width: Double)
+    case FillCircle(center: Offset, radius: Double, paint: Paint)
+    case Line(a: Offset, b: Offset, width: Double, paint: Paint)
+    case DrawShadow(rect: Rect, radius: BorderRadius, shadow: Shadow)
     case DrawText(origin: Offset, text: String, style: TextStyle)
+    case PushOpacity(alpha: Double)
+    case PopOpacity
