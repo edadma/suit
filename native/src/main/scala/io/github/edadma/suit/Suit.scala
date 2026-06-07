@@ -118,7 +118,13 @@ object Suit:
       surface.flush()
       texture.update(surface.getData, surface.getStride)
 
-    createRoot(root).render(app)
+    // The overlay layer sits as the root's last child, so it paints above the application and
+    // is hit before it. The app is wrapped in a provider that hands this layer and the focus
+    // manager down through context, so dialogs (and later menus and tooltips) can portal their
+    // content into it and trap focus without reaching for the runtime globally.
+    val overlay = new RenderOverlay
+    createRoot(root).render(OverlayContext.provide(OverlayEnv(overlay, focusManager), app))
+    root.insertChild(overlay, null)
     drainScheduler() // commit any effects the initial mount queued
     repaint()        // lay out and paint the first frame before the loop
 
@@ -147,6 +153,9 @@ object Suit:
             // objects rather than reaching the focused widget, so it is intercepted here
             // (Shift+Tab walks backward). Every other key routes to whatever holds focus.
             if e.keyScancode == Key.Tab then focusManager.focusNext(root, backward = shift)
+            // Escape closes a trapping modal from anywhere inside it; with no trap active it
+            // is an ordinary key routed to whatever holds focus.
+            else if e.keyScancode == Key.Escape && focusManager.escape() then ()
             else keyRouter.down(e.keyScancode, e.keyRepeat, shift, ctrl)
           case KEY_UP    => keyRouter.up(e.keyScancode)
           case TEXT_INPUT => textRouter.input(e.text)

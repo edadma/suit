@@ -342,6 +342,36 @@ object RenderScroll:
   /** Pixels scrolled per wheel notch. */
   val WheelStep: Double = 40.0
 
+/** The overlay layer — a full-window host for portaled content (dialogs, menus, tooltips)
+  * that must paint above the application and be hit before it. It sits as the last child of
+  * the [[RenderRoot]], so it paints on top and is hit-tested first, and it lays each child
+  * out tight to its own (window) size, like the root, so a modal's scrim fills the window.
+  *
+  * Crucially it is **transparent to hit-testing wherever it has no content**: it never claims
+  * a point for itself, only forwards to a child that does. An empty overlay therefore does
+  * not swallow the application's input — only real overlay content (an open modal's scrim, a
+  * menu) intercepts — which is what lets it sit permanently in front of the whole app. */
+final class RenderOverlay extends RenderObject:
+  def layout(constraints: Constraints): Unit =
+    val w = if constraints.maxWidth.isFinite then constraints.maxWidth else 0.0
+    val h = if constraints.maxHeight.isFinite then constraints.maxHeight else 0.0
+    size = constraints.constrain(Size(w, h))
+    var i = 0
+    while i < children.length do
+      val child = children(i)
+      child.layout(Constraints.tight(size))
+      child.offset = Offset.zero
+      i += 1
+
+  override def hitTest(point: Offset, origin: Offset): RenderObject | Null =
+    var i = children.length - 1
+    while i >= 0 do
+      val child = children(i)
+      val hit   = child.hitTest(point, origin + child.offset)
+      if hit != null then return hit
+      i -= 1
+    null
+
 /** A row or column — the main layout primitive. Children are laid end to end along the
   * **main axis** (horizontal for a row, vertical for a column) and sized across the
   * **cross axis**. Inflexible children (flex 0) take their natural main size; the

@@ -462,3 +462,88 @@ object widgets:
         }*,
       )
     }
+
+  // The modal implementation. Props are a tuple: open flag, close callback, whether a scrim
+  // click dismisses, and the exit-animation duration. A friendlier `Dialog(...)` wrapper
+  // below names them.
+  private val DialogImpl: ContainerP[(Boolean, () => Unit, Boolean, Int)] =
+    container[(Boolean, () => Unit, Boolean, Int)] { (props, children) =>
+      val (open, onClose, maskClosable, exitMs) = props
+      val theme    = useTheme()
+      val env      = useOverlay()
+      val presence = usePresence(open, exitMs)
+
+      // The scrim and card fade in together, and back out before the dialog unmounts, off the
+      // open phase — the same enter/exit pair every dismissible overlay uses.
+      val amt   = useTransition(if presence.phase == PresencePhase.Open then 1.0 else 0.0, exitMs)
+      val saved = useRef[RenderObject | Null](null)
+
+      // Focus is the other half of "modal": on open, remember whatever held focus, trap focus
+      // to the overlay (so Tab cycles inside the dialog and Escape closes it) and move focus to
+      // the first control within; on close, release the trap and restore focus to the opener.
+      // Keyed on `mounted` so it arms once when the dialog appears and tears down when it goes.
+      useEffect(
+        () =>
+          (env.overlay, env.focus) match
+            case (o: RenderObject, f: FocusManager) if presence.mounted =>
+              saved.current = f.focused
+              f.trap(o, onClose)
+              f.focusables(o).headOption.foreach(f.focus)
+              () =>
+                f.releaseTrap()
+                f.focus(saved.current)
+            case _ => noCleanup
+        ,
+        Array(presence.mounted),
+      )
+
+      env.overlay match
+        case o: RenderObject if presence.mounted =>
+          portal(
+            o,
+            // The scrim: a full-window dimming layer whose own click (outside the card)
+            // dismisses when permitted. Its opacity rides the fade.
+            box(
+              bg      = Color(0, 0, 0, (140 * amt).toInt),
+              onClick = _ => if maskClosable then onClose(),
+            )(
+              center(
+                // The card. It swallows clicks so they do not reach the scrim, is focusable so
+                // it is the trap's first target, and closes on Escape from anywhere inside it.
+                box(
+                  bg          = theme.surface,
+                  border      = theme.border,
+                  borderWidth = 1,
+                  radius      = theme.radius,
+                  shadow      = Shadow(),
+                  opacity     = amt,
+                  padding     = EdgeInsets.all(theme.spacing * 2),
+                  focusable   = true,
+                  onClick     = _ => (),
+                  onKeyDown   = e => if e.scancode == Key.Escape then onClose(),
+                )(children*),
+              ),
+            ),
+          )
+        case _ => VEmpty
+    }
+
+  /** A modal dialog: content centred above a dimming scrim that takes over the window until
+    * dismissed. It is **controlled** — the caller owns `open` and is told to close through
+    * `onClose`, fired by a click on the scrim (when `maskClosable`), the Escape key, or
+    * whatever the caller wires inside the body. The dialog is **portaled into the overlay
+    * layer** ([[useOverlay]]), so it escapes any clip or scroll of the place that opened it
+    * and always paints on top.
+    *
+    * Opening moves focus into the dialog and traps Tab within it; Escape closes it from
+    * anywhere inside; closing restores focus to whatever held it before. The scrim and card
+    * fade and the card settles in through [[usePresence]] + [[useTransition]], and the dialog
+    * stays mounted through its close animation (`exitMs`) before unmounting. With no overlay
+    * layer available — outside a running app — it renders nothing. */
+  def Dialog(
+      open:         Boolean,
+      onClose:      () => Unit,
+      maskClosable: Boolean = true,
+      exitMs:       Int     = 200,
+  )(children: VNode*): VNode =
+    DialogImpl((open, onClose, maskClosable, exitMs))(children*)

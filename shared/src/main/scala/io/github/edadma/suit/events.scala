@@ -75,10 +75,36 @@ object Key:
   * object should receive a key. Focus changes fire `focus` / `blur` handlers (with no
   * payload) so a widget can re-style itself. */
 final class FocusManager:
-  private var _focused: RenderObject | Null = null
+  private var _focused: RenderObject | Null   = null
+  private var _trap: RenderObject | Null      = null
+  private var _onEscape: (() => Unit) | Null  = null
 
   def focused: RenderObject | Null        = _focused
   def isFocused(o: RenderObject): Boolean = _focused eq o
+
+  /** The subtree focus is currently trapped within, or null when nothing traps it. While a
+    * trap is active, Tab traversal is confined to this subtree (see [[focusNext]]) and Escape
+    * runs the trap's handler (see [[escape]]) — the behaviour a modal dialog needs. */
+  def trapRoot: RenderObject | Null = _trap
+
+  /** Trap focus within `root`: Tab cycles only inside it and [[escape]] invokes `onEscape`.
+    * A modal sets this when it opens and clears it with [[releaseTrap]] when it closes. */
+  def trap(root: RenderObject, onEscape: () => Unit): Unit =
+    _trap = root
+    _onEscape = onEscape
+
+  /** Release the active focus trap (the modal closed). */
+  def releaseTrap(): Unit =
+    _trap = null
+    _onEscape = null
+
+  /** Invoke the active trap's escape handler if one is set, returning whether it was — the
+    * runtime calls this on the Escape key so a trapping modal closes from anywhere inside it,
+    * regardless of which control holds focus, and a plain (untrapped) Escape still routes to
+    * the focused object as an ordinary key. */
+  def escape(): Boolean =
+    val h = _onEscape
+    if h != null then { h(); true } else false
 
   /** Move focus to `o` (or clear it with `null`). A no-op if `o` is already focused;
     * otherwise fires `blur` on the object losing focus and `focus` on the one gaining
@@ -115,9 +141,13 @@ final class FocusManager:
   /** Move focus to the next focusable object after the current one, wrapping at the end;
     * `backward` (Shift+Tab) reverses direction. With nothing focused it takes the first
     * (or last, going backward); with no focusables at all it is a no-op. This is what the
-    * runtime calls on the Tab key. */
+    * runtime calls on the Tab key. While a focus trap is active the walk is scoped to the
+    * trapped subtree instead of `root`, so Tab cannot leave an open modal. */
   def focusNext(root: RenderObject, backward: Boolean = false): Unit =
-    val list = focusables(root)
+    val scope = _trap match
+      case t: RenderObject => t
+      case null            => root
+    val list = focusables(scope)
     if list.nonEmpty then
       val cur  = list.indexWhere(_ eq _focused)
       val next =

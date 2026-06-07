@@ -246,6 +246,50 @@ Card(
 )
 ```
 
+## Dialog
+
+```scala
+def Dialog(
+    open:         Boolean,
+    onClose:      () => Unit,
+    maskClosable: Boolean = true,
+    exitMs:       Int     = 200,
+)(children: VNode*): VNode
+```
+
+A modal dialog — content centred above a dimming scrim that takes over the window until
+dismissed. It is **controlled**: the caller owns `open` and is told to close through
+`onClose`, which fires on a click on the scrim (when `maskClosable`), the **Escape** key, or
+anything the caller wires inside the body (a Close button).
+
+The dialog is **portaled into the overlay layer**, so it escapes any clipping or scrolling of
+the place that opened it and always paints on top — the `Dialog` node can sit anywhere in the
+tree. Opening moves focus into the dialog and **traps Tab** within it; Escape closes it from
+anywhere inside; closing **restores focus** to whatever held it before. The scrim and card
+fade in and the dialog stays mounted through its close animation (`exitMs`) before unmounting,
+via `usePresence` + `useTransition`.
+
+The overlay layer is provided by `Suit.run`; with none available (outside a running app) the
+dialog renders nothing. A headless test wires its own through `OverlayContext` — see
+`DialogSpec`.
+
+```scala
+val (open, setOpen, _) = useState(false)
+
+col(spacing = 16)(
+  Button("Open dialog", () => setOpen(true)),
+  Dialog(open, () => setOpen(false))(
+    col(spacing = 16)(
+      text("A modal dialog", size = 18),
+      text("It dims the rest and traps focus until dismissed."),
+      row(mainAxisAlignment = MainAxisAlignment.End)(
+        Button("Close", () => setOpen(false)),
+      ),
+    ),
+  ),
+)
+```
+
 ## Theme
 
 ```scala

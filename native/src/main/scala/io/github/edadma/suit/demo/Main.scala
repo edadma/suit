@@ -6,7 +6,7 @@ import io.github.edadma.suit.widgets.*
 
 // A showcase of the styling system, the input model, and motion. The whole UI is wrapped
 // in a `ThemeProvider` carrying a custom theme, so the built-in widgets (Button, Checkbox,
-// Slider, Switch, RadioGroup, ProgressBar, Tabs, Badge, Divider, Alert, Card) restyle
+// Slider, Switch, RadioGroup, ProgressBar, Tabs, Badge, Divider, Alert, Card, Dialog) restyle
 // themselves from it with no widget code touched — that is the point of keeping styling
 // general rather than baked in. A gradient header, rounded cards with drop shadows, and the
 // text-style cascade (the body sets a `textColor` once and the labels inherit it) round out
@@ -15,7 +15,8 @@ import io.github.edadma.suit.widgets.*
 // Motion runs throughout: the button tint fades on hover and press, the checkbox mark
 // scales and fades as it ticks, the slider thumb glides toward its value, and the "Show
 // details" panel fades and rises in then eases back out before unmounting (the enter/exit
-// path from `usePresence` + `useTransition`). All of it is driven by the runtime's frame
+// path from `usePresence` + `useTransition`), and the modal dialog floats in above a dimming
+// scrim, traps focus, and fades back out on close. All of it is driven by the runtime's frame
 // clock, which repaints each frame only while something is animating and goes quiet once
 // it settles.
 //
@@ -87,6 +88,7 @@ val App = view {
   val (live, setLive, _)       = useState(true)
   val (size, setSize, _)       = useState("m")
   val (tab, setTab, _)         = useState("overview")
+  val (dialog, setDialog, _)   = useState(false)
 
   ThemeProvider(appTheme)(
     col(spacing = 16)(
@@ -175,6 +177,24 @@ val App = view {
                     Button(if details then "Hide details" else "Show details", () => setDetails(!details)),
                   ),
                   DetailPanel(details),
+                ),
+              ),
+              // A modal dialog: the button opens it, and it floats centred above everything
+              // through the overlay layer, traps focus, and closes on the scrim, Escape, or its
+              // own Close button. The Dialog node itself can sit anywhere in the tree — it
+              // portals its content into the overlay.
+              card(
+                row(crossAxisAlignment = CrossAxisAlignment.Center, spacing = 16)(
+                  Button("Open dialog", () => setDialog(true)),
+                  Dialog(dialog, () => setDialog(false))(
+                    col(spacing = 16)(
+                      text("A modal dialog", size = 18),
+                      text("It floats above the page, dims the rest, and traps focus until you dismiss it.", color = muted),
+                      row(mainAxisAlignment = MainAxisAlignment.End)(
+                        Button("Close", () => setDialog(false)),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ).concat((1 to 6).map(i => card(text(s"item $i — scroll to see me"))))*,

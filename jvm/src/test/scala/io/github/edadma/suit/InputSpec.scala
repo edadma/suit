@@ -193,6 +193,35 @@ class InputSpec extends AnyFunSuite:
     fm.focusNext(fixed(100, 100))
     assert(fm.focused == null)
 
+  // --- focus trap (modal) --------------------------------------------------
+
+  test("escape runs the trap handler and reports it consumed the key"):
+    val fm      = new FocusManager
+    var closed  = 0
+    assert(!fm.escape()) // no trap: nothing consumes Escape
+    fm.trap(fixed(10, 10), () => closed += 1)
+    assert(fm.escape())  // trapped: the handler runs and the key is consumed
+    assert(closed == 1)
+    fm.releaseTrap()
+    assert(!fm.escape())
+
+  test("a trap scopes Tab traversal to the trapped subtree"):
+    // Two focusables in the main tree (a, b) and two inside a separate trapped subtree
+    // (t1, t2). With the trap active, traversal must cycle only t1/t2 and never reach a/b.
+    val (root, a, b, _) = focusTree()
+    val trap            = fixed(50, 50)
+    val t1              = fixed(10, 10); t1.focusable = true
+    val t2              = fixed(10, 10); t2.focusable = true
+    trap.insertChild(t1, null)
+    trap.insertChild(t2, null)
+    val fm = new FocusManager
+    fm.trap(trap, () => ())
+    fm.focusNext(root); assert(fm.isFocused(t1)) // nothing focused → first in the trap
+    fm.focusNext(root); assert(fm.isFocused(t2))
+    fm.focusNext(root); assert(fm.isFocused(t1)) // wraps inside the trap, never escapes to a/b
+    assert(!fm.focusables(trap).contains(a))
+    assert(!fm.focusables(trap).contains(b))
+
   // --- wheel ---------------------------------------------------------------
 
   test("the wheel bubbles a scroll event to the nearest wheel handler"):

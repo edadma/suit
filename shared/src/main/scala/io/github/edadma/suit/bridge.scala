@@ -153,6 +153,15 @@ def container[P](render: (P, Children) => (Hooks ?=> VNode)): ContainerP[P] = vd
 
 def createContext[T](default: T): Context[T] = vdom.createContext(default)
 
+// --- portal -----------------------------------------------------------------
+
+/** Render `child` into a different part of the render tree — suit's overlay layer — while
+  * leaving its logical place here untouched (context, events, and re-renders still flow from
+  * here). The `target` is a host node, which on suit is a [[RenderObject]]; overlay widgets
+  * pass the overlay layer they read from [[OverlayContext]]. This is how a dialog or menu
+  * escapes an ancestor's clip or scroll and paints above the rest of the window. */
+def portal(target: RenderObject, child: VNode): VNode = vdom.VPortal(target, child)
+
 // --- entry point ------------------------------------------------------------
 
 // The container is a `RenderObject` (the render root) for callers; vdom's `Root` mutates
