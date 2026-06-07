@@ -1,7 +1,8 @@
 package io.github.edadma.suit
 
 import scala.collection.mutable
-import io.github.edadma.libcairo.{Context, FontFace, Pattern, patternCreateLinear, patternCreateRadial}
+import scala.scalanative.unsafe.*
+import io.github.edadma.libcairo.{Context, FontFace, Format, Pattern, imageSurfaceCreate, patternCreateLinear, patternCreateRadial}
 
 // suit's production paint target: a Canvas backed by a Cairo drawing context. Cairo is a
 // real 2D vector engine, so every primitive is anti-aliased by its coverage rasteriser —
@@ -82,7 +83,7 @@ final class CairoCanvas(cr: Context, fontFace: FontFace) extends Canvas:
   // Trace a rounded-rectangle path with four quarter-circle arcs joined by the straight
   // sides. Each corner radius is clamped to half the smaller dimension so a large radius
   // becomes a pill rather than overlapping into a malformed path.
-  private def roundedPath(rect: Rect, radius: BorderRadius): Unit =
+  private def roundedPath(ctx: Context, rect: Rect, radius: BorderRadius): Unit =
     val maxR = math.min(rect.width, rect.height) / 2
     def c(r: Double): Double = math.max(0.0, math.min(r, maxR))
     val tl = c(radius.topLeft)
@@ -94,15 +95,15 @@ final class CairoCanvas(cr: Context, fontFace: FontFace) extends Canvas:
     val w  = rect.width
     val hh = rect.height
     val halfPi = math.Pi / 2
-    cr.newSubPath()
-    cr.arc(x + w - tr, y + tr, tr, -halfPi, 0.0)            // top-right
-    cr.arc(x + w - brad, y + hh - brad, brad, 0.0, halfPi)  // bottom-right
-    cr.arc(x + bl, y + hh - bl, bl, halfPi, math.Pi)        // bottom-left
-    cr.arc(x + tl, y + tl, tl, math.Pi, 3 * halfPi)         // top-left
-    cr.closePath()
+    ctx.newSubPath()
+    ctx.arc(x + w - tr, y + tr, tr, -halfPi, 0.0)            // top-right
+    ctx.arc(x + w - brad, y + hh - brad, brad, 0.0, halfPi)  // bottom-right
+    ctx.arc(x + bl, y + hh - bl, bl, halfPi, math.Pi)        // bottom-left
+    ctx.arc(x + tl, y + tl, tl, math.Pi, 3 * halfPi)         // top-left
+    ctx.closePath()
 
   def fillRoundedRect(rect: Rect, radius: BorderRadius, paint: Paint): Unit =
-    roundedPath(rect, radius)
+    roundedPath(cr, rect, radius)
     val p = source(paint, rect)
     cr.fill()
     disposeSource(p)
@@ -110,7 +111,7 @@ final class CairoCanvas(cr: Context, fontFace: FontFace) extends Canvas:
   def strokeRoundedRect(rect: Rect, radius: BorderRadius, paint: Paint, width: Double): Unit =
     val h     = width / 2
     val inner = Rect(rect.x + h, rect.y + h, rect.width - width, rect.height - width)
-    roundedPath(inner, radius)
+    roundedPath(cr, inner, radius)
     cr.setLineWidth(width)
     val p = source(paint, rect)
     cr.stroke()
@@ -138,32 +139,56 @@ final class CairoCanvas(cr: Context, fontFace: FontFace) extends Canvas:
       case s: CairoSvg => s.handle.renderDocument(cr, rect.x, rect.y, rect.width, rect.height)
       case _           => ()
 
-  // Fake a soft shadow by feathering: draw concentric rounded rectangles from the outer
-  // edge inward, each slightly smaller and more opaque, so their overlap builds up a graded
-  // edge. Cairo has no blur primitive (true Gaussian shadows are a fidelity pass), and this
-  // single seam call keeps the fake out of the render tree, so a blur-based backend can
-  // replace it without any RenderObject changing.
+  // Cast a real soft shadow: draw the (spread) rounded shape filled with the shadow colour into
+  // an offscreen ARGB32 surface, blur that surface, and composite it back at the shadow's offset.
+  // Cairo has no blur primitive, so the softening is a separable box blur (three passes ≈ a
+  // Gaussian) run over the surface's pixel buffer by [[BoxBlur]] — that is the one part that is
+  // unit-tested off-device; everything around it is Cairo plumbing. The shape is drawn into a
+  // transparent margin wide enough for the blur to feather into, so the edge fades to nothing
+  // instead of smearing against the surface's sides. Keeping this behind the single Canvas seam
+  // is what let the fake-feather version be swapped out with no RenderObject change.
   def drawShadow(rect: Rect, radius: BorderRadius, shadow: Shadow): Unit =
-    val steps = math.max(1, shadow.blur.round.toInt)
-    val baseA = shadow.color.a / 255.0
-    val dx    = shadow.offset.x
-    val dy    = shadow.offset.y
-    var i     = steps
-    while i >= 1 do
-      val t    = i.toDouble / steps                 // 1 at the soft outer edge, → 0 at the core
-      val grow = shadow.spread + shadow.blur * t
-      val a    = math.min(baseA, baseA * (1.0 - t) * 2.0 / steps)
-      val ring = Rect(rect.x + dx - grow, rect.y + dy - grow, rect.width + 2 * grow, rect.height + 2 * grow)
-      val rad  = BorderRadius(
-        radius.topLeft + grow,
-        radius.topRight + grow,
-        radius.bottomRight + grow,
-        radius.bottomLeft + grow,
-      )
-      roundedPath(ring, rad)
-      cr.setSourceRGBA(shadow.color.r / 255.0, shadow.color.g / 255.0, shadow.color.b / 255.0, a)
-      cr.fill()
-      i -= 1
+    val passes = 3
+    val r      = math.max(1, math.round(shadow.blur / passes.toDouble).toInt)
+    val margin = r * passes + 1
+    val spread = shadow.spread
+
+    // The shape grows by `spread` on every side; the surface adds the blur margin around that.
+    val shapeW = rect.width + 2 * spread
+    val shapeH = rect.height + 2 * spread
+    val sw     = math.ceil(shapeW).toInt + 2 * margin
+    val sh     = math.ceil(shapeH).toInt + 2 * margin
+    if sw <= 0 || sh <= 0 then return
+
+    val surface = imageSurfaceCreate(Format.ARGB32, sw, sh)
+    val scr     = surface.create
+    val shape   = Rect(margin.toDouble, margin.toDouble, shapeW, shapeH)
+    val grown = BorderRadius(
+      radius.topLeft + spread,
+      radius.topRight + spread,
+      radius.bottomRight + spread,
+      radius.bottomLeft + spread,
+    )
+    if grown.isZero then scr.rectangle(shape.x, shape.y, shape.width, shape.height)
+    else roundedPath(scr, shape, grown)
+    scr.setSourceRGBA(shadow.color.r / 255.0, shadow.color.g / 255.0, shadow.color.b / 255.0, shadow.color.a / 255.0)
+    scr.fill()
+
+    // Blur the buffer directly, then mark it dirty so the composite below samples the blurred
+    // pixels and not Cairo's pre-blur snapshot.
+    surface.flush()
+    BoxBlur.blur(new PtrByteSurface(surface.getData, sw, sh, surface.getStride), r, passes)
+    surface.markDirty()
+
+    // Place the surface so the shape sits under `rect`, offset by the shadow's displacement; the
+    // margin and spread that padded the surface are subtracted back out.
+    val destX = rect.x + shadow.offset.x - spread - margin
+    val destY = rect.y + shadow.offset.y - spread - margin
+    cr.setSourceSurface(surface, destX, destY)
+    cr.paint()
+
+    scr.destroy()
+    surface.destroy()
 
   // `origin` is the text's top-left; Cairo draws from the baseline, so drop down by the
   // font's ascent. Measurement (see [[CairoTextMeasurer]]) uses the same family and size,
@@ -201,8 +226,16 @@ final class CairoCanvas(cr: Context, fontFace: FontFace) extends Canvas:
   def pushClip(rect: Rect, radius: BorderRadius): Unit =
     cr.save()
     if radius.isZero then cr.rectangle(rect.x, rect.y, rect.width, rect.height)
-    else roundedPath(rect, radius)
+    else roundedPath(cr, rect, radius)
     cr.clip()
     cr.newPath() // `clip` keeps the path current; clear it so later drawing starts clean
 
   def popClip(): Unit = cr.restore()
+
+// A [[ByteSurface]] view over a Cairo image surface's native pixel buffer, so [[BoxBlur]] can
+// convolve a shadow surface in place. `data` is the pointer from `getData` (valid after a flush
+// and until the surface is drawn to again); `stride` is its row pitch in bytes.
+private final class PtrByteSurface(data: Ptr[Byte], val width: Int, val height: Int, val stride: Int)
+    extends ByteSurface:
+  def get(offset: Int): Int          = data(offset) & 0xff
+  def set(offset: Int, value: Int): Unit = data(offset) = value.toByte

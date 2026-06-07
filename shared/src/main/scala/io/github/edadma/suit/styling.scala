@@ -61,11 +61,12 @@ object BorderRadius:
   /** Round only the bottom corners. */
   def bottom(r: Double): BorderRadius = BorderRadius(0, 0, r, r)
 
-/** A drop shadow behind a box — the cue for elevation. Cairo has no native blur (true
-  * Gaussian shadows are a later fidelity pass), so the backend fakes a soft edge by
-  * feathering concentric translucent layers; this value names the look: the shadow
-  * `color` (its alpha is the strength), the `offset` it is cast by, how far the soft edge
-  * `blur` spreads, and an optional `spread` that grows the shape before blurring. */
+/** A drop shadow behind a box — the cue for elevation. The backend renders it for real:
+  * it draws the box's shape into an offscreen surface and softens it with a Gaussian-like
+  * blur (Cairo has no native blur, so the softening is a separable box blur over the
+  * surface's pixels). This value names the look: the shadow `color` (its alpha is the
+  * strength), the `offset` it is cast by, how far the soft edge `blur` spreads, and an
+  * optional `spread` that grows the shape before blurring. */
 final case class Shadow(
     color:  Color  = Color(0, 0, 0, 90),
     offset: Offset = Offset(0, 2),
