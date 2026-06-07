@@ -32,6 +32,7 @@ final class SuitHostConfig extends HostConfig:
     case "positioned" => new RenderPositioned
     case "scroll"   => new RenderScroll
     case "text"     => new RenderText("")
+    case "svg"      => new RenderSvg(null)
     case _          => new RenderBox
 
   def createText(text: String): AnyRef    = new RenderText(text)
@@ -154,6 +155,13 @@ final class SuitHostConfig extends HostConfig:
           case o: TextOverflow => o
           case _               => TextOverflow.Clip
       case (t: RenderText, "softWrap") => t.softWrap = value != false
+
+      case (s: RenderSvg, "image") =>
+        s.image = value match
+          case i: SvgImage => i
+          case _           => null
+      case (s: RenderSvg, "width")  => s.width = asDoubleOpt(value)
+      case (s: RenderSvg, "height") => s.height = asDoubleOpt(value)
 
       case _ => ()
     obj.markDirty()

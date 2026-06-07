@@ -53,13 +53,15 @@ lazy val suit = crossProject(JVMPlatform, NativePlatform)
   )
   .nativeSettings(
     // SDL3 is the platform layer (window, input, present, texture upload); Cairo is the
-    // drawing engine; FreeType loads the font files Cairo renders text from. sdl3_ttf is not
-    // needed. All three bindings come from Central; scala-native finds the Homebrew-installed
-    // libSDL3 / libcairo / libfreetype via each binding's `@link`.
+    // drawing engine; FreeType loads the font files Cairo renders text from; librsvg renders
+    // SVG documents straight into the Cairo context. sdl3_ttf is not needed. All four bindings
+    // come from Central; scala-native finds the Homebrew-installed libSDL3 / libcairo /
+    // libfreetype / librsvg via each binding's `@link`.
     libraryDependencies ++= Seq(
       "io.github.edadma" %%% "sdl3"     % "0.2.4",
       "io.github.edadma" %%% "libcairo" % "0.0.4",
       "io.github.edadma" %%% "freetype" % "0.0.4",
+      "io.github.edadma" %%% "librsvg"  % "0.0.1",
     ),
   )
 

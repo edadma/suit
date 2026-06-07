@@ -662,6 +662,28 @@ object RenderText:
     while s.nonEmpty && m.measure(s + ell, style).width > maxW do s = s.substring(0, s.length - 1)
     if s.isEmpty then ell else s + ell
 
+/** A leaf that paints a scalable vector image. It sizes to its explicit `width`/`height` when
+  * given, otherwise to the document's intrinsic size, each clamped to the constraints; with
+  * neither it collapses to nothing. Painting hands the image and its laid-out rectangle to the
+  * canvas, which scales the vectors to fill it (see [[Canvas.drawSvg]]). It is a leaf for
+  * hit-testing — give an interactive icon a surrounding `box` with the handlers. */
+final class RenderSvg(var image: SvgImage | Null) extends RenderObject:
+  var width:  Option[Double] = None
+  var height: Option[Double] = None
+
+  def layout(constraints: Constraints): Unit =
+    val natural = image match
+      case img: SvgImage => img.intrinsicSize.getOrElse(Size.zero)
+      case null          => Size.zero
+    val w = width.getOrElse(natural.width)
+    val h = height.getOrElse(natural.height)
+    size = constraints.constrain(Size(w, h))
+
+  override def paint(canvas: Canvas, origin: Offset): Unit =
+    image match
+      case img: SvgImage => canvas.drawSvg(img, Rect.at(origin, size))
+      case null          => ()
+
 /** A non-visual node that only holds a position in the sibling order — vdom anchors
   * fragments, portals, and empty renders on one. Zero size, never painted, never a
   * hit-test target. */

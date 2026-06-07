@@ -108,6 +108,30 @@ text("Capped at two lines, the rest trimmed…", maxLines = 2, overflow = TextOv
 text("centred", align = TextAlign.Center)
 ```
 
+## svg
+
+```scala
+def svg(image: SvgImage, width: Double = Double.NaN, height: Double = Double.NaN): VNode
+```
+
+A scalable vector image. It sizes to `width` / `height` when given, otherwise to the SVG's own
+intrinsic size, each clamped to the constraints; being vectors, it stays crisp at any size —
+librsvg renders it straight into the Cairo context, with no intermediate raster. It is a leaf, so
+wrap it in a `box` to give an icon a background, padding, or a click handler.
+
+Load an `SvgImage` from the platform loader (native `Svg`):
+
+```scala
+val icon = Svg.fromString("""<svg viewBox="0 0 64 64">…</svg>""") // or Svg.fromFile(path)
+
+svg(icon, width = 24, height = 24)   // the one document, drawn crisp at any size
+svg(icon, width = 72, height = 72)
+```
+
+`Svg.fromString` / `Svg.fromFile` / `Svg.fromBytes` throw `RsvgException` on a parse error. The
+loader is native-only (it wraps librsvg); `SvgImage` itself is platform-neutral, so a headless
+test can supply its own stand-in.
+
 ## scrollView
 
 ```scala

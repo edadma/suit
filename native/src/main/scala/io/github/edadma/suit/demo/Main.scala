@@ -12,8 +12,9 @@ import io.github.edadma.suit.widgets.*
 // between a light and a dark built-in theme: every control, the body background, and the
 // card shadows swap at once because they all read the one theme record out of context. A
 // gradient header, rounded cards with drop shadows, the text-style cascade (the body sets a
-// `textColor` once and the labels inherit it), and a typography card showing multi-line
-// wrapping, two-line ellipsis, and alignment round out the picture.
+// `textColor` once and the labels inherit it), a typography card showing multi-line wrapping,
+// two-line ellipsis, and alignment, and an SVG card showing a vector icon — loaded once through
+// librsvg and drawn crisp at several sizes — round out the picture.
 //
 // Motion runs throughout: the button tint fades on hover and press, the checkbox mark
 // scales and fades as it ticks, the slider thumb glides toward its value, and the "Show
@@ -40,6 +41,18 @@ private def mutedInk(theme: Theme): Color = Color.lerp(theme.surfaceText, theme.
 /** A theme-aware drop shadow — heavier on dark surfaces, lighter on white ones. */
 private def cardShadow(theme: Theme): Shadow =
   Shadow(color = Color(0, 0, 0, if theme.isDark then 110 else 40), offset = Offset(0, 4), blur = 12)
+
+/** A vector icon loaded once through librsvg. The same document renders crisp at any size — the
+  * demo draws it at several — because librsvg paints it as vectors straight into suit's Cairo
+  * context, with no intermediate raster. */
+private val appIcon: SvgImage = Svg.fromString(
+  """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+    |  <rect x="4" y="4" width="56" height="56" rx="14" fill="#4dabf7"/>
+    |  <circle cx="32" cy="32" r="16" fill="#ffffff"/>
+    |  <path d="M24 32 l6 6 l12 -14" stroke="#4dabf7" stroke-width="4" fill="none"
+    |        stroke-linecap="round" stroke-linejoin="round"/>
+    |</svg>""".stripMargin,
+)
 
 /** A detail panel that animates on the way in and out. `usePresence` keeps it mounted
   * through its exit so the close can play, and `useTransition` fades and lifts it: the
@@ -212,6 +225,18 @@ val App = view {
                       overflow = TextOverflow.Ellipsis,
                     ),
                     text("right-aligned caption", color = muted, align = TextAlign.Right),
+                  ),
+                ),
+                // SVG: a vector image rendered straight into the Cairo context through librsvg.
+                // The one document draws crisp at any size — here at 24, 48, and 72 px.
+                card(
+                  col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
+                    text("SVG — vector, crisp at any size", color = muted),
+                    row(crossAxisAlignment = CrossAxisAlignment.Center, spacing = 16)(
+                      svg(appIcon, width = 24, height = 24),
+                      svg(appIcon, width = 48, height = 48),
+                      svg(appIcon, width = 72, height = 72),
+                    ),
                   ),
                 ),
                 // An enter/exit reveal: the button toggles a panel that animates in and out.

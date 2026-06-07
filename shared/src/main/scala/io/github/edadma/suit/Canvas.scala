@@ -28,6 +28,12 @@ trait Canvas:
   def fillCircle(center: Offset, radius: Double, paint: Paint): Unit
   def line(a: Offset, b: Offset, width: Double, paint: Paint): Unit
 
+  /** Draw the SVG `image` scaled to fill `rect`. The Cairo backend renders it as vectors
+    * straight into its context — crisp at any size, and honouring the clip and opacity group
+    * currently in force — while the recording backend captures the call. An image the backend
+    * doesn't recognise (e.g. a test stub on the Cairo backend) draws nothing. */
+  def drawSvg(image: SvgImage, rect: Rect): Unit
+
   /** Cast a drop shadow for the (rounded) rectangle `rect`. The backend renders the look
     * described by [[Shadow]]; keeping it a single seam call (rather than the render tree
     * composing many fills) lets a future blur-based backend replace the fake feather

@@ -130,6 +130,14 @@ final class CairoCanvas(cr: Context, fontFace: FontFace) extends Canvas:
     cr.stroke()
     disposeSource(p)
 
+  // librsvg renders straight into this same Cairo context, so an SVG composites with the active
+  // clip and opacity group like any other drawing — no pixel round-trip. Only a Cairo-backed
+  // image carries a real librsvg handle; any other SvgImage (a headless test stub) is a no-op.
+  def drawSvg(image: SvgImage, rect: Rect): Unit =
+    image match
+      case s: CairoSvg => s.handle.renderDocument(cr, rect.x, rect.y, rect.width, rect.height)
+      case _           => ()
+
   // Fake a soft shadow by feathering: draw concentric rounded rectangles from the outer
   // edge inward, each slightly smaller and more opaque, so their overlap builds up a graded
   // edge. Cairo has no blur primitive (true Gaussian shadows are a fidelity pass), and this

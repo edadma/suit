@@ -151,6 +151,16 @@ object dsl:
     if !softWrap then props = props.updated("softWrap", PropValue(false))
     el("text", props, Nil)
 
+  /** A scalable vector image. It sizes to `width`/`height` when given, otherwise to the SVG's
+    * own intrinsic size; being vectors it stays crisp at any size. Pass an [[SvgImage]] from the
+    * platform loader (`Svg.fromString` / `Svg.fromFile` on Native). It is a leaf — wrap it in a
+    * `box` to give an icon a background, padding, or click handler. */
+  def svg(image: SvgImage, width: Double = Double.NaN, height: Double = Double.NaN): VNode =
+    var props = Map[String, Prop]("image" -> PropValue(image))
+    props = sized(props, "width", width)
+    props = sized(props, "height", height)
+    el("svg", props, Nil)
+
   /** A horizontal stack. Children are laid left to right; flexible children share the
     * leftover width. See [[MainAxisAlignment]] / [[CrossAxisAlignment]] / [[MainAxisSize]]. */
   def row(
