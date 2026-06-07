@@ -97,6 +97,30 @@ class WidgetSpec extends AnyFunSuite:
     assert(btn.background == Solid(Color(200, 50, 100)))
     assert(btn.borderRadius == BorderRadius.all(20))
 
+  test("the built-in themes carry the right colour scheme"):
+    assert(Theme.default == Theme.dark)
+    assert(Theme.dark.isDark)
+    assert(!Theme.light.isDark)
+    assert(Theme.violetDark.isDark)
+    assert(!Theme.violetLight.isDark)
+    assert(Theme.builtIns == List(Theme.dark, Theme.light, Theme.violetDark, Theme.violetLight))
+
+  test("a light theme has a bright surface over a darker body; a dark theme inverts the ink"):
+    def lum(c: Color): Int = c.r + c.g + c.b
+    assert(lum(Theme.light.surface) > lum(Theme.light.surfaceText)) // light: surface brighter than its ink
+    assert(lum(Theme.dark.surface) < lum(Theme.dark.surfaceText))   // dark: surface darker than its ink
+    // the body sits beneath the elevated surface in either scheme
+    assert(lum(Theme.dark.background) < lum(Theme.dark.surface))
+    assert(lum(Theme.light.background) < lum(Theme.light.surface))
+
+  test("a button paints the primary of whichever built-in theme is provided"):
+    val lightM = mount(ThemeProvider(Theme.light)(Button("OK", () => ())), Size(120, 60))
+    lightM.settle()
+    assert(focusableBox(lightM.root).background == Solid(Theme.light.primary))
+    val violetM = mount(ThemeProvider(Theme.violetDark)(Button("OK", () => ())), Size(120, 60))
+    violetM.settle()
+    assert(focusableBox(violetM.root).background == Solid(Theme.violetDark.primary))
+
   // --- Checkbox ------------------------------------------------------------
 
   test("a checkbox reports the toggled value on click"):

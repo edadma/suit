@@ -367,37 +367,58 @@ trigger still shows. A headless test wires an overlay through `OverlayContext` �
 ```scala
 case class Theme(
     primary, primaryHover, primaryActive, onPrimary: Color,
-    surface, surfaceText, border, accent, track: Color,
+    background, surface, surfaceText, border, accent, track: Color,
     info, success, warning, danger: Color,
     radius, spacing, textSize: Double,
+    isDark: Boolean,
 )
 
 object Theme:
-  val default: Theme   // the stock dark-blue theme
+  val dark:        Theme   // stock dark-blue (the context default)
+  val light:       Theme   // stock light-blue — the light counterpart to dark
+  val violetDark:  Theme   // violet accent, dark scheme
+  val violetLight: Theme   // violet accent, light scheme
+  val default:     Theme   // == dark
+  val builtIns: List[Theme] // [dark, light, violetDark, violetLight] — for a theme picker
 
 def ThemeProvider(theme: Theme)(children: VNode*): VNode
 def useTheme()(using Hooks): Theme
 ```
 
 Styling is a **general system**, not baked into the widgets. A `Theme` is a record of palette
-(including the `info` / `success` / `warning` / `danger` status roles an `Alert` paints from)
-and metric tokens; the built-in widgets read it through `useTheme()` and paint from whatever
-the nearest enclosing `ThemeProvider` supplies (or `Theme.default` if there is none). Swap one
-record at the top of the tree and every control below restyles — no widget code is touched.
+(`background` is the app body behind everything, `surface` an elevated panel on top of it;
+the `info` / `success` / `warning` / `danger` status roles are what an `Alert` paints from) and
+metric tokens, plus an `isDark` flag recording the colour scheme. The built-in widgets read it
+through `useTheme()` and paint from whatever the nearest enclosing `ThemeProvider` supplies (or
+`Theme.default` if there is none). Swap one record at the top of the tree and every control
+below restyles — no widget code is touched.
+
+There are four built-in themes — a blue and a violet accent, each in a light and a dark scheme.
+Switching light/dark is just choosing which record to provide, so an app holds the choice in
+state and a toggle flips it:
 
 ```scala
-val violet = Theme.default.copy(
-  primary       = Color.rgb(0x9775fa),
-  primaryHover  = Color.rgb(0xb197fc),
-  primaryActive = Color.rgb(0x845ef7),
-  radius        = 10.0,
-)
+val (dark, setDark, _) = useState(true)
+val theme = if dark then Theme.dark else Theme.light
 
-ThemeProvider(violet)(
-  col(spacing = 16)(
-    Button("Save", onSave),
-    Checkbox(on, setOn),
+ThemeProvider(theme)(
+  box(bg = theme.background)(
+    col(spacing = 16)(
+      Switch(dark, setDark),   // flips the whole tree light/dark
+      Button("Save", onSave),
+      Checkbox(on, setOn),
+    ),
   ),
+)
+```
+
+A custom theme is a `copy` of any built-in — override the brand colours and keep the rest:
+
+```scala
+val brand = Theme.dark.copy(
+  primary = Color.rgb(0x9775fa),
+  accent  = Color.rgb(0x9775fa),
+  radius  = 10.0,
 )
 ```
 
