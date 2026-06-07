@@ -20,8 +20,9 @@ package io.github.edadma.suit
   * hover/active shades) is the call-to-action fill with `onPrimary` as its readable ink;
   * `surface` is a panel/control background with `surfaceText` as its default ink and
   * `border` as its outline; `accent` marks selection (a checked box, a slider thumb) and
-  * `track` is an inactive groove. The metric tokens — `radius`, `spacing`, `textSize` —
-  * are the defaults controls round, pad, and size their text by. */
+  * `track` is an inactive groove. The status roles — `info`/`success`/`warning`/`danger` —
+  * colour a callout or badge by meaning rather than by hand. The metric tokens — `radius`,
+  * `spacing`, `textSize` — are the defaults controls round, pad, and size their text by. */
 final case class Theme(
     primary:       Color,
     primaryHover:  Color,
@@ -32,6 +33,10 @@ final case class Theme(
     border:        Color,
     accent:        Color,
     track:         Color,
+    info:          Color,
+    success:       Color,
+    warning:       Color,
+    danger:        Color,
     radius:        Double,
     spacing:       Double,
     textSize:      Double,
@@ -50,6 +55,10 @@ object Theme:
     border        = Color.rgb(0x495057),
     accent        = Color.rgb(0x4dabf7),
     track         = Color.rgb(0x495057),
+    info          = Color.rgb(0x4dabf7),
+    success       = Color.rgb(0x51cf66),
+    warning       = Color.rgb(0xffd43b),
+    danger        = Color.rgb(0xff6b6b),
     radius        = 6.0,
     spacing       = 8.0,
     textSize      = 16.0,

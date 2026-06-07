@@ -6,10 +6,11 @@ import io.github.edadma.suit.widgets.*
 
 // A showcase of the styling system, the input model, and motion. The whole UI is wrapped
 // in a `ThemeProvider` carrying a custom theme, so the built-in widgets (Button, Checkbox,
-// Slider) restyle themselves from it with no widget code touched — that is the point of
-// keeping styling general rather than baked in. A gradient header, rounded cards with
-// drop shadows, and the text-style cascade (the body sets a `textColor` once and the
-// labels inherit it) round out the picture.
+// Slider, Switch, RadioGroup, ProgressBar, Tabs, Badge, Divider, Alert, Card) restyle
+// themselves from it with no widget code touched — that is the point of keeping styling
+// general rather than baked in. A gradient header, rounded cards with drop shadows, and the
+// text-style cascade (the body sets a `textColor` once and the labels inherit it) round out
+// the picture.
 //
 // Motion runs throughout: the button tint fades on hover and press, the checkbox mark
 // scales and fades as it ticks, the slider thumb glides toward its value, and the "Show
@@ -82,6 +83,9 @@ val App = view {
   val (level, setLevel, _)     = useState(0.4)
   val (details, setDetails, _) = useState(false)
   val (name, setName, _)       = useState("")
+  val (live, setLive, _)       = useState(true)
+  val (size, setSize, _)       = useState("m")
+  val (tab, setTab, _)         = useState("overview")
 
   ThemeProvider(appTheme)(
     col(spacing = 16)(
@@ -121,11 +125,38 @@ val App = view {
                 ),
               ),
               card(
-                col(spacing = 10)(
-                  text(s"level: ${(level * 100).toInt}%", color = muted),
+                col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
+                  row(crossAxisAlignment = CrossAxisAlignment.Center, spacing = 8)(
+                    text(s"level: ${(level * 100).toInt}%", color = muted),
+                    spacer(),
+                    Badge(s"$count"),
+                  ),
                   box(width = 260)(
                     Slider(level, setLevel),
                   ),
+                  // A determinate progress bar tracks the slider's value, fill animating.
+                  ProgressBar(level),
+                ),
+              ),
+              // A switch (the on/off counterpart to the checkbox) and a single-select radio
+              // group, both controlled and themed; a divider rules them apart.
+              Card(
+                col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 12)(
+                  row(crossAxisAlignment = CrossAxisAlignment.Center, spacing = 16)(
+                    Switch(live, setLive),
+                    text(if live then "live" else "paused"),
+                  ),
+                  Divider(false),
+                  RadioGroup(Seq("s" -> "Small", "m" -> "Medium", "l" -> "Large"), size, setSize),
+                ),
+              ),
+              // A tab bar driving a switched panel, with a status callout per tab.
+              Card(
+                col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 12)(
+                  Tabs(Seq("overview" -> "Overview", "status" -> "Status"), tab, setTab),
+                  tab match
+                    case "status" => Alert(AlertKind.Success, "All systems nominal.")
+                    case _        => text("An overview of the styling, input, and motion systems.", color = muted),
                 ),
               ),
               // A text field: type into it, click/drag to select, arrows/Home/End to move,

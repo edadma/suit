@@ -2,6 +2,7 @@ package io.github.edadma.suit
 
 import org.scalatest.funsuite.AnyFunSuite
 import io.github.edadma.vdom.{Host, Scheduler}
+import io.github.edadma.suit.dsl.*
 import io.github.edadma.suit.widgets.*
 
 // Headless tests for the widget library. Widgets are vdom components, so these mount one
@@ -54,6 +55,12 @@ class WidgetSpec extends AnyFunSuite:
 
   private def focusableBox(root: RenderObject): RenderBox =
     allObjects(root).collectFirst { case b: RenderBox if b.focusable => b }.get
+
+  private def boxes(root: RenderObject): List[RenderBox] =
+    allObjects(root).collect { case b: RenderBox => b }
+
+  private def hasBox(root: RenderObject)(p: RenderBox => Boolean): Boolean =
+    boxes(root).exists(p)
 
   // --- Button --------------------------------------------------------------
 
@@ -139,3 +146,90 @@ class WidgetSpec extends AnyFunSuite:
     m.keys.down(Key.Right, false)
     m.settle()
     assert(math.abs(v - 0.55) < 1e-9)
+
+  // --- Card ----------------------------------------------------------------
+
+  test("a card paints the theme surface"):
+    val m = mount(Card(text("hi")))
+    assert(hasBox(m.root)(_.background == Solid(Theme.default.surface)))
+
+  // --- Divider -------------------------------------------------------------
+
+  test("a horizontal divider is a hairline in the border colour"):
+    val m = mount(col(crossAxisAlignment = CrossAxisAlignment.Stretch)(Divider(false)), Size(200, 50))
+    assert(hasBox(m.root)(b => b.background == Solid(Theme.default.border) && b.height.contains(1.0)))
+
+  test("a vertical divider is a hairline along the cross axis"):
+    val m = mount(row(crossAxisAlignment = CrossAxisAlignment.Stretch)(Divider(true)), Size(50, 200))
+    assert(hasBox(m.root)(b => b.background == Solid(Theme.default.border) && b.width.contains(1.0)))
+
+  // --- Badge ---------------------------------------------------------------
+
+  test("a badge paints the accent as a pill"):
+    val m = mount(Badge("3"), Size(40, 20))
+    assert(hasBox(m.root)(_.background == Solid(Theme.default.accent)))
+
+  // --- ProgressBar ---------------------------------------------------------
+
+  test("a progress bar fills the value's fraction of the track"):
+    val m = mount(ProgressBar(0.5), Size(200, 8))
+    m.settle()
+    assert(hasBox(m.root)(b => b.background == Solid(Theme.default.accent) && b.flex == 500))
+
+  test("a full progress bar has no empty remainder"):
+    val m = mount(ProgressBar(1.0), Size(200, 8))
+    m.settle()
+    assert(hasBox(m.root)(b => b.background == Solid(Theme.default.accent) && b.flex == 1000))
+    assert(!hasBox(m.root)(b => b.background == null && b.flex > 0))
+
+  // --- Switch --------------------------------------------------------------
+
+  test("a switch reports the flipped value on click"):
+    var on = false
+    val m  = mount(Switch(false, b => on = b), Size(44, 24))
+    m.pointer.down(Offset(22, 12), 1)
+    m.pointer.up(Offset(22, 12), 1)
+    m.settle()
+    assert(on)
+
+  test("a switch tints its track to the accent when on"):
+    val onM  = mount(Switch(true, _ => ()), Size(44, 24))
+    val offM = mount(Switch(false, _ => ()), Size(44, 24))
+    onM.settle()
+    offM.settle()
+    assert(focusableBox(onM.root).background == Solid(Theme.default.accent))
+    assert(focusableBox(offM.root).background == Solid(Theme.default.track))
+
+  // --- RadioGroup ----------------------------------------------------------
+
+  private val radioOptions = Seq("a" -> "A", "b" -> "B")
+
+  test("a radio group reports the clicked option's value"):
+    var sel = "a"
+    val m   = mount(RadioGroup(radioOptions, "a", v => sel = v), Size(200, 100))
+    m.pointer.down(Offset(9, 35), 1) // the second row's circle (row 0 is 0..18, gap 8, row 1 at 26..44)
+    m.pointer.up(Offset(9, 35), 1)
+    m.settle()
+    assert(sel == "b")
+
+  test("only the selected radio option shows a dot"):
+    val m = mount(RadioGroup(radioOptions, "a", _ => ()), Size(200, 100))
+    m.settle()
+    val dots = boxes(m.root).count(b => b.background == Solid(Theme.default.accent) && b.width.contains(10.0))
+    assert(dots == 1)
+
+  // --- Alert ---------------------------------------------------------------
+
+  test("an alert borders in its status colour"):
+    val m = mount(Alert(AlertKind.Success, "saved"), Size(200, 50))
+    assert(hasBox(m.root)(_.border == Solid(Theme.default.success)))
+
+  // --- Tabs ----------------------------------------------------------------
+
+  test("a tab bar reports the clicked tab's value"):
+    var tab = "one"
+    val m   = mount(Tabs(Seq("one" -> "One", "two" -> "Two"), "one", v => tab = v), Size(200, 40))
+    m.pointer.down(Offset(33, 8), 1) // second tab (tab 0 is 24 wide, gap 4, tab 1 at x≥28)
+    m.pointer.up(Offset(33, 8), 1)
+    m.settle()
+    assert(tab == "two")
