@@ -76,13 +76,37 @@ See the [input guide](/guide/input/) for the handlers.
 ## text
 
 ```scala
-def text(content: String, size: Double = Double.NaN, color: Color | Null = null): VNode
+def text(
+    content:  String,
+    size:     Double       = Double.NaN,
+    color:    Color | Null = null,
+    align:    TextAlign    = TextAlign.Left,     // Left | Center | Right
+    maxLines: Int          = 1,                  // 1 = single line; 0 = unlimited
+    overflow: TextOverflow = TextOverflow.Clip,  // Clip | Ellipsis
+    softWrap: Boolean      = true,
+): VNode
 ```
 
-A single line of text. `size` and `color` are **optional**: omit either and it is inherited
-from the nearest enclosing `box` that sets `textSize` / `textColor`, falling back to the
-default text style if nothing in the tree sets one. It measures and paints as one line
-through the installed `TextMeasurer` and the canvas.
+A run of text. `size` and `color` are **optional**: omit either and it is inherited from the
+nearest enclosing `box` that sets `textSize` / `textColor`, falling back to the default text
+style if nothing in the tree sets one.
+
+It is **single-line by default**. Set `maxLines` to something other than `1` (use `0` for
+unlimited) and it **word-wraps** to the width the layout gives it, breaking at spaces and
+hard-breaking any single word too wide for a line; explicit `\n`s always start a new line, and
+`softWrap = false` breaks *only* at those. `maxLines` caps the number of lines; `overflow =
+TextOverflow.Ellipsis` then trims the dropped tail and marks it with `…` (it also truncates a
+single over-wide line). `align` positions each line horizontally within the measured block. The
+lines are computed once during layout and replayed by paint, so the two passes always agree.
+
+```scala
+text(
+  "A long paragraph that wraps across as many lines as it needs.",
+  maxLines = 0,
+)
+text("Capped at two lines, the rest trimmed…", maxLines = 2, overflow = TextOverflow.Ellipsis)
+text("centred", align = TextAlign.Center)
+```
 
 ## scrollView
 

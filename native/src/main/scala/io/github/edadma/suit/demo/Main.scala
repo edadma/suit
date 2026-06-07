@@ -9,8 +9,9 @@ import io.github.edadma.suit.widgets.*
 // Slider, Switch, RadioGroup, ProgressBar, Tabs, Badge, Divider, Alert, Card, Dialog, Menu,
 // Tooltip) restyle
 // themselves from it with no widget code touched — that is the point of keeping styling
-// general rather than baked in. A gradient header, rounded cards with drop shadows, and the
-// text-style cascade (the body sets a `textColor` once and the labels inherit it) round out
+// general rather than baked in. A gradient header, rounded cards with drop shadows, the
+// text-style cascade (the body sets a `textColor` once and the labels inherit it), and a
+// typography card showing multi-line wrapping, two-line ellipsis, and alignment round out
 // the picture.
 //
 // Motion runs throughout: the button tint fades on hover and press, the checkbox mark
@@ -171,6 +172,32 @@ val App = view {
                     TextField(name, setName),
                   ),
                   text(if name.isEmpty then "type your name above" else s"hello, $name", color = muted),
+                ),
+              ),
+              // Typography: multi-line text. The first paragraph wraps across as many
+              // lines as it needs; the second is capped at two lines and trims its tail
+              // with an ellipsis; the captions show centre and right alignment. All of it
+              // is the same constraint pass that lays out every other widget.
+              card(
+                col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
+                  text("Typography", size = 16, align = TextAlign.Center),
+                  text(
+                    "This paragraph wraps across as many lines as it needs, breaking at word " +
+                      "boundaries to fit the width the layout hands it — the very same constraint " +
+                      "pass that sizes every other widget in the window.",
+                    color    = muted,
+                    maxLines = 0,
+                  ),
+                  Divider(false),
+                  text(
+                    "Capped at two lines, this paragraph trims its tail and marks the cut with an " +
+                      "ellipsis, so the column keeps its rhythm no matter how much text you pour " +
+                      "into it here.",
+                    color    = muted,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                  ),
+                  text("right-aligned caption", color = muted, align = TextAlign.Right),
                 ),
               ),
               // An enter/exit reveal: the button toggles a panel that animates in and out.

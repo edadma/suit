@@ -21,6 +21,19 @@ final case class TextStyle(size: Double = 16.0, color: Color = Color(0, 0, 0))
 object TextStyle:
   val default: TextStyle = TextStyle()
 
+/** How each line of a multi-line (or single-line) run is positioned horizontally within
+  * the width the layout gave the text. `Left` is the default and the historical behaviour;
+  * `Center`/`Right` shift each line by the slack between its measured width and the box. */
+enum TextAlign:
+  case Left, Center, Right
+
+/** What happens when text cannot fit the space it is allowed — too wide for one line, or
+  * more wrapped lines than `maxLines`. `Clip` simply stops (the box's own clipping, if any,
+  * hides the rest); `Ellipsis` trims the last visible line and appends `…` to mark that
+  * content was dropped. */
+enum TextOverflow:
+  case Clip, Ellipsis
+
 /** A *partial* text style for the render-tree cascade. Any field left `None` is
   * inherited from the nearest ancestor that sets it, the way `color`/`font-size` cascade
   * in CSS. A container carries one of these ([[RenderObject.textAttrs]]); a [[RenderText]]

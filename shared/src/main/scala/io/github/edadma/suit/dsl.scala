@@ -127,16 +127,28 @@ object dsl:
   /** A run of text. `color` and `size` are optional: omit either and it is **inherited**
     * from the nearest enclosing container that sets a text colour/size (`box`'s
     * `textColor`/`textSize`), falling back to the [[TextStyle.default]] if nothing in the
-    * tree sets one. Single-line: it measures and paints as one line through the installed
-    * [[TextMeasurer]] and the canvas. */
+    * tree sets one.
+    *
+    * It is single-line by default. Pass `maxLines` other than 1 (0 = unlimited) to wrap it
+    * to the available width; `softWrap = false` then breaks only at explicit `\n`s. `overflow
+    * = Ellipsis` trims the dropped tail and marks it with `…` (this also truncates a single
+    * over-wide line); `align` positions each line within the measured block. */
   def text(
-      content: String,
-      size:    Double       = Double.NaN,
-      color:   Color | Null = null,
+      content:  String,
+      size:     Double       = Double.NaN,
+      color:    Color | Null = null,
+      align:    TextAlign    = TextAlign.Left,
+      maxLines: Int          = 1,
+      overflow: TextOverflow = TextOverflow.Clip,
+      softWrap: Boolean      = true,
   ): VNode =
     var props = Map[String, Prop]("content" -> PropValue(content))
     props = sized(props, "size", size)
     if color != null then props = props.updated("color", PropValue(color))
+    if align != TextAlign.Left then props = props.updated("align", PropValue(align))
+    if maxLines != 1 then props = props.updated("maxLines", PropValue(maxLines))
+    if overflow != TextOverflow.Clip then props = props.updated("overflow", PropValue(overflow))
+    if !softWrap then props = props.updated("softWrap", PropValue(false))
     el("text", props, Nil)
 
   /** A horizontal stack. Children are laid left to right; flexible children share the

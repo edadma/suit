@@ -507,14 +507,41 @@ final class RenderFlex(val axis: Axis) extends RenderObject:
 /** A run of text. It sizes itself by asking the installed [[TextMeasurer]] how big its
   * string is in its [[TextStyle]] — the measurement seam that keeps layout off-device —
   * and paints through the canvas's `drawText`, which the SDL backend rasterises and the
-  * recording backend captures. Layout is single-line; the measured size is clamped into
-  * the constraints the parent imposed. */
+  * recording backend captures.
+  *
+  * By default it lays out as a single line, the historical behaviour. With `maxLines` other
+  * than 1 (and `softWrap` on) it greedily word-wraps to the width the parent allows, breaking
+  * a word that is itself wider than the line; explicit `\n`s always start a new line.
+  * `maxLines` caps the line count (0 = unlimited), `overflow` decides whether the dropped
+  * tail is silently clipped or marked with an ellipsis, and `align` positions each line
+  * horizontally within the measured block. The broken lines are computed once during layout
+  * and replayed by paint, so the two passes never disagree about where a line sits. */
 final class RenderText(var text: String) extends RenderObject:
   /** This node's own explicit overrides. A field left `None` is inherited from the
     * nearest ancestor that sets it (see [[resolvedStyle]]); a field set here wins over
     * anything inherited. */
   var explicitSize: Option[Double] = None
   var explicitColor: Option[Color] = None
+
+  /** Per-line horizontal placement within the laid-out block. */
+  var align: TextAlign = TextAlign.Left
+
+  /** Maximum number of lines to lay out; 1 keeps the run single-line (no wrapping), and 0
+    * means unlimited. Wrapping only happens when this is not 1, `softWrap` is on, and the
+    * width is bounded. */
+  var maxLines: Int = 1
+
+  /** Whether the dropped tail (a too-wide line, or lines past `maxLines`) is clipped or
+    * trimmed and marked with an ellipsis. */
+  var overflow: TextOverflow = TextOverflow.Clip
+
+  /** Whether soft word-wrapping at the available width is allowed. Off means the run breaks
+    * only at explicit `\n`s. */
+  var softWrap: Boolean = true
+
+  /** The lines produced by the last layout, in paint order, and the height of one line. */
+  private var lines: Vector[String] = Vector.empty
+  private var lineHeight: Double    = 0.0
 
   /** The concrete style to measure and paint with: this node's explicit values overlaid
     * on the cascade. For each property, the first source that provides it wins —
@@ -532,10 +559,108 @@ final class RenderText(var text: String) extends RenderObject:
     TextStyle(size.getOrElse(TextStyle.default.size), color.getOrElse(TextStyle.default.color))
 
   def layout(constraints: Constraints): Unit =
-    size = constraints.constrain(TextMeasurer.installed.measure(text, resolvedStyle))
+    val style = resolvedStyle
+    val m     = TextMeasurer.installed
+    lineHeight = m.measure("", style).height
+    val maxW = constraints.maxWidth
+
+    val raw =
+      if maxLines != 1 && softWrap && maxW.isFinite then RenderText.wrap(text, style, maxW, m)
+      else if maxLines == 1 then Vector(text)
+      else text.split("\n", -1).toVector
+
+    val limit     = if maxLines <= 0 then Int.MaxValue else maxLines
+    val kept      = raw.take(limit)
+    val truncated = raw.length > kept.length
+
+    lines =
+      if overflow == TextOverflow.Ellipsis && maxW.isFinite then
+        if truncated then
+          if kept.isEmpty then Vector(RenderText.ellipsize("", style, maxW, m))
+          else kept.init :+ RenderText.ellipsize(kept.last, style, maxW, m)
+        else kept.map(l => if m.measure(l, style).width > maxW then RenderText.ellipsize(l, style, maxW, m) else l)
+      else kept
+
+    val w = if lines.isEmpty then 0.0 else lines.iterator.map(l => m.measure(l, style).width).max
+    size = constraints.constrain(Size(w, lineHeight * math.max(lines.length, 1)))
 
   override def paint(canvas: Canvas, origin: Offset): Unit =
-    if text.nonEmpty then canvas.drawText(origin, text, resolvedStyle)
+    val style = resolvedStyle
+    val m     = TextMeasurer.installed
+    var i     = 0
+    while i < lines.length do
+      val line = lines(i)
+      if line.nonEmpty then
+        val lw = m.measure(line, style).width
+        val dx = align match
+          case TextAlign.Left   => 0.0
+          case TextAlign.Center => (size.width - lw) / 2.0
+          case TextAlign.Right  => size.width - lw
+        canvas.drawText(Offset(origin.x + dx, origin.y + i * lineHeight), line, style)
+      i += 1
+
+object RenderText:
+  /** Greedy word-wrap of `text` to `maxW`, honouring explicit `\n`s as hard breaks and
+    * hard-breaking any single word that is itself wider than a line. Pure (drives only the
+    * measurer), so the line-breaking is JVM-testable against a deterministic measurer. */
+  private[suit] def wrap(text: String, style: TextStyle, maxW: Double, m: TextMeasurer): Vector[String] =
+    val out        = Vector.newBuilder[String]
+    val paragraphs = text.split("\n", -1)
+    var pi         = 0
+    while pi < paragraphs.length do
+      wrapParagraph(paragraphs(pi), style, maxW, m, out)
+      pi += 1
+    out.result()
+
+  private def wrapParagraph(
+      p:     String,
+      style: TextStyle,
+      maxW:  Double,
+      m:     TextMeasurer,
+      out:   scala.collection.mutable.Builder[String, Vector[String]],
+  ): Unit =
+    if p.isEmpty then out += ""
+    else
+      var current = ""
+      for w <- p.split(" ") if w.nonEmpty do
+        if current.isEmpty then current = startWord(w, style, maxW, m, out)
+        else
+          val candidate = current + " " + w
+          if m.measure(candidate, style).width <= maxW then current = candidate
+          else
+            out += current
+            current = startWord(w, style, maxW, m, out)
+      if current.nonEmpty then out += current
+
+  /** Begin a fresh line with `w`. If `w` fits it becomes the running line; otherwise it is
+    * hard-broken into width-sized chunks, all but the last emitted, the last returned. */
+  private def startWord(
+      w:     String,
+      style: TextStyle,
+      maxW:  Double,
+      m:     TextMeasurer,
+      out:   scala.collection.mutable.Builder[String, Vector[String]],
+  ): String =
+    if m.measure(w, style).width <= maxW then w
+    else
+      val sb = new StringBuilder
+      var i  = 0
+      while i < w.length do
+        val ch = w.charAt(i)
+        if sb.nonEmpty && m.measure(sb.toString + ch, style).width > maxW then
+          out += sb.toString
+          sb.setLength(0)
+        sb.append(ch)
+        i += 1
+      sb.toString
+
+  /** The longest prefix of `line` such that `prefix + "…"` fits `maxW`, with `…` appended —
+    * or just `…` if not even one character fits. */
+  private[suit] def ellipsize(line: String, style: TextStyle, maxW: Double, m: TextMeasurer): String =
+    val ell = "…"
+    var s   = line
+    while s.nonEmpty && m.measure(s + ell, style).width > maxW do s = s.substring(0, s.length - 1)
+    if s.isEmpty then ell else s + ell
 
 /** A non-visual node that only holds a position in the sibling order — vdom anchors
   * fragments, portals, and empty renders on one. Zero size, never painted, never a

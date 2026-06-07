@@ -141,6 +141,19 @@ final class SuitHostConfig extends HostConfig:
       // from the cascade rather than snap to a default.
       case (t: RenderText, "size")  => t.explicitSize = asDoubleOpt(value)
       case (t: RenderText, "color") => t.explicitColor = asColorOpt(value)
+      // Multi-line controls; on removal each falls back to its single-line default.
+      case (t: RenderText, "align") =>
+        t.align = value match
+          case a: TextAlign => a
+          case _            => TextAlign.Left
+      case (t: RenderText, "maxLines") => t.maxLines = value match
+          case i: Int => i
+          case _      => 1
+      case (t: RenderText, "overflow") =>
+        t.overflow = value match
+          case o: TextOverflow => o
+          case _               => TextOverflow.Clip
+      case (t: RenderText, "softWrap") => t.softWrap = value != false
 
       case _ => ()
     obj.markDirty()
