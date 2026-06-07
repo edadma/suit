@@ -41,14 +41,7 @@ lazy val suit = crossProject(JVMPlatform, NativePlatform)
     ),
   )
   .jvmConfigure(_.dependsOn(ProjectRef(file("../riposte"), "vdomJVM")))
-  // vdom from the sibling riposte checkout (see below). sdl3 is TEMPORARILY source-depped on
-  // the sibling ../sdl3 checkout too, to build against the keyMod accessor added for
-  // text-field selection ahead of its Central release — revert to the Central `sdl3` dependency
-  // (bumped to 0.2.4) in nativeSettings once that publish lands.
-  .nativeConfigure(
-    _.dependsOn(ProjectRef(file("../riposte"), "vdomNative"))
-      .dependsOn(ProjectRef(file("../sdl3"), "core")),
-  )
+  .nativeConfigure(_.dependsOn(ProjectRef(file("../riposte"), "vdomNative")))
   .jvmSettings(
     // Headless layout/render tests only — the JVM build ships nothing.
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test,
@@ -63,10 +56,8 @@ lazy val suit = crossProject(JVMPlatform, NativePlatform)
     // drawing engine; FreeType loads the font files Cairo renders text from. sdl3_ttf is not
     // needed. All three bindings come from Central; scala-native finds the Homebrew-installed
     // libSDL3 / libcairo / libfreetype via each binding's `@link`.
-    // sdl3 is source-depped above (../sdl3 core) until 0.2.4 is on Central; restore
-    //   "io.github.edadma" %%% "sdl3" % "0.2.4",
-    // here and drop the ProjectRef once it publishes.
     libraryDependencies ++= Seq(
+      "io.github.edadma" %%% "sdl3"     % "0.2.4",
       "io.github.edadma" %%% "libcairo" % "0.0.4",
       "io.github.edadma" %%% "freetype" % "0.0.4",
     ),
