@@ -95,6 +95,15 @@ object Color:
       def mix(x: Int, y: Int): Int = math.round(x + (y - x) * t).toInt
       Color(mix(a.r, b.r), mix(a.g, b.g), mix(a.b, b.b), mix(a.a, b.a))
 
+  /** The colour `c` faded to `t` of its own opacity: `t <= 0` is fully transparent, `t >= 1`
+    * is `c` at its given alpha, in between only the alpha ramps. Use this — not
+    * `lerp(transparent, c, t)` — to fade a colour in and out: because `transparent` is black,
+    * lerping from it darkens the colour through the midpoint (a visible dark flash), whereas
+    * this keeps the colour's hue and moves only its alpha. */
+  def fade(c: Color, t: Double): Color =
+    val clamped = if t <= 0.0 then 0.0 else if t >= 1.0 then 1.0 else t
+    c.withAlpha(math.round(c.a * clamped).toInt)
+
   /** From a packed `0xRRGGBB` literal, fully opaque. */
   def rgb(hex: Int): Color = Color((hex >> 16) & 0xff, (hex >> 8) & 0xff, hex & 0xff)
 

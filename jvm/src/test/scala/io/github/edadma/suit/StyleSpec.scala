@@ -15,6 +15,14 @@ class StyleSpec extends AnyFunSuite:
     val p: Paint = Color(10, 20, 30)
     assert(p == Solid(Color(10, 20, 30)))
 
+  test("Color.fade ramps only the alpha, keeping the colour's hue"):
+    val c = Color(40, 48, 53)
+    assert(Color.fade(c, 0.0) == c.withAlpha(0))    // fully transparent
+    assert(Color.fade(c, 1.0) == c)                 // its given alpha
+    val mid = Color.fade(c, 0.5)
+    assert((mid.r, mid.g, mid.b) == (40, 48, 53))   // hue unchanged — no darkening
+    assert(mid.a == 128)                            // alpha halved (round(255 * 0.5))
+
   test("BorderRadius helpers build uniform and edge radii"):
     assert(BorderRadius.all(6) == BorderRadius(6, 6, 6, 6))
     assert(BorderRadius.top(8) == BorderRadius(8, 8, 0, 0))

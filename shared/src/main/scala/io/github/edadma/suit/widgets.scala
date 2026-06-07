@@ -435,7 +435,7 @@ object widgets:
     component[Boolean, String, () => Unit] { (selected, label, onSelect) =>
       val theme = useTheme()
       val amt   = useTransition(if selected then 1.0 else 0.0, 150)
-      val fill  = Color.lerp(Color.transparent, theme.surface, amt)
+      val fill  = Color.fade(theme.surface, amt)
       val ink   = Color.lerp(theme.surfaceText.withAlpha(150), theme.surfaceText, amt)
 
       box(

@@ -234,6 +234,33 @@ class WidgetSpec extends AnyFunSuite:
     m.settle()
     assert(tab == "two")
 
+  test("a tab fills with the surface colour as it animates — no dark flash"):
+    // A controlled wrapper so clicking a tab re-renders with the new selection and the
+    // selection transition actually runs. Mid-transition a tab's fill must be the surface
+    // colour at partial alpha, never a darkened colour — the bug was fading from `transparent`
+    // (which is black), so the fill passed through dark on its way in/out.
+    val app = view {
+      val (sel, setSel, _) = useState("one")
+      Tabs(Seq("one" -> "One", "two" -> "Two"), sel, setSel)
+    }
+    val m = mount(app(), Size(200, 40))
+    m.pointer.down(Offset(33, 8), 1)
+    m.pointer.up(Offset(33, 8), 1)
+    Scheduler.flushSync()                  // commit the selection; both tabs start animating
+    m.clockMs(0) += 75.0                    // halfway through the 150ms transition
+    m.clock.pump()
+    Scheduler.flushSync()
+    m.root.layout(Constraints.tight(m.root.windowSize))
+
+    val surface = Theme.default.surface
+    val midFills = boxes(m.root).flatMap { b =>
+      b.background match
+        case Solid(c) if c.a > 0 && c.a < 255 => Some(c) // a tab caught mid-fade
+        case _                                => None
+    }
+    assert(midFills.nonEmpty) // we actually caught a transition in progress
+    assert(midFills.forall(c => c.r == surface.r && c.g == surface.g && c.b == surface.b))
+
   // --- MenuItem ------------------------------------------------------------
 
   test("a menu item reports its selection on click"):
