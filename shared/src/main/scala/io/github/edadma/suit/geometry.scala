@@ -84,6 +84,17 @@ object Color:
   val white:       Color = Color(255, 255, 255)
   val transparent: Color = Color(0, 0, 0, 0)
 
+  /** Blend from `a` to `b` by `t`: `t <= 0` is exactly `a`, `t >= 1` is exactly `b`, and
+    * in between each channel (including alpha) is mixed linearly. The exact endpoints let
+    * an animated colour settle on its target with no rounding drift. This is what the
+    * motion hooks lerp over when a transition drives a colour rather than a scalar. */
+  def lerp(a: Color, b: Color, t: Double): Color =
+    if t <= 0.0 then a
+    else if t >= 1.0 then b
+    else
+      def mix(x: Int, y: Int): Int = math.round(x + (y - x) * t).toInt
+      Color(mix(a.r, b.r), mix(a.g, b.g), mix(a.b, b.b), mix(a.a, b.a))
+
   /** From a packed `0xRRGGBB` literal, fully opaque. */
   def rgb(hex: Int): Color = Color((hex >> 16) & 0xff, (hex >> 8) & 0xff, hex & 0xff)
 

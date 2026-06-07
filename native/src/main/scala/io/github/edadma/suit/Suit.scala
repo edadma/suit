@@ -85,6 +85,14 @@ object Suit:
       while microtasks.nonEmpty do microtasks.dequeue().apply()
       while macrotasks.nonEmpty do macrotasks.dequeue().apply()
 
+    // Motion seam. The animation hooks (useTransition, usePresence) drive themselves by
+    // asking for frames and timers; the frame loop is their clock. Each iteration pumps the
+    // due frames and timers, which enqueue re-renders that mark the tree dirty, so an
+    // animation repaints every frame while it runs and the loop goes quiet once it settles.
+    // A monotonic millisecond clock feeds both the easing and the timer deadlines.
+    val clock = new FrameClock(() => System.nanoTime() / 1.0e6)
+    clock.install()
+
     // Pointer events route by hit-test; key events route to whatever the focus manager
     // currently holds (a press updates focus through the same pointer router).
     val focusManager = new FocusManager
@@ -130,7 +138,10 @@ object Suit:
           case _           => ()
         event = pollEvent()
 
-      // Run whatever the handlers produced (state updates, effects) before painting.
+      // Run whatever the handlers produced (state updates, effects), advance any animation
+      // by one frame, then commit whatever that produced, before painting.
+      drainScheduler()
+      clock.pump()
       drainScheduler()
 
       // Re-draw and re-upload only when the tree changed; blit and present every frame so an

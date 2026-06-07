@@ -21,17 +21,26 @@ object widgets:
     * (a press and release on the button) or activated from the keyboard (Space or Enter
     * while focused). It tints on hover and while held. It paints from the theme in
     * context ([[useTheme]]) — primary fill, `onPrimary` ink, themed corner radius — so a
-    * [[ThemeProvider]] restyles it without touching this code. */
+    * [[ThemeProvider]] restyles it without touching this code.
+    *
+    * The tint is animated: hover and press each drive a 0..1 amount through
+    * [[useTransition]], and the fill is the theme colours blended by those amounts, so the
+    * button fades between states rather than snapping. With motion settled the colour is
+    * exactly the target theme token. */
   val Button: Component2[String, () => Unit] =
     component[String, () => Unit] { (label, onPressed) =>
       val theme                    = useTheme()
       val (hover, setHover, _)     = useState(false)
       val (pressed, setPressed, _) = useState(false)
 
-      val bg =
-        if pressed then theme.primaryActive
-        else if hover then theme.primaryHover
-        else theme.primary
+      // Animate toward 1 while hovered / held and back to 0 when not; press is a touch
+      // quicker than hover so a click reads as crisp while the hover glow is gentle.
+      val hoverAmt = useTransition(if hover then 1.0 else 0.0, 120)
+      val pressAmt = useTransition(if pressed then 1.0 else 0.0, 90)
+
+      // Blend the resting fill toward the hover tint, then toward the active tint — press
+      // layered over hover, so holding always wins and releasing eases back through hover.
+      val bg = Color.lerp(Color.lerp(theme.primary, theme.primaryHover, hoverAmt), theme.primaryActive, pressAmt)
 
       box(
         bg           = bg,
@@ -53,14 +62,19 @@ object widgets:
     * calling `onChange` with the new state on a click or on Space while focused. It is a
     * controlled widget — it draws the `checked` it is given and never holds the value
     * itself, so the parent owns the state. The check is a filled inner square (no glyph
-    * font dependency). */
+    * font dependency), which scales and fades in when ticked and back out when cleared via
+    * [[useTransition]]; settled, it is the full 12×12 mark or absent. */
   val Checkbox: Component2[Boolean, Boolean => Unit] =
     component[Boolean, Boolean => Unit] { (checked, onChange) =>
       val theme                = useTheme()
       val (hover, setHover, _) = useState(false)
 
+      // The mark animates between absent (0) and full (1); render it only while it has any
+      // presence, growing from a point and fading in as it ticks.
+      val markAmt = useTransition(if checked then 1.0 else 0.0, 120)
       val mark: Seq[VNode] =
-        if checked then Seq(center(box(width = 12, height = 12, bg = theme.accent, radius = 2)()))
+        if markAmt > 0.001 then
+          Seq(center(box(width = 12 * markAmt, height = 12 * markAmt, bg = theme.accent, radius = 2, opacity = markAmt)()))
         else Seq.empty
 
       box(
@@ -89,6 +103,11 @@ object widgets:
       val theme = useTheme()
       val v     = clamp01(value)
 
+      // The reported value is always the controlled one; the thumb's drawn position glides
+      // toward it through a short transition, so an arrow-key step slides rather than jumps
+      // and a drag trails the cursor by a hair. `onChange` still carries the exact `v`.
+      val shown = clamp01(useTransition(v, 90))
+
       def frac(e: PointerEvent): Double =
         if e.size.width <= 0 then 0.0 else clamp01(e.local.x / e.size.width)
 
@@ -108,8 +127,9 @@ object widgets:
           col(crossAxisAlignment = CrossAxisAlignment.Stretch, mainAxisAlignment = MainAxisAlignment.Center)(
             box(height = 4, bg = theme.track, radius = 2)(),
           ),
-          // The thumb: positioned by fraction — alignment x = v*2-1 maps 0..1 to left..right.
-          align(Alignment(v * 2 - 1, 0))(
+          // The thumb: positioned by the glided fraction — alignment x = shown*2-1 maps
+          // 0..1 to left..right.
+          align(Alignment(shown * 2 - 1, 0))(
             box(width = 16, height = 16, bg = theme.accent, border = theme.surface, borderWidth = 2, radius = 8)(),
           ),
         ),

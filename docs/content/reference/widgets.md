@@ -14,10 +14,18 @@ component. Each widget is purely declarative output over `box` / `text` / `row` 
 the render tree, layout, and input routing underneath give it pixels and behaviour.
 
 [= note =]
-These widgets are **pointer- and keyboard-driven only**. A text field needs text-input
-support in the SDL binding, and a scroll view needs renderer clip-rects; until those land
-in [sdl3](https://sdl3.edadma.dev/), `TextField` and `ScrollView` are deliberately absent
-rather than approximated. The focus and keyboard infrastructure they need already exists.
+A scrolling viewport is the [`scrollView`](/reference/dsl/#scrollview) DSL primitive (its
+scroll position lives on the render object, so it is a primitive rather than a composed
+widget). A `TextField` is still to come — the text-input plumbing now exists in
+[sdl3](https://sdl3.edadma.dev/), and the focus and keyboard infrastructure is in place, so
+it lands with the next batch of widgets rather than being approximated before then.
+[= /note =]
+
+[= note =]
+The widgets **animate**. Hover and press tints fade rather than snap, the checkbox mark
+scales and fades as it ticks, and the slider thumb glides toward its value — all driven by
+[`useTransition`](/guide/motion/) over the runtime's frame clock. With motion settled, every
+value lands exactly on its target, so the animation is invisible to tests.
 [= /note =]
 
 ## Button
@@ -73,14 +81,39 @@ box(width = 240)(
 ## Theme
 
 ```scala
+case class Theme(
+    primary, primaryHover, primaryActive, onPrimary: Color,
+    surface, surfaceText, border, accent, track: Color,
+    radius, spacing, textSize: Double,
+)
+
 object Theme:
-  val primary, primaryHover, primaryActive, onPrimary: Color
-  val surface, border, accent, track: Color
+  val default: Theme   // the stock dark-blue theme
+
+def ThemeProvider(theme: Theme)(children: VNode*): VNode
+def useTheme()(using Hooks): Theme
 ```
 
-The default palette the built-in widgets paint with — a small dark-on-accent theme. It is
-just a set of named `Color`s; applications can ignore it and pass their own, but the widgets
-read from it so a stock control looks consistent.
+Styling is a **general system**, not baked into the widgets. A `Theme` is a record of palette
+and metric tokens; the built-in widgets read it through `useTheme()` and paint from whatever
+the nearest enclosing `ThemeProvider` supplies (or `Theme.default` if there is none). Swap one
+record at the top of the tree and every control below restyles — no widget code is touched.
+
+```scala
+val violet = Theme.default.copy(
+  primary       = Color.rgb(0x9775fa),
+  primaryHover  = Color.rgb(0xb197fc),
+  primaryActive = Color.rgb(0x845ef7),
+  radius        = 10.0,
+)
+
+ThemeProvider(violet)(
+  col(spacing = 16)(
+    Button("Save", onSave),
+    Checkbox(on, setOn),
+  ),
+)
+```
 
 ## A controlled-widget example
 

@@ -32,14 +32,20 @@ The styled container — suit's workhorse rectangle.
 
 ```scala
 def box(
-    bg:          Color | Null     = null,
-    border:      Color | Null     = null,
-    borderWidth: Double           = 0.0,
-    width:       Double           = Double.NaN,
-    height:      Double           = Double.NaN,
-    padding:     EdgeInsets | Null = null,
-    flex:        Int              = 0,
-    focusable:   Boolean          = false,
+    bg:          Paint | Null        = null,   // a Color flows in as a solid; or a gradient
+    border:      Paint | Null        = null,
+    borderWidth: Double              = 0.0,
+    radius:      Double              = 0.0,    // uniform corner radius
+    corners:     BorderRadius | Null = null,   // per-corner control (overrides radius)
+    shadow:      Shadow | Null       = null,
+    opacity:     Double              = 1.0,
+    width:       Double              = Double.NaN,
+    height:      Double              = Double.NaN,
+    padding:     EdgeInsets | Null   = null,
+    textColor:   Color | Null        = null,   // text-style cascade — see below
+    textSize:    Double              = Double.NaN,
+    flex:        Int                 = 0,
+    focusable:   Boolean             = false,
     // pointer / wheel / key / focus handlers — see the Input guide
     onClick: (PointerEvent => Unit) | Null = null,
     /* onMouseDown, onMouseUp, onMouseMove, onMouseEnter, onMouseLeave,
@@ -47,18 +53,47 @@ def box(
 )(children: VNode*): VNode
 ```
 
-`bg` / `border` / `borderWidth` give it appearance; `width` / `height` fix its size (omit
-to fill a tight parent or wrap a loose one); `padding` insets its child; `flex` makes it
-expand inside a row/column. See the [input guide](/guide/input/) for the handlers.
+`bg` / `border` give it a fill and outline — pass a `Color` (it converts to a solid paint)
+or a `LinearGradient` / `RadialGradient`; `borderWidth` sets the outline weight. `radius`
+rounds all four corners uniformly, or `corners` sets each independently; `shadow` casts a
+drop shadow; `opacity` fades the whole box (children included). `width` / `height` fix its
+size (omit to fill a tight parent or wrap a loose one); `padding` insets its child; `flex`
+makes it expand inside a row/column.
+
+`textColor` / `textSize` seed a **text-style cascade**: descendant `text` that doesn't fix
+its own colour or size inherits these, CSS-style, from the nearest ancestor that set them.
+See the [input guide](/guide/input/) for the handlers.
 
 ## text
 
 ```scala
-def text(content: String, size: Double = 16.0, color: Color = Color(0, 0, 0)): VNode
+def text(content: String, size: Double = Double.NaN, color: Color | Null = null): VNode
 ```
 
-A single line of text in `color` at point `size`. It measures and paints as one line
+A single line of text. `size` and `color` are **optional**: omit either and it is inherited
+from the nearest enclosing `box` that sets `textSize` / `textColor`, falling back to the
+default text style if nothing in the tree sets one. It measures and paints as one line
 through the installed `TextMeasurer` and the canvas.
+
+## scrollView
+
+```scala
+def scrollView(axis: Axis = Axis.Vertical)(children: VNode*): VNode
+```
+
+A scrolling viewport over its content. The viewport fills the space its parent gives it; the
+content takes its natural extent along the scroll axis and is **clipped** to the viewport, so
+anything past the edges is hidden rather than overflowing. The wheel scrolls it with no extra
+wiring — the scroll position lives on the viewport and persists across re-renders. Give it a
+single content node (wrap several in a `col` / `row`).
+
+```scala
+scrollView(Axis.Vertical)(
+  col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 12)(
+    items.map(card)*,
+  ),
+)
+```
 
 ## row / col
 
@@ -134,5 +169,18 @@ Alignment(x, y)                      // fractional: (-1,-1) topLeft … (1,1) bo
 Color(r, g, b, a = 255)              // .rgb(0xRRGGBB), .parse("#rrggbb[aa]"), .toHex, .withAlpha
 ```
 
-`Color` provides `black`, `white`, `transparent`, and `Color.rgb(hex)` for packed
-literals.
+`Color` provides `black`, `white`, `transparent`, `Color.rgb(hex)` for packed literals, and
+`Color.lerp(a, b, t)` to blend two colours (what the motion hooks animate over).
+
+The styling value types `box` paints with:
+
+```scala
+Solid(color)                                   // a flat fill
+LinearGradient(stops, begin, end)              // stops: Seq[ColorStop]; begin/end: Alignment
+RadialGradient(stops, center, radius)
+ColorStop(offset, color)                       // offset 0..1 along the gradient
+BorderRadius(tl, tr, br, bl)                   // .all(v), .top(v), .bottom(v), .zero
+Shadow(color, offset, blur, spread = 0)        // a drop shadow
+```
+
+A bare `Color` converts to `Solid` automatically wherever a `Paint` is expected.

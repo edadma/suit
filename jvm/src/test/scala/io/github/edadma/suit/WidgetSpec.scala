@@ -13,20 +13,40 @@ import io.github.edadma.suit.widgets.*
 class WidgetSpec extends AnyFunSuite:
 
   /** Mount `app` into a root of `size`, returning the root and routers wired to one
-    * focus manager — the headless equivalent of `Suit.run`'s setup. */
+    * focus manager — the headless equivalent of `Suit.run`'s setup. A FrameClock over a
+    * hand-advanced time is installed so the widgets' animations can be run to completion
+    * deterministically; `settle()` drives them there. */
   private def mount(app: VNode, size: Size = Size(200, 100)): Mounted =
     Host.config = new SuitHostConfig
+    val clockMs = new Array[Double](1)
+    val clock   = new FrameClock(() => clockMs(0))
+    clock.install()
     val root = new RenderRoot(size)
     createRoot(root).render(app)
     Scheduler.flushSync()
     root.layout(Constraints.tight(size))
     val focus = new FocusManager
-    Mounted(root, new PointerRouter(root, focus), new KeyRouter(focus), focus)
+    Mounted(root, new PointerRouter(root, focus), new KeyRouter(focus), focus, clock, clockMs)
 
-  private case class Mounted(root: RenderRoot, pointer: PointerRouter, keys: KeyRouter, focus: FocusManager):
-    /** Commit any state the handlers queued and re-position the tree. */
+  private case class Mounted(
+      root:    RenderRoot,
+      pointer: PointerRouter,
+      keys:    KeyRouter,
+      focus:   FocusManager,
+      clock:   FrameClock,
+      clockMs: Array[Double],
+  ):
+    /** Commit any state the handlers queued, run every in-flight animation straight to its
+      * target by jumping the clock past any duration and pumping until nothing is pending,
+      * then re-position the tree — so assertions see the settled result. */
     def settle(): Unit =
       Scheduler.flushSync()
+      var guard = 0
+      while clock.active && guard < 100 do
+        clockMs(0) += 10_000.0
+        clock.pump()
+        Scheduler.flushSync()
+        guard += 1
       root.layout(Constraints.tight(root.windowSize))
 
   private def allObjects(o: RenderObject): List[RenderObject] =

@@ -45,6 +45,11 @@ lazy val suit = crossProject(JVMPlatform, NativePlatform)
   .jvmSettings(
     // Headless layout/render tests only — the JVM build ships nothing.
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test,
+    // The tests install process-global host seams (the vdom HostConfig, the scheduler, and
+    // the motion clock) before driving a mount, so suites must not run concurrently or they
+    // clobber one another's seams. ScalaTest is already sequential within a suite; this
+    // serializes across them too.
+    Test / parallelExecution := false,
   )
   .nativeSettings(
     // SDL3 is the platform layer (window, input, present, texture upload); Cairo is the
