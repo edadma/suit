@@ -4,12 +4,6 @@ ThisBuild / scalaVersion := "3.8.4"
 ThisBuild / organization := "io.github.edadma"
 ThisBuild / version      := "0.0.1-SNAPSHOT"
 
-// libcairo 0.0.3 pins freetype_face 0.0.1 while freetype 0.0.4 pins 0.0.2; coursier
-// selects 0.0.2, which is a binary-compatible patch of a stable pointer-type binding.
-// Resolving this app-level diamond here (a warning, as the bindings themselves use) is the
-// right place for it — the libraries are each consistent on their own.
-ThisBuild / evictionErrorLevel := Level.Warn
-
 // suit — a declarative, reactive UI toolkit for Scala Native that renders through
 // SDL3. The vdom core (https://github.com/edadma/riposte) supplies the Widget and
 // Element layers: the VNode model, the reconciler, and the hooks runtime. suit adds
@@ -59,7 +53,7 @@ lazy val suit = crossProject(JVMPlatform, NativePlatform)
     // libSDL3 / libcairo / libfreetype via each binding's `@link`.
     libraryDependencies ++= Seq(
       "io.github.edadma" %%% "sdl3"     % "0.2.2",
-      "io.github.edadma" %%% "libcairo" % "0.0.3",
+      "io.github.edadma" %%% "libcairo" % "0.0.4",
       "io.github.edadma" %%% "freetype" % "0.0.4",
     ),
   )

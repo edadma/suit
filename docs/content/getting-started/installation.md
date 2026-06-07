@@ -70,7 +70,7 @@ and pulls SDL3 from Central:
 .nativeSettings(
   libraryDependencies ++= Seq(
     "io.github.edadma" %%% "sdl3"     % "0.2.2",
-    "io.github.edadma" %%% "libcairo" % "0.0.3",
+    "io.github.edadma" %%% "libcairo" % "0.0.4",
     "io.github.edadma" %%% "freetype" % "0.0.4",
   ),
 )
