@@ -141,6 +141,58 @@ class InputSpec extends AnyFunSuite:
     keyRouter.down(Key.Space, false)
     assert(log.toList == List(s"b:${Key.Space}"))
 
+  // --- focus traversal (Tab order) -----------------------------------------
+
+  /** A 100×100 root holding focusable boxes a, b, c with a non-focusable box between a and
+    * b — so traversal must skip the plain one and visit only a, b, c in order. */
+  private def focusTree(): (RenderBox, RenderBox, RenderBox, RenderBox) =
+    val root  = fixed(100, 100)
+    val a     = fixed(10, 10); a.focusable = true
+    val plain = fixed(10, 10)
+    val b     = fixed(10, 10); b.focusable = true
+    val c     = fixed(10, 10); c.focusable = true
+    root.insertChild(a, null)
+    root.insertChild(plain, null)
+    root.insertChild(b, null)
+    root.insertChild(c, null)
+    (root, a, b, c)
+
+  test("focusables lists the focusable objects in document order"):
+    val (root, a, b, c) = focusTree()
+    assert(new FocusManager().focusables(root) == List(a, b, c))
+
+  test("Tab traversal advances through the focusables and wraps"):
+    val (root, a, b, c) = focusTree()
+    val fm              = new FocusManager
+    fm.focusNext(root); assert(fm.isFocused(a)) // nothing focused → first
+    fm.focusNext(root); assert(fm.isFocused(b))
+    fm.focusNext(root); assert(fm.isFocused(c))
+    fm.focusNext(root); assert(fm.isFocused(a)) // wraps past the end
+
+  test("Shift+Tab traversal walks backward and wraps"):
+    val (root, a, b, c) = focusTree()
+    val fm              = new FocusManager
+    fm.focusNext(root, backward = true); assert(fm.isFocused(c)) // nothing focused → last
+    fm.focusNext(root, backward = true); assert(fm.isFocused(b))
+    fm.focusNext(root, backward = true); assert(fm.isFocused(a))
+    fm.focusNext(root, backward = true); assert(fm.isFocused(c)) // wraps past the start
+
+  test("traversal fires blur on the old object and focus on the new"):
+    val (root, a, b, _) = focusTree()
+    val log             = mutable.ArrayBuffer.empty[String]
+    a.handlers("blur") = _ => log += "blur:a"
+    b.handlers("focus") = _ => log += "focus:b"
+    val fm = new FocusManager
+    fm.focus(a)
+    fm.focusNext(root) // a → b
+    assert(fm.isFocused(b))
+    assert(log.toList == List("blur:a", "focus:b"))
+
+  test("traversal with no focusables is a no-op"):
+    val fm = new FocusManager
+    fm.focusNext(fixed(100, 100))
+    assert(fm.focused == null)
+
   // --- wheel ---------------------------------------------------------------
 
   test("the wheel bubbles a scroll event to the nearest wheel handler"):

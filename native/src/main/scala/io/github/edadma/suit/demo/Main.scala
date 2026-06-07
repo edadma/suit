@@ -23,10 +23,11 @@ import io.github.edadma.suit.widgets.*
 // RenderObjects, the installed measurer sizes the text, the constraint protocol lays
 // everything out, the frame loop routes pointer, wheel, and keyboard events through the
 // routers and the focus manager and pumps the motion clock, the widgets' `useState` writes
-// flow through the scheduler seam, the tree is marked dirty, and the loop repaints. Tab is
-// not wired here, so click a control to focus it, then use the keyboard (Space/Enter on the
-// button and checkbox, arrows on the slider, and full text editing — typing, selection,
-// caret movement — in the text field).
+// flow through the scheduler seam, the tree is marked dirty, and the loop repaints. Tab (and
+// Shift+Tab) walk focus through the controls; once a control is focused — by Tab or a click —
+// the keyboard drives it (Space/Enter on the button and checkbox, Space on the switch and
+// radio, arrows on the slider, and full text editing — typing, selection, caret movement —
+// in the text field).
 
 /** A custom theme: a violet primary on slightly cooler surfaces, larger corners than the
   * stock theme. Swapping this one record restyles every control below. */
@@ -116,6 +117,8 @@ val App = view {
                 row(crossAxisAlignment = CrossAxisAlignment.Center, spacing = 16)(
                   Button("Increment", () => setCount(count + 1)),
                   text(s"count: $count"),
+                  spacer(),
+                  Badge(s"$count"),
                 ),
               ),
               card(
@@ -126,11 +129,7 @@ val App = view {
               ),
               card(
                 col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
-                  row(crossAxisAlignment = CrossAxisAlignment.Center, spacing = 8)(
-                    text(s"level: ${(level * 100).toInt}%", color = muted),
-                    spacer(),
-                    Badge(s"$count"),
-                  ),
+                  text(s"level: ${(level * 100).toInt}%", color = muted),
                   box(width = 260)(
                     Slider(level, setLevel),
                   ),

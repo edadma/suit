@@ -101,6 +101,30 @@ final class FocusManager:
       n = n.asInstanceOf[RenderObject].parent
     focus(n)
 
+  /** Every focusable object under `root`, in document order — a depth-first preorder walk
+    * (each object before its children, siblings in declaration order). This is the order
+    * Tab traversal visits, the analogue of the DOM's sequential focus navigation order. */
+  def focusables(root: RenderObject): List[RenderObject] =
+    val acc = scala.collection.mutable.ListBuffer.empty[RenderObject]
+    def walk(o: RenderObject): Unit =
+      if o.focusable then acc += o
+      o.children.foreach(walk)
+    walk(root)
+    acc.toList
+
+  /** Move focus to the next focusable object after the current one, wrapping at the end;
+    * `backward` (Shift+Tab) reverses direction. With nothing focused it takes the first
+    * (or last, going backward); with no focusables at all it is a no-op. This is what the
+    * runtime calls on the Tab key. */
+  def focusNext(root: RenderObject, backward: Boolean = false): Unit =
+    val list = focusables(root)
+    if list.nonEmpty then
+      val cur  = list.indexWhere(_ eq _focused)
+      val next =
+        if cur < 0 then (if backward then list.length - 1 else 0)
+        else (cur + (if backward then -1 else 1) + list.length) % list.length
+      focus(list(next))
+
   private def fire(o: RenderObject | Null, event: String): Unit =
     o match
       case r: RenderObject => r.handlers.get(event).foreach(_.apply(()))

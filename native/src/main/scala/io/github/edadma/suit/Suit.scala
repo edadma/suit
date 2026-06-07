@@ -140,8 +140,14 @@ object Suit:
             router.move(lastMouse)
           case MOUSE_WHEEL => router.wheel(lastMouse, e.wheelX, e.wheelY)
           case KEY_DOWN =>
-            val mod = e.keyMod
-            keyRouter.down(e.keyScancode, e.keyRepeat, (mod & KMOD_SHIFT) != 0, (mod & KMOD_CTRL) != 0)
+            val mod   = e.keyMod
+            val shift = (mod & KMOD_SHIFT) != 0
+            val ctrl  = (mod & KMOD_CTRL) != 0
+            // Tab is the global focus-traversal key — it moves focus through the focusable
+            // objects rather than reaching the focused widget, so it is intercepted here
+            // (Shift+Tab walks backward). Every other key routes to whatever holds focus.
+            if e.keyScancode == Key.Tab then focusManager.focusNext(root, backward = shift)
+            else keyRouter.down(e.keyScancode, e.keyRepeat, shift, ctrl)
           case KEY_UP    => keyRouter.up(e.keyScancode)
           case TEXT_INPUT => textRouter.input(e.text)
           case _          => ()

@@ -68,6 +68,18 @@ label does not spam enter/leave, and a widget styles itself on hover cleanly.
 Mark an object focusable in the DSL with `focusable = true`; the built-in widgets set it on
 their outer object.
 
+## Tab traversal
+
+The runtime intercepts **Tab** (and **Shift+Tab**) before key routing and moves focus through
+the focusable objects rather than delivering the key to the focused widget. The order is the
+tree's **document order** — a depth-first walk, each object before its children — and it wraps
+at the ends: Tab past the last focusable returns to the first, Shift+Tab past the first goes to
+the last. With nothing focused, Tab takes the first focusable and Shift+Tab the last.
+
+This is `FocusManager.focusNext(root, backward)` over `FocusManager.focusables(root)`, both
+pure, so traversal order is unit-tested on the JVM. Because Tab is consumed by traversal, a
+focused `TextField` does not receive it as input — it advances focus, as in a web form.
+
 ```scala
 final case class KeyEvent(scancode: Int, repeat: Boolean = false, shift: Boolean = false, ctrl: Boolean = false)
 ```
