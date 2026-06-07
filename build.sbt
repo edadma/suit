@@ -47,8 +47,8 @@ lazy val suit = crossProject(JVMPlatform, NativePlatform)
   )
   .nativeSettings(
     libraryDependencies ++= Seq(
-      "io.github.edadma" %%% "sdl3"     % "0.2.0",
-      "io.github.edadma" %%% "sdl3_ttf" % "0.2.0",
+      "io.github.edadma" %%% "sdl3"     % "0.2.1",
+      "io.github.edadma" %%% "sdl3_ttf" % "0.2.1",
     ),
   )
 

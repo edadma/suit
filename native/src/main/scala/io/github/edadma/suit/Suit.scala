@@ -39,6 +39,16 @@ object Suit:
     val renderer = window.createRenderer()
     renderer.setVSync(true)
 
+    // The frame is composited into an off-screen texture, then that whole texture is
+    // blitted to the window each iteration. Rendering directly to the window's drawable
+    // and presenting every frame flickers on macOS/Metal — each present acquires a fresh
+    // drawable from a rotating pool, so the display can latch one that isn't the frame
+    // just drawn. A persistent target texture removes that race: the UI is painted into
+    // it (only when the tree changes), and every present shows a complete, stable copy of
+    // it. It also fixes the first-frame blank, since the window always receives a full
+    // frame regardless of when it is mapped.
+    val target = renderer.createTexture(window.pixelFormat, TEXTUREACCESS_TARGET, width, height)
+
     // Text needs fonts both to measure (at layout) and to paint. One book serves both:
     // the measurer the layout pass consults and the canvas that rasterises glyphs.
     val fonts = new FontBook(fontPath)
@@ -59,20 +69,25 @@ object Suit:
       while microtasks.nonEmpty do microtasks.dequeue().apply()
       while macrotasks.nonEmpty do macrotasks.dequeue().apply()
 
-    createRoot(root).render(app)
-    drainScheduler() // commit any effects the initial mount queued
-
-    // Lay out once before entering the loop so the very first pointer event hit-tests
-    // against a positioned tree rather than zero-size objects.
-    root.layout(Constraints.tight(root.windowSize))
-    root.dirty = true
-
     // Pointer events route by hit-test; key events route to whatever the focus manager
     // currently holds (a press updates focus through the same pointer router).
     val focusManager = new FocusManager
     val router       = new PointerRouter(root, focusManager)
     val keyRouter    = new KeyRouter(focusManager)
     val clearColor   = SdlColor(24, 24, 28)
+
+    // Composite the current tree into the off-screen target. Called on startup and again
+    // whenever a layout change marks the tree dirty.
+    def repaint(): Unit =
+      root.layout(Constraints.tight(root.windowSize))
+      renderer.setTarget(target)
+      renderer.clear(clearColor)
+      root.paint(canvas, Offset.zero)
+      renderer.resetTarget()
+
+    createRoot(root).render(app)
+    drainScheduler() // commit any effects the initial mount queued
+    repaint()        // lay out and paint the first frame before the loop
 
     // The wheel event does not carry the cursor position in the bound accessors, so the
     // last position seen from a motion event is used to route the scroll.
@@ -99,16 +114,16 @@ object Suit:
       // Run whatever the handlers produced (state updates, effects) before painting.
       drainScheduler()
 
+      // Re-composite the off-screen target only when the tree changed; blit it to the
+      // window and present every frame so an expose or resize always shows a full frame.
       if root.dirty then
         root.dirty = false
-        root.layout(Constraints.tight(root.windowSize))
-        renderer.clear(clearColor)
-        root.paint(canvas, Offset.zero)
-        renderer.present()
-      else
-        delay(8) // idle: yield instead of busy-spinning when nothing changed
+        repaint()
+      renderer.copy(target)
+      renderer.present()
 
     fonts.close()
+    target.destroy()
     renderer.destroy()
     window.destroy()
     ttfQuit()
