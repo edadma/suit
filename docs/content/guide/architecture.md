@@ -121,3 +121,16 @@ iteration (re-drawn only when the tree is dirty). Cairo's ARGB32 layout is byte-
 SDL's `ARGB8888` on a little-endian host, so the upload is a straight copy with no
 conversion. SDL never draws a shape and Cairo never touches the OS — the clean split between
 the graphics engine and the platform layer.
+
+## HiDPI
+
+On a high-density ("Retina") display the window's *logical* size and its *pixel* size differ
+— an 800×600 window may have a 1600×1200 backbuffer at a 2× scale. suit handles this without
+the application or the widgets ever seeing it: everything you write — layout, sizes, hit-test
+coordinates, the positions in pointer events — stays in **logical** units. At startup the
+runtime asks SDL for the window's size in pixels, sizes the Cairo surface and the SDL texture
+to those real pixels, and scales the Cairo context by the pixel-to-logical ratio. So a tree
+laid out in logical coordinates rasterises at the display's true resolution, and every edge
+and glyph lands on physical pixels rather than being stretched up after the fact. On an
+ordinary 1× display the ratio is 1 and this path is a no-op. The small ratio computation is
+the one piece that crosses into `shared/` (`DeviceSurface`) so it stays unit-tested.

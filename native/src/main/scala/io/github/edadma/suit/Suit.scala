@@ -39,13 +39,24 @@ object Suit:
     val renderer = window.createRenderer()
     renderer.setVSync(true)
 
+    // HiDPI: the window's logical size (the coordinate space the UI lives in) and its actual
+    // pixel size differ on a high-density display. The backbuffer is sized to the real pixels
+    // and the Cairo context is scaled by the ratio, so the tree — laid out and hit-tested in
+    // logical units throughout — rasterises at the display's true resolution. On a 1× display
+    // the ratio is 1 and everything below is unchanged.
+    val (pixelW, pixelH) = window.sizeInPixels
+    val device           = DeviceSurface.from(width, height, pixelW, pixelH)
+
     // Cairo draws into this ARGB32 image surface; the runtime uploads it to the streaming
     // texture each dirty frame. ARGB32's little-endian byte layout is identical to SDL's
-    // ARGB8888, so the upload is a straight copy with no conversion. The texture is blitted
-    // to the window every iteration, so an expose or resize always shows a complete frame.
-    val surface = imageSurfaceCreate(Format.ARGB32, width, height)
+    // ARGB8888, so the upload is a straight copy with no conversion. The texture is sized to
+    // match the surface (device pixels) and blitted to the window every iteration, so an expose
+    // always shows a complete frame. The base transform scales logical coordinates up to pixels;
+    // it is set once and never reset (no code clears the matrix), so it underlies every frame.
+    val surface = imageSurfaceCreate(Format.ARGB32, device.width, device.height)
     val cr      = surface.create
-    val texture = renderer.createTexture(PIXELFORMAT_ARGB8888, TEXTUREACCESS_STREAMING, width, height)
+    cr.scale(device.scaleX, device.scaleY)
+    val texture = renderer.createTexture(PIXELFORMAT_ARGB8888, TEXTUREACCESS_STREAMING, device.width, device.height)
 
     // Load the font through FreeType and wrap it as a Cairo font face — a specific typeface,
     // not a platform-resolved family name. With no `fontPath`, the Inter font embedded in
