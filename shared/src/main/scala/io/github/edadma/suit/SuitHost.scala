@@ -96,6 +96,9 @@ final class SuitHostConfig extends HostConfig:
       case (b: RenderBox, "width")        => b.width = asDoubleOpt(value)
       case (b: RenderBox, "height")       => b.height = asDoubleOpt(value)
       case (b: RenderBox, "padding")      => b.padding = asInsets(value)
+      // Text-style cascade carriers: descendant text inherits these unless overridden.
+      case (b: RenderBox, "textColor")    => b.textAttrs = b.textAttrs.copy(color = asColorOpt(value))
+      case (b: RenderBox, "textSize")     => b.textAttrs = b.textAttrs.copy(size = asDoubleOpt(value))
 
       case (c: RenderConstrained, "width")  => c.width = asDoubleOpt(value)
       case (c: RenderConstrained, "height") => c.height = asDoubleOpt(value)
@@ -119,11 +122,10 @@ final class SuitHostConfig extends HostConfig:
       case (f: RenderFlex, "spacing") => f.spacing = asDouble(value)
 
       case (t: RenderText, "content") => t.text = asString(value)
-      case (t: RenderText, "size")    => t.style = t.style.copy(size = asDouble(value))
-      case (t: RenderText, "color") =>
-        t.style = t.style.copy(color = asColorOrNull(value) match
-          case c: Color => c
-          case null     => TextStyle.default.color)
+      // A text node's own colour/size are explicit overrides; unset (null) means inherit
+      // from the cascade rather than snap to a default.
+      case (t: RenderText, "size")  => t.explicitSize = asDoubleOpt(value)
+      case (t: RenderText, "color") => t.explicitColor = asColorOpt(value)
 
       case _ => ()
     obj.markDirty()
@@ -132,9 +134,9 @@ final class SuitHostConfig extends HostConfig:
   // The reconciler delivers each prop as `Any` (the value the DSL wrapped in a
   // PropValue) or `null` on removal. These map both cases to a render-tree field.
 
-  private def asColorOrNull(v: Any): Color | Null = v match
-    case c: Color => c
-    case _        => null
+  private def asColorOpt(v: Any): Option[Color] = v match
+    case c: Color => Some(c)
+    case _        => None
 
   // A paint prop arrives as a Paint (the DSL converts a flat Color to Solid before
   // wrapping), but tolerate a bare Color too so a colour set directly still reads.

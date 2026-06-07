@@ -46,7 +46,9 @@ object dsl:
     * `padding` insets its child; `flex` makes it expand inside a row/column; `onClick` fires
     * when a pointer-press hit-tests to it. Children render inside, after the padding.
     *
-    * `radius` rounds all four corners uniformly; pass `corners` for per-corner control. */
+    * `radius` rounds all four corners uniformly; pass `corners` for per-corner control.
+    * `textColor`/`textSize` set a text-style cascade: descendant `text` that doesn't fix
+    * its own colour/size inherits these (CSS-like inheritance, see [[TextStyleAttrs]]). */
   def box(
       bg:           Paint | Null                  = null,
       border:       Paint | Null                  = null,
@@ -58,6 +60,8 @@ object dsl:
       width:        Double                         = Double.NaN,
       height:       Double                         = Double.NaN,
       padding:      EdgeInsets | Null              = null,
+      textColor:    Color | Null                   = null,
+      textSize:     Double                         = Double.NaN,
       flex:         Int                            = 0,
       focusable:    Boolean                        = false,
       onClick:      (PointerEvent => Unit) | Null  = null,
@@ -83,6 +87,8 @@ object dsl:
     props = sized(props, "width", width)
     props = sized(props, "height", height)
     if padding != null then props = props.updated("padding", PropValue(padding))
+    if textColor != null then props = props.updated("textColor", PropValue(textColor))
+    props = sized(props, "textSize", textSize)
     if flex != 0 then props = props.updated("flex", PropValue(flex))
     if focusable then props = props.updated("focusable", PropValue(true))
     props = typed[PointerEvent](props, "click", onClick)
@@ -98,14 +104,20 @@ object dsl:
     props = focus(props, "blur", onBlur)
     el("box", props, children)
 
-  /** A run of text in `color` at point `size`. Single-line: it measures and paints as
-    * one line through the installed [[TextMeasurer]] and the canvas. */
+  /** A run of text. `color` and `size` are optional: omit either and it is **inherited**
+    * from the nearest enclosing container that sets a text colour/size (`box`'s
+    * `textColor`/`textSize`), falling back to the [[TextStyle.default]] if nothing in the
+    * tree sets one. Single-line: it measures and paints as one line through the installed
+    * [[TextMeasurer]] and the canvas. */
   def text(
       content: String,
-      size:    Double = TextStyle.default.size,
-      color:   Color  = TextStyle.default.color,
+      size:    Double       = Double.NaN,
+      color:   Color | Null = null,
   ): VNode =
-    el("text", Map("content" -> PropValue(content), "size" -> PropValue(size), "color" -> PropValue(color)), Nil)
+    var props = Map[String, Prop]("content" -> PropValue(content))
+    props = sized(props, "size", size)
+    if color != null then props = props.updated("color", PropValue(color))
+    el("text", props, Nil)
 
   /** A horizontal stack. Children are laid left to right; flexible children share the
     * leftover width. See [[MainAxisAlignment]] / [[CrossAxisAlignment]] / [[MainAxisSize]]. */

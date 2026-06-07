@@ -14,37 +14,28 @@ import io.github.edadma.suit.dsl.*
 // deliberately absent rather than approximated.
 object widgets:
 
-  /** The default palette the built-in widgets paint with — a small dark-on-accent
-    * theme. It is just a set of named [[Color]]s; applications can ignore it and pass
-    * their own, but the widgets read from it so a stock control looks consistent. */
-  object Theme:
-    val primary       = Color.rgb(0x4dabf7)
-    val primaryHover  = Color.rgb(0x74c0fc)
-    val primaryActive = Color.rgb(0x339af0)
-    val onPrimary     = Color.rgb(0x0b1418)
-    val surface       = Color.rgb(0x2b3035)
-    val border        = Color.rgb(0x495057)
-    val accent        = Color.rgb(0x4dabf7)
-    val track         = Color.rgb(0x495057)
-
   private def clamp01(x: Double): Double =
     if x < 0.0 then 0.0 else if x > 1.0 then 1.0 else x
 
   /** A push button: a labelled, focusable rectangle that calls `onPressed` when clicked
     * (a press and release on the button) or activated from the keyboard (Space or Enter
-    * while focused). It tints on hover and while held. */
+    * while focused). It tints on hover and while held. It paints from the theme in
+    * context ([[useTheme]]) — primary fill, `onPrimary` ink, themed corner radius — so a
+    * [[ThemeProvider]] restyles it without touching this code. */
   val Button: Component2[String, () => Unit] =
     component[String, () => Unit] { (label, onPressed) =>
+      val theme                    = useTheme()
       val (hover, setHover, _)     = useState(false)
       val (pressed, setPressed, _) = useState(false)
 
       val bg =
-        if pressed then Theme.primaryActive
-        else if hover then Theme.primaryHover
-        else Theme.primary
+        if pressed then theme.primaryActive
+        else if hover then theme.primaryHover
+        else theme.primary
 
       box(
         bg           = bg,
+        radius       = theme.radius,
         padding      = EdgeInsets.symmetric(horizontal = 16, vertical = 10),
         focusable    = true,
         onMouseEnter = _ => setHover(true),
@@ -54,7 +45,7 @@ object widgets:
         onClick      = _ => onPressed(),
         onKeyDown    = e => if e.scancode == Key.Space || e.scancode == Key.Enter then onPressed(),
       )(
-        text(label, color = Theme.onPrimary),
+        text(label, color = theme.onPrimary),
       )
     }
 
@@ -65,18 +56,20 @@ object widgets:
     * font dependency). */
   val Checkbox: Component2[Boolean, Boolean => Unit] =
     component[Boolean, Boolean => Unit] { (checked, onChange) =>
+      val theme                = useTheme()
       val (hover, setHover, _) = useState(false)
 
       val mark: Seq[VNode] =
-        if checked then Seq(center(box(width = 12, height = 12, bg = Theme.accent)()))
+        if checked then Seq(center(box(width = 12, height = 12, bg = theme.accent, radius = 2)()))
         else Seq.empty
 
       box(
         width        = 20,
         height       = 20,
-        bg           = Theme.surface,
-        border       = if hover then Theme.accent else Theme.border,
+        bg           = theme.surface,
+        border       = if hover then theme.accent else theme.border,
         borderWidth  = 2,
+        radius       = 4,
         focusable    = true,
         onMouseEnter = _ => setHover(true),
         onMouseLeave = _ => setHover(false),
@@ -93,7 +86,8 @@ object widgets:
     * on the thumb. */
   val Slider: Component2[Double, Double => Unit] =
     component[Double, Double => Unit] { (value, onChange) =>
-      val v = clamp01(value)
+      val theme = useTheme()
+      val v     = clamp01(value)
 
       def frac(e: PointerEvent): Double =
         if e.size.width <= 0 then 0.0 else clamp01(e.local.x / e.size.width)
@@ -112,11 +106,11 @@ object widgets:
         stack(Alignment.center)(
           // The groove: a thin bar stretched to the full width and centred vertically.
           col(crossAxisAlignment = CrossAxisAlignment.Stretch, mainAxisAlignment = MainAxisAlignment.Center)(
-            box(height = 4, bg = Theme.track)(),
+            box(height = 4, bg = theme.track, radius = 2)(),
           ),
           // The thumb: positioned by fraction — alignment x = v*2-1 maps 0..1 to left..right.
           align(Alignment(v * 2 - 1, 0))(
-            box(width = 16, height = 16, bg = Theme.accent, border = Theme.surface, borderWidth = 2)(),
+            box(width = 16, height = 16, bg = theme.accent, border = theme.surface, borderWidth = 2, radius = 8)(),
           ),
         ),
       )

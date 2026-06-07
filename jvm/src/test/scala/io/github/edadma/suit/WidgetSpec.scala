@@ -47,13 +47,13 @@ class WidgetSpec extends AnyFunSuite:
 
   test("a button tints while pressed and reverts on release"):
     val m = mount(Button("OK", () => ()))
-    assert(focusableBox(m.root).background == Solid(Theme.primary))
+    assert(focusableBox(m.root).background == Solid(Theme.default.primary))
     m.pointer.down(Offset(50, 50), 1)
     m.settle()
-    assert(focusableBox(m.root).background == Solid(Theme.primaryActive))
+    assert(focusableBox(m.root).background == Solid(Theme.default.primaryActive))
     m.pointer.up(Offset(50, 50), 1)
     m.settle()
-    assert(focusableBox(m.root).background == Solid(Theme.primary))
+    assert(focusableBox(m.root).background == Solid(Theme.default.primary))
 
   test("a focused button activates on Space"):
     var clicks = 0
@@ -62,6 +62,13 @@ class WidgetSpec extends AnyFunSuite:
     m.keys.down(Key.Space, false)
     m.settle()
     assert(clicks == 1)
+
+  test("a ThemeProvider restyles a widget from the provided theme"):
+    val custom = Theme.default.copy(primary = Color(200, 50, 100), radius = 20)
+    val m      = mount(ThemeProvider(custom)(Button("OK", () => ())))
+    val btn    = focusableBox(m.root)
+    assert(btn.background == Solid(Color(200, 50, 100)))
+    assert(btn.borderRadius == BorderRadius.all(20))
 
   // --- Checkbox ------------------------------------------------------------
 
@@ -78,7 +85,7 @@ class WidgetSpec extends AnyFunSuite:
     val unchecked = mount(Checkbox(false, _ => ()), Size(40, 40))
     def hasMark(root: RenderObject): Boolean =
       allObjects(root).exists {
-        case b: RenderBox => b.background == Solid(Theme.accent) && b.width.contains(12.0)
+        case b: RenderBox => b.background == Solid(Theme.default.accent) && b.width.contains(12.0)
         case _            => false
       }
     assert(hasMark(checked.root))

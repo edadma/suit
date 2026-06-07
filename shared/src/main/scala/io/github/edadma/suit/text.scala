@@ -10,13 +10,29 @@ package io.github.edadma.suit
 // and tests install a deterministic fake. This mirrors the `Canvas` seam (how to draw)
 // and `vdom.Host.config` (the installed host) — one global, swapped per environment.
 
-/** How a run of text is drawn: its point `size` and `color`. Font family and weight
-  * are a single global choice for now (the runtime opens one font file); richer styling
-  * layers on here later without changing the layout contract. */
+/** How a run of text is drawn: its point `size` and `color`. This is the *resolved*
+  * style — both fields concrete — that the measurement and paint seams receive. A
+  * [[RenderText]] computes it from its own explicit values overlaid on whatever it
+  * inherits (see [[TextStyleAttrs]]). Font family and weight are a single global choice
+  * for now (the runtime opens one font file); richer styling layers on here later
+  * without changing the layout contract. */
 final case class TextStyle(size: Double = 16.0, color: Color = Color(0, 0, 0))
 
 object TextStyle:
   val default: TextStyle = TextStyle()
+
+/** A *partial* text style for the render-tree cascade. Any field left `None` is
+  * inherited from the nearest ancestor that sets it, the way `color`/`font-size` cascade
+  * in CSS. A container carries one of these ([[RenderObject.textAttrs]]); a [[RenderText]]
+  * resolves an effective [[TextStyle]] by walking its ancestors and falling back to
+  * [[TextStyle.default]] for anything no one set. Keeping inheritance in the render tree
+  * (not at DSL-build time) is what makes it composable and JVM-testable. */
+final case class TextStyleAttrs(size: Option[Double] = None, color: Option[Color] = None)
+
+object TextStyleAttrs:
+  /** The neutral carrier: inherits everything, overrides nothing. Containers default to
+    * it so an object that sets no text style is transparent to the cascade. */
+  val empty: TextStyleAttrs = TextStyleAttrs()
 
 /** Measures text without drawing it — the off-device half of text support. An
   * implementation returns the pixel size a single line of `text` occupies in `style`,

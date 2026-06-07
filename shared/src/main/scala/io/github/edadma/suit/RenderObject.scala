@@ -37,6 +37,12 @@ abstract class RenderObject:
     * their outer object. */
   var focusable: Boolean = false
 
+  /** The text-style values this object contributes to the cascade. A [[RenderText]]
+    * descendant inherits any field set here unless a nearer ancestor or its own explicit
+    * value overrides it (see [[TextStyleAttrs]]). The default carrier sets nothing, so an
+    * object is transparent to the cascade until something gives it text attributes. */
+  var textAttrs: TextStyleAttrs = TextStyleAttrs.empty
+
   /** Constraints down, size up. An implementation must set `size` and position any
     * children. */
   def layout(constraints: Constraints): Unit
@@ -351,13 +357,32 @@ final class RenderFlex(val axis: Axis) extends RenderObject:
   * recording backend captures. Layout is single-line; the measured size is clamped into
   * the constraints the parent imposed. */
 final class RenderText(var text: String) extends RenderObject:
-  var style: TextStyle = TextStyle.default
+  /** This node's own explicit overrides. A field left `None` is inherited from the
+    * nearest ancestor that sets it (see [[resolvedStyle]]); a field set here wins over
+    * anything inherited. */
+  var explicitSize: Option[Double] = None
+  var explicitColor: Option[Color] = None
+
+  /** The concrete style to measure and paint with: this node's explicit values overlaid
+    * on the cascade. For each property, the first source that provides it wins —
+    * this node, then each ancestor's [[RenderObject.textAttrs]] from nearest to root —
+    * and anything still unset falls back to [[TextStyle.default]]. */
+  def resolvedStyle: TextStyle =
+    var size  = explicitSize
+    var color = explicitColor
+    var n: RenderObject | Null = parent
+    while n != null && (size.isEmpty || color.isEmpty) do
+      val a = n.asInstanceOf[RenderObject].textAttrs
+      if size.isEmpty then size = a.size
+      if color.isEmpty then color = a.color
+      n = n.asInstanceOf[RenderObject].parent
+    TextStyle(size.getOrElse(TextStyle.default.size), color.getOrElse(TextStyle.default.color))
 
   def layout(constraints: Constraints): Unit =
-    size = constraints.constrain(TextMeasurer.installed.measure(text, style))
+    size = constraints.constrain(TextMeasurer.installed.measure(text, resolvedStyle))
 
   override def paint(canvas: Canvas, origin: Offset): Unit =
-    if text.nonEmpty then canvas.drawText(origin, text, style)
+    if text.nonEmpty then canvas.drawText(origin, text, resolvedStyle)
 
 /** A non-visual node that only holds a position in the sibling order — vdom anchors
   * fragments, portals, and empty renders on one. Zero size, never painted, never a

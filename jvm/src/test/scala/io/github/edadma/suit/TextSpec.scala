@@ -20,7 +20,7 @@ class TextSpec extends AnyFunSuite:
   test("a text node sizes itself from the installed measurer"):
     withFake:
       val t = new RenderText("hello") // 5 glyphs
-      t.style = TextStyle(size = 16, color = Color(0, 0, 0))
+      t.explicitSize = Some(16)
       t.layout(Constraints.loose(Size(500, 500)))
       assert(t.size == Size(35, 16)) // 5 * 7 wide, size tall
 
@@ -33,13 +33,13 @@ class TextSpec extends AnyFunSuite:
   test("a text node paints a single draw-text call at its origin"):
     withFake:
       val t = new RenderText("hi")
-      val style = TextStyle(size = 18, color = Color(10, 20, 30))
-      t.style = style
+      t.explicitSize = Some(18)
+      t.explicitColor = Some(Color(10, 20, 30))
       t.layout(Constraints.loose(Size(200, 200)))
       val canvas = new RecordingCanvas
       t.paint(canvas, Offset(5, 7))
       assert(canvas.commands.toList == List(
-        RecordingCanvas.Command.DrawText(Offset(5, 7), "hi", style),
+        RecordingCanvas.Command.DrawText(Offset(5, 7), "hi", TextStyle(size = 18, color = Color(10, 20, 30))),
       ))
 
   test("an empty text node paints nothing"):
@@ -62,14 +62,50 @@ class TextSpec extends AnyFunSuite:
     h.setProperty(node, "size", 24.0)
     h.setProperty(node, "color", Color(1, 2, 3))
     assert(t.text == "label")
-    assert(t.style.size == 24.0)
-    assert(t.style.color == Color(1, 2, 3))
+    assert(t.resolvedStyle.size == 24.0)
+    assert(t.resolvedStyle.color == Color(1, 2, 3))
 
   test("createText makes a default-styled text node and setText updates it"):
     val h = new SuitHostConfig
     val node = h.createText("bare")
     val t = node.asInstanceOf[RenderText]
     assert(t.text == "bare")
-    assert(t.style == TextStyle.default)
+    assert(t.resolvedStyle == TextStyle.default) // no explicit, no ancestor → default
     h.setText(node, "changed")
     assert(t.text == "changed")
+
+  // --- the text-style cascade ------------------------------------------------
+
+  test("text inherits colour and size from the nearest ancestor that sets them"):
+    val outer = new RenderBox
+    outer.textAttrs = TextStyleAttrs(size = Some(20), color = Some(Color(9, 9, 9)))
+    val middle = new RenderBox // sets nothing — transparent to the cascade
+    val t      = new RenderText("x")
+    outer.insertChild(middle, null)
+    middle.insertChild(t, null)
+    assert(t.resolvedStyle == TextStyle(20, Color(9, 9, 9)))
+
+  test("a text node's own value overrides an inherited one, per property"):
+    val outer = new RenderBox
+    outer.textAttrs = TextStyleAttrs(size = Some(20), color = Some(Color(9, 9, 9)))
+    val t = new RenderText("x")
+    t.explicitColor = Some(Color(1, 2, 3)) // overrides colour; size still inherits
+    outer.insertChild(t, null)
+    assert(t.resolvedStyle == TextStyle(20, Color(1, 2, 3)))
+
+  test("the nearer ancestor wins when both set the same property"):
+    val outer = new RenderBox
+    outer.textAttrs = TextStyleAttrs(color = Some(Color(9, 9, 9)))
+    val inner = new RenderBox
+    inner.textAttrs = TextStyleAttrs(color = Some(Color(1, 1, 1)))
+    val t = new RenderText("x")
+    outer.insertChild(inner, null)
+    inner.insertChild(t, null)
+    assert(t.resolvedStyle.color == Color(1, 1, 1))
+
+  test("a box carries a text cascade set through the host config"):
+    val h = new SuitHostConfig
+    val b = h.createElement("box", null).asInstanceOf[RenderBox]
+    h.setProperty(b, "textColor", Color(7, 8, 9))
+    h.setProperty(b, "textSize", 13.0)
+    assert(b.textAttrs == TextStyleAttrs(size = Some(13.0), color = Some(Color(7, 8, 9))))
