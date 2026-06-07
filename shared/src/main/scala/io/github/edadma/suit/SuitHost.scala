@@ -28,7 +28,8 @@ final class SuitHostConfig extends HostConfig:
     case "col"      => new RenderFlex(Axis.Vertical)
     case "padding"  => new RenderPadding
     case "sizedBox" => new RenderConstrained
-    case "stack"    => new RenderStack
+    case "stack"      => new RenderStack
+    case "positioned" => new RenderPositioned
     case "scroll"   => new RenderScroll
     case "text"     => new RenderText("")
     case _          => new RenderBox
@@ -89,6 +90,8 @@ final class SuitHostConfig extends HostConfig:
       case (o, "focusable") => o.focusable = value == true
       // `acceptsText` marks an object that wants text-input while focused (a text field).
       case (o, "acceptsText") => o.acceptsText = value == true
+      // `ignorePointer` makes an object (and its subtree) transparent to hit-testing.
+      case (o, "ignorePointer") => o.ignorePointer = value == true
 
       case (b: RenderBox, "bg")           => b.background = asPaintOrNull(value)
       case (b: RenderBox, "border")       => b.border = asPaintOrNull(value)
@@ -110,6 +113,9 @@ final class SuitHostConfig extends HostConfig:
       case (p: RenderPadding, "padding") => p.padding = asInsets(value)
 
       case (s: RenderStack, "alignment") => s.alignment = asAlignment(value)
+
+      case (p: RenderPositioned, "dx") => p.dx = asDouble(value)
+      case (p: RenderPositioned, "dy") => p.dy = asDouble(value)
 
       case (s: RenderScroll, "axis") =>
         s.axis = value match

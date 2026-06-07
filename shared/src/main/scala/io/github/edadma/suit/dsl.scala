@@ -13,8 +13,13 @@ package io.github.edadma.suit
 // decide), which keeps call sites free of `Some(...)`.
 object dsl:
 
-  private def el(tag: String, props: Map[String, Prop], children: Seq[VNode]): VNode =
-    VElement(tag, props, children.toVector, None)
+  private def el(
+      tag:      String,
+      props:    Map[String, Prop],
+      children: Seq[VNode],
+      ref:      ElementRef | Null = null,
+  ): VNode =
+    VElement(tag, props, children.toVector, None, ref)
 
   private def sized(props: Map[String, Prop], name: String, v: Double): Map[String, Prop] =
     if v.isNaN then props else props.updated(name, PropValue(v))
@@ -48,25 +53,32 @@ object dsl:
     *
     * `radius` rounds all four corners uniformly; pass `corners` for per-corner control.
     * `textColor`/`textSize` set a text-style cascade: descendant `text` that doesn't fix
-    * its own colour/size inherits these (CSS-like inheritance, see [[TextStyleAttrs]]). */
+    * its own colour/size inherits these (CSS-like inheritance, see [[TextStyleAttrs]]).
+    *
+    * `ref` binds the live [[RenderObject]] into a `useRef` box once it mounts, so a parent can
+    * read its laid-out position and size (an overlay anchored to a trigger does this).
+    * `ignorePointer` makes the box and its subtree click-through (see
+    * [[RenderObject.ignorePointer]]). */
   def box(
-      bg:           Paint | Null                  = null,
-      border:       Paint | Null                  = null,
-      borderWidth:  Double                         = 0.0,
-      radius:       Double                         = 0.0,
-      corners:      BorderRadius | Null            = null,
-      shadow:       Shadow | Null                  = null,
-      opacity:      Double                         = 1.0,
-      width:        Double                         = Double.NaN,
-      height:       Double                         = Double.NaN,
-      padding:      EdgeInsets | Null              = null,
-      clip:         Boolean                        = false,
-      textColor:    Color | Null                   = null,
-      textSize:     Double                         = Double.NaN,
-      flex:         Int                            = 0,
-      focusable:    Boolean                        = false,
-      acceptsText:  Boolean                        = false,
-      onClick:      (PointerEvent => Unit) | Null  = null,
+      bg:            Paint | Null                  = null,
+      border:        Paint | Null                  = null,
+      borderWidth:   Double                         = 0.0,
+      radius:        Double                         = 0.0,
+      corners:       BorderRadius | Null            = null,
+      shadow:        Shadow | Null                  = null,
+      opacity:       Double                         = 1.0,
+      width:         Double                         = Double.NaN,
+      height:        Double                         = Double.NaN,
+      padding:       EdgeInsets | Null              = null,
+      clip:          Boolean                        = false,
+      ignorePointer: Boolean                        = false,
+      textColor:     Color | Null                   = null,
+      textSize:      Double                         = Double.NaN,
+      flex:          Int                            = 0,
+      focusable:     Boolean                        = false,
+      acceptsText:   Boolean                        = false,
+      ref:           Ref[RenderObject | Null] | Null = null,
+      onClick:       (PointerEvent => Unit) | Null  = null,
       onMouseDown:  (PointerEvent => Unit) | Null  = null,
       onMouseUp:    (PointerEvent => Unit) | Null  = null,
       onMouseMove:  (PointerEvent => Unit) | Null  = null,
@@ -91,6 +103,7 @@ object dsl:
     props = sized(props, "height", height)
     if padding != null then props = props.updated("padding", PropValue(padding))
     if clip then props = props.updated("clip", PropValue(true))
+    if ignorePointer then props = props.updated("ignorePointer", PropValue(true))
     if textColor != null then props = props.updated("textColor", PropValue(textColor))
     props = sized(props, "textSize", textSize)
     if flex != 0 then props = props.updated("flex", PropValue(flex))
@@ -108,7 +121,8 @@ object dsl:
     props = typed[TextInputEvent](props, "textinput", onTextInput)
     props = focus(props, "focus", onFocus)
     props = focus(props, "blur", onBlur)
-    el("box", props, children)
+    val eref: ElementRef | Null = if ref != null then BoxRef(ref) else null
+    el("box", props, children, eref)
 
   /** A run of text. `color` and `size` are optional: omit either and it is **inherited**
     * from the nearest enclosing container that sets a text colour/size (`box`'s
@@ -184,6 +198,13 @@ object dsl:
     * content node (wrap several in a `col`/`row`). */
   def scrollView(axis: Axis = Axis.Vertical)(children: VNode*): VNode =
     el("scroll", Map("axis" -> PropValue(axis)), children)
+
+  /** Places its child at the absolute pixel offset `(dx, dy)` within the space it is given,
+    * laying the child out at its natural size (it may overflow). Fills that space, so dropped
+    * into a full-window overlay it positions content at a screen point — what the anchored
+    * overlays (menus, tooltips) use to sit beside their trigger. */
+  def positioned(dx: Double, dy: Double)(children: VNode*): VNode =
+    el("positioned", Map("dx" -> PropValue(dx), "dy" -> PropValue(dy)), children)
 
   /** A z-ordered overlay: children stack back-to-front, each positioned by `alignment`. */
   def stack(alignment: Alignment = Alignment.topLeft)(children: VNode*): VNode =

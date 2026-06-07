@@ -42,12 +42,14 @@ def box(
     width:       Double              = Double.NaN,
     height:      Double              = Double.NaN,
     padding:     EdgeInsets | Null   = null,
-    clip:        Boolean             = false,  // overflow hidden — clip children to the box
-    textColor:   Color | Null        = null,   // text-style cascade — see below
-    textSize:    Double              = Double.NaN,
-    flex:        Int                 = 0,
-    focusable:   Boolean             = false,
-    acceptsText: Boolean             = false,  // open text input while focused (text fields)
+    clip:          Boolean             = false,  // overflow hidden — clip children to the box
+    ignorePointer: Boolean             = false,  // click-through: the box and subtree take no pointer
+    textColor:     Color | Null        = null,   // text-style cascade — see below
+    textSize:      Double              = Double.NaN,
+    flex:          Int                 = 0,
+    focusable:     Boolean             = false,
+    acceptsText:   Boolean             = false,  // open text input while focused (text fields)
+    ref: Ref[RenderObject | Null] | Null = null, // bind the live render object into a useRef box
     // pointer / wheel / key / focus handlers — see the Input guide
     onClick: (PointerEvent => Unit) | Null = null,
     /* onMouseDown, onMouseUp, onMouseMove, onMouseEnter, onMouseLeave,
@@ -65,6 +67,10 @@ expand inside a row/column.
 
 `textColor` / `textSize` seed a **text-style cascade**: descendant `text` that doesn't fix
 its own colour or size inherits these, CSS-style, from the nearest ancestor that set them.
+`ignorePointer` makes the box and its whole subtree transparent to hit-testing, so a click
+passes straight through to whatever is behind (a floating tooltip uses this). `ref` binds the
+live render object into a `useRef[RenderObject | Null](null)` box once it mounts, so a parent
+can read its laid-out position and size — an overlay anchored to a trigger does exactly this.
 See the [input guide](/guide/input/) for the handlers.
 
 ## text
@@ -158,6 +164,17 @@ def center(children: VNode*): VNode
 `stack` is a z-ordered overlay: children stack back-to-front, each positioned by
 `alignment`. `align` positions a single child at an alignment (a one-child stack); `center`
 is `align(Alignment.center)`.
+
+## positioned
+
+```scala
+def positioned(dx: Double, dy: Double)(children: VNode*): VNode
+```
+
+Places its child at the absolute pixel offset `(dx, dy)` within the space it is given, laying
+the child out at its **natural size** (it may overflow). It fills that space, so dropped into a
+full-window overlay it positions content at a screen point — which is how the anchored overlays
+(`Menu`, `Tooltip`) sit beside their trigger.
 
 ## Geometry & colour values
 

@@ -222,6 +222,19 @@ class InputSpec extends AnyFunSuite:
     assert(!fm.focusables(trap).contains(a))
     assert(!fm.focusables(trap).contains(b))
 
+  // --- ignore pointer ------------------------------------------------------
+
+  test("an ignore-pointer object is transparent to hit-testing"):
+    // An outer box holds the handler; an inner overlay box marked ignore-pointer covers it.
+    // A press over the inner box must pass through it and resolve to the outer box, as if the
+    // overlay were not there.
+    val outer   = fixed(100, 100)
+    val overlay = fixed(100, 100)
+    overlay.ignorePointer = true
+    outer.insertChild(overlay, null)
+    outer.layout(Constraints.tight(Size(100, 100)))
+    assert(outer.hitTest(Offset(50, 50), Offset.zero) eq outer)
+
   // --- wheel ---------------------------------------------------------------
 
   test("the wheel bubbles a scroll event to the nearest wheel handler"):

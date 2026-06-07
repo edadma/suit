@@ -290,6 +290,78 @@ col(spacing = 16)(
 )
 ```
 
+## Menu
+
+```scala
+def Menu(
+    open:    Boolean,
+    onClose: () => Unit,
+    anchor:  Ref[RenderObject | Null],
+    exitMs:  Int    = 150,
+    width:   Double = 180,
+)(items: VNode*): VNode
+
+val MenuItem: Component2[String, () => Unit]
+```
+
+A dropdown menu anchored to a trigger. Like the dialog it is **controlled** — the caller owns
+`open` and is told to close through `onClose` — but it is **positioned**: it portals into the
+overlay layer and floats just below the trigger, flipping above it near the bottom edge and
+sliding left to stay on-screen.
+
+Give the trigger a `ref` and hand the *same* ref to `Menu` as `anchor`, so the menu can read the
+trigger's on-screen rectangle:
+
+```scala
+val (open, setOpen, _) = useState(false)
+val anchor             = useRef[RenderObject | Null](null)
+
+row(spacing = 16)(
+  box(ref = anchor)(
+    Button("Options", () => setOpen(true)),
+  ),
+  Menu(open, () => setOpen(false), anchor)(
+    MenuItem("Rename", () => setOpen(false)),
+    MenuItem("Delete", () => setOpen(false)),
+  ),
+)
+```
+
+A click anywhere outside the menu dismisses it (a transparent full-window catcher, not a
+dimming scrim), as does Escape; opening traps Tab within the menu and restores focus on close.
+Fill it with `MenuItem`s — focusable rows that call their `onSelect` on a click or on Space /
+Enter while focused, and highlight on hover. Wire each `onSelect` to do the action and close the
+menu.
+
+## Tooltip
+
+```scala
+def Tooltip(
+    label:   String,
+    delayMs: Int = 400,
+    exitMs:  Int = 120,
+)(trigger: VNode*): VNode
+```
+
+A small label that appears beside its trigger on hover. Wrap the trigger as the child; the
+tooltip attaches the hover tracking and an anchor itself, so callers wire nothing. It portals
+into the overlay layer and floats just below the trigger (flipping and sliding to stay
+on-screen), and is **click-through** — it never intercepts a click meant for what is underneath.
+It shows after a short hover `delayMs` and fades on both ends.
+
+```scala
+Tooltip("Saved automatically.")(
+  text("Drafts"),
+)
+```
+
+[= note =]
+Both `Menu` and `Tooltip` need the overlay layer that `Suit.run` provides; outside a running app
+(or a test that does not wire one) the menu and the floating label render nothing — the tooltip's
+trigger still shows. A headless test wires an overlay through `OverlayContext` — see `MenuSpec` /
+`TooltipSpec`.
+[= /note =]
+
 ## Theme
 
 ```scala

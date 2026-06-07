@@ -547,3 +547,209 @@ object widgets:
       exitMs:       Int     = 200,
   )(children: VNode*): VNode =
     DialogImpl((open, onClose, maskClosable, exitMs))(children*)
+
+  // The shared mechanism behind the positioned overlays (Menu, Tooltip). Unlike a modal, these
+  // anchor to a trigger rather than centring, so the card is portaled into the overlay and
+  // placed against the anchor's on-screen rectangle, read from a `ref` the caller put on the
+  // trigger. The card is measured once it lays out (through its own ref) so a later render can
+  // flip it above the anchor when it would overflow the bottom and slide it left to stay
+  // on-screen; the measure lags layout by a frame, but the open fade hides that settle, and the
+  // card is kept invisible until it has a size so it never flashes at the initial guess. A
+  // dismissible popover (a menu) gets a full-window click-catcher behind it and traps focus; a
+  // passive one (a tooltip) is click-through and never steals focus.
+  private def popover(
+      anchor:    Ref[RenderObject | Null],
+      mounted:   Boolean,
+      amt:       Double,
+      onDismiss: (() => Unit) | Null,
+      trapFocus: Boolean,
+      card:      VNode,
+  )(using Hooks): VNode =
+    val env            = useOverlay()
+    val cardRef        = useRef[RenderObject | Null](null)
+    val (sz, setSz, _) = useState(Size.zero)
+    val dismiss: () => Unit = if onDismiss != null then onDismiss else () => ()
+
+    // Measure the card after each layout, so the next render can position it precisely. The
+    // read lags layout by a frame (effects run before the frame's layout); it converges within
+    // a couple of frames, which the open fade covers.
+    useEffect(
+      () =>
+        cardRef.current match
+          case r: RenderObject => if r.size != sz then setSz(r.size)
+          case null            => ()
+        noCleanup,
+      null,
+    )
+
+    // A menu traps focus to the overlay while open (Tab cycles inside, Escape dismisses) and
+    // restores it on close; a tooltip is passive and does neither.
+    val saved = useRef[RenderObject | Null](null)
+    useEffect(
+      () =>
+        (env.overlay, env.focus) match
+          case (o: RenderObject, f: FocusManager) if mounted && trapFocus =>
+            saved.current = f.focused
+            f.trap(o, dismiss)
+            f.focusables(o).headOption.foreach(f.focus)
+            () =>
+              f.releaseTrap()
+              f.focus(saved.current)
+          case _ => noCleanup
+      ,
+      Array(mounted, trapFocus),
+    )
+
+    env.overlay match
+      case o: RenderObject if mounted =>
+        val win = o.size
+        val (ax, ay, ah) = anchor.current match
+          case r: RenderObject =>
+            val off = r.absoluteOffset
+            (off.x, off.y, r.size.height)
+          case null => (0.0, 0.0, 0.0)
+
+        // Below the anchor by default; flip above when the card would run off the bottom and
+        // there is room above. Aligned to the anchor's left edge, slid left to stay on-screen.
+        val below = ay + ah
+        val top   = if below + sz.height > win.height && ay - sz.height >= 0.0 then ay - sz.height else below
+        val left  = math.max(0.0, math.min(ax, win.width - sz.width))
+
+        // Invisible until measured, so the first frame (laid out at the initial guess) never
+        // shows; by the time the fade reveals it, it sits at the resolved position.
+        val vis = if sz == Size.zero then 0.0 else amt
+
+        // The card swallows clicks (so only outside clicks dismiss) when this popover is
+        // dismissible; a tooltip leaves it click-through. The positioner lays the card out at
+        // its natural size so the measurement is the real card, not one clamped to the gap
+        // below the anchor.
+        val swallow: (PointerEvent => Unit) | Null = if onDismiss != null then (_: PointerEvent) => () else null
+        val placed = positioned(left, top)(box(ref = cardRef, opacity = vis, onClick = swallow)(card))
+
+        portal(
+          o,
+          if onDismiss != null then
+            // A full-window catcher behind the card — transparent, not dimming — whose click
+            // anywhere outside the card dismisses it.
+            box(onClick = _ => dismiss())(placed)
+          else
+            // A tooltip floats above without intercepting: the whole layer is click-through.
+            box(ignorePointer = true)(placed),
+        )
+      case _ => VEmpty
+
+  /** A single row in a [[Menu]] — a focusable item that calls `onSelect` when clicked or
+    * activated from the keyboard (Space or Enter). It highlights on hover. Wire `onSelect` to
+    * perform the action and close the menu. */
+  val MenuItem: Component2[String, () => Unit] =
+    component[String, () => Unit] { (label, onSelect) =>
+      val theme                = useTheme()
+      val (hover, setHover, _) = useState(false)
+      val amt                  = useTransition(if hover then 1.0 else 0.0, 90)
+
+      box(
+        bg           = Color.lerp(theme.surface, theme.primary, 0.18 * amt),
+        radius       = theme.radius * 0.5,
+        padding      = EdgeInsets.symmetric(horizontal = theme.spacing * 1.5, vertical = theme.spacing * 0.75),
+        focusable    = true,
+        onMouseEnter = _ => setHover(true),
+        onMouseLeave = _ => setHover(false),
+        onClick      = _ => onSelect(),
+        onKeyDown    = e => if e.scancode == Key.Space || e.scancode == Key.Enter then onSelect(),
+      )(text(label))
+    }
+
+  // The dropdown menu implementation. Props: open flag, close callback, the anchor ref (placed
+  // on the trigger by the caller), the exit-fade duration, and the menu width.
+  private val MenuImpl: ContainerP[(Boolean, () => Unit, Ref[RenderObject | Null], Int, Double)] =
+    container[(Boolean, () => Unit, Ref[RenderObject | Null], Int, Double)] { (props, items) =>
+      val (open, onClose, anchor, exitMs, width) = props
+      val theme    = useTheme()
+      val presence = usePresence(open, exitMs)
+      val amt      = useTransition(if presence.phase == PresencePhase.Open then 1.0 else 0.0, exitMs)
+
+      // A surface card of stretched items. The fixed width comes through a sizedBox so the
+      // column gets a tight cross-axis and its items fill the menu (a plain box would loosen
+      // the child and the items would size raggedly to their own text).
+      val card = box(
+        bg          = theme.surface,
+        border      = theme.border,
+        borderWidth = 1,
+        radius      = theme.radius,
+        shadow      = Shadow(),
+        clip        = true,
+        padding     = EdgeInsets.all(theme.spacing * 0.5),
+      )(
+        sizedBox(width = width)(
+          col(crossAxisAlignment = CrossAxisAlignment.Stretch, mainAxisSize = MainAxisSize.Min, spacing = 2)(items*),
+        ),
+      )
+
+      popover(anchor, presence.mounted, amt, onDismiss = onClose, trapFocus = true, card = card)
+    }
+
+  /** A dropdown menu anchored to a trigger. It is **controlled** — the caller owns `open` and
+    * is told to close through `onClose` — and **positioned**: it portals into the overlay layer
+    * and floats just below the trigger, flipping above it near the bottom edge and sliding left
+    * to stay on-screen. Pass the trigger a `ref` (a `useRef[RenderObject | Null](null)`) and
+    * give the same ref here as `anchor`, so the menu can read the trigger's on-screen rectangle.
+    *
+    * A click anywhere outside the menu dismisses it (a transparent full-window catcher, not a
+    * dimming scrim), as does Escape; opening traps Tab within the menu and restores focus on
+    * close. The menu fades in and out through [[usePresence]] + [[useTransition]]. With no
+    * overlay layer available it renders nothing. Fill it with [[MenuItem]]s. */
+  def Menu(
+      open:    Boolean,
+      onClose: () => Unit,
+      anchor:  Ref[RenderObject | Null],
+      exitMs:  Int    = 150,
+      width:   Double = 180,
+  )(items: VNode*): VNode =
+    MenuImpl((open, onClose, anchor, exitMs, width))(items*)
+
+  // The tooltip implementation. Props: the label, the hover delay before it shows, and the
+  // exit-fade duration. The trigger comes as the children.
+  private val TooltipImpl: ContainerP[(String, Int, Int)] =
+    container[(String, Int, Int)] { (props, children) =>
+      val (label, delayMs, exitMs) = props
+      val theme                    = useTheme()
+      val anchor                   = useRef[RenderObject | Null](null)
+      val (hover, setHover, _)     = useState(false)
+
+      // Show after the pointer has rested on the trigger for `delayMs` (hover intent), and let
+      // the same debounce settle a brief unhover so it does not flicker.
+      val shown    = useDebouncedValue(hover, delayMs)
+      val presence = usePresence(shown, exitMs)
+      val amt      = useTransition(if presence.phase == PresencePhase.Open then 1.0 else 0.0, exitMs)
+
+      val card = box(
+        bg      = theme.surfaceText,
+        radius  = theme.radius * 0.75,
+        padding = EdgeInsets.symmetric(horizontal = theme.spacing, vertical = theme.spacing * 0.5),
+      )(
+        text(label, color = theme.surface),
+      )
+
+      // The trigger stays in normal flow, wrapped so it carries the anchor ref and the hover
+      // handlers; the tooltip itself portals out through the popover.
+      VFragment(
+        Vector(
+          box(ref = anchor, onMouseEnter = _ => setHover(true), onMouseLeave = _ => setHover(false))(children*),
+          popover(anchor, presence.mounted, amt, onDismiss = null, trapFocus = false, card = card),
+        ),
+      )
+    }
+
+  /** A tooltip: a small label that appears beside its trigger on hover. Wrap the trigger as the
+    * child; the tooltip attaches the hover tracking and an anchor itself, so callers need wire
+    * nothing. It portals into the overlay layer and floats just below the trigger (flipping and
+    * sliding to stay on-screen), and is **click-through** — it never intercepts a click meant
+    * for what is underneath. It shows after a short hover `delayMs` and fades on both ends
+    * through [[usePresence]] + [[useTransition]]. With no overlay layer available it shows
+    * nothing (the trigger still renders). */
+  def Tooltip(
+      label:   String,
+      delayMs: Int = 400,
+      exitMs:  Int = 120,
+  )(trigger: VNode*): VNode =
+    TooltipImpl((label, delayMs, exitMs))(trigger*)

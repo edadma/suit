@@ -6,7 +6,8 @@ import io.github.edadma.suit.widgets.*
 
 // A showcase of the styling system, the input model, and motion. The whole UI is wrapped
 // in a `ThemeProvider` carrying a custom theme, so the built-in widgets (Button, Checkbox,
-// Slider, Switch, RadioGroup, ProgressBar, Tabs, Badge, Divider, Alert, Card, Dialog) restyle
+// Slider, Switch, RadioGroup, ProgressBar, Tabs, Badge, Divider, Alert, Card, Dialog, Menu,
+// Tooltip) restyle
 // themselves from it with no widget code touched — that is the point of keeping styling
 // general rather than baked in. A gradient header, rounded cards with drop shadows, and the
 // text-style cascade (the body sets a `textColor` once and the labels inherit it) round out
@@ -89,6 +90,8 @@ val App = view {
   val (size, setSize, _)       = useState("m")
   val (tab, setTab, _)         = useState("overview")
   val (dialog, setDialog, _)   = useState(false)
+  val (menu, setMenu, _)       = useState(false)
+  val menuRef                  = useRef[RenderObject | Null](null)
 
   ThemeProvider(appTheme)(
     col(spacing = 16)(
@@ -177,6 +180,25 @@ val App = view {
                     Button(if details then "Hide details" else "Show details", () => setDetails(!details)),
                   ),
                   DetailPanel(details),
+                ),
+              ),
+              // A dropdown menu and a tooltip — the anchored overlays. The menu floats just
+              // below its trigger (the ref ties it to the trigger's on-screen rectangle) and
+              // dismisses on an outside click or Escape; the tooltip appears on hover and is
+              // click-through. Both portal into the overlay, so neither is clipped by the card.
+              card(
+                row(crossAxisAlignment = CrossAxisAlignment.Center, spacing = 16)(
+                  box(ref = menuRef)(
+                    Button("Options", () => setMenu(true)),
+                  ),
+                  Menu(menu, () => setMenu(false), menuRef)(
+                    MenuItem("Rename", () => setMenu(false)),
+                    MenuItem("Duplicate", () => setMenu(false)),
+                    MenuItem("Delete", () => setMenu(false)),
+                  ),
+                  Tooltip("Portals into the overlay; click-through.")(
+                    text("hover me", color = muted),
+                  ),
                 ),
               ),
               // A modal dialog: the button opens it, and it floats centred above everything

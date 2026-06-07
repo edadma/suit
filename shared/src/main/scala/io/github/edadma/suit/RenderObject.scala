@@ -43,6 +43,12 @@ abstract class RenderObject:
     * false and only see key events. */
   var acceptsText: Boolean = false
 
+  /** Whether this object (and its whole subtree) is transparent to hit-testing — Flutter's
+    * `IgnorePointer`. A click passes straight through it to whatever is behind, so it claims
+    * no pointer. A tooltip floating in the overlay sets this so it never intercepts the
+    * clicks meant for the content it hovers over. */
+  var ignorePointer: Boolean = false
+
   /** The text-style values this object contributes to the cascade. A [[RenderText]]
     * descendant inherits any field set here unless a nearer ancestor or its own explicit
     * value overrides it (see [[TextStyleAttrs]]). The default carrier sets nothing, so an
@@ -111,7 +117,8 @@ abstract class RenderObject:
     * top-left. Children are tested topmost-first (later siblings paint last, so they
     * are on top); a hit returns self only when no child claims the point. */
   def hitTest(point: Offset, origin: Offset): RenderObject | Null =
-    if !Rect.at(origin, size).contains(point.x, point.y) then null
+    if ignorePointer then null
+    else if !Rect.at(origin, size).contains(point.x, point.y) then null
     else
       var i = children.length - 1
       while i >= 0 do
@@ -371,6 +378,24 @@ final class RenderOverlay extends RenderObject:
       if hit != null then return hit
       i -= 1
     null
+
+/** Absolute pixel placement within a layer. It fills the space the parent offers (so it covers
+  * a full-window overlay), lays its single child out **loose** — at the child's natural size,
+  * not clamped to the room left after the offset — and places it at `(dx, dy)`. The child may
+  * overflow the parent, which is intended: an overlay positions a menu or tooltip at a screen
+  * point and a positioner that shrank the child to fit would hide the very overflow the caller
+  * flips or slides to avoid. Used by the positioned overlays to anchor content to a trigger. */
+final class RenderPositioned(var dx: Double = 0.0, var dy: Double = 0.0) extends RenderObject:
+  def layout(constraints: Constraints): Unit =
+    val inner = constraints.loosen
+    soleChild match
+      case ch: RenderObject =>
+        ch.layout(inner)
+        ch.offset = Offset(dx, dy)
+      case null => ()
+    val w = if constraints.maxWidth.isFinite then constraints.maxWidth else 0.0
+    val h = if constraints.maxHeight.isFinite then constraints.maxHeight else 0.0
+    size = constraints.constrain(Size(w, h))
 
 /** A row or column — the main layout primitive. Children are laid end to end along the
   * **main axis** (horizontal for a row, vertical for a column) and sized across the

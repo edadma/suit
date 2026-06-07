@@ -233,3 +233,29 @@ class WidgetSpec extends AnyFunSuite:
     m.pointer.up(Offset(33, 8), 1)
     m.settle()
     assert(tab == "two")
+
+  // --- MenuItem ------------------------------------------------------------
+
+  test("a menu item reports its selection on click"):
+    var picked = ""
+    val m      = mount(MenuItem("One", () => picked = "one"))
+    m.pointer.down(Offset(2, 2), 1)
+    m.pointer.up(Offset(2, 2), 1)
+    m.settle()
+    assert(picked == "one")
+
+  test("a focused menu item activates from the keyboard"):
+    var picked = ""
+    val m      = mount(MenuItem("Two", () => picked = "two"))
+    m.focus.focus(focusableBox(m.root))
+    m.keys.down(Key.Enter, false)
+    m.settle()
+    assert(picked == "two")
+
+  test("a menu item highlights on hover"):
+    val m    = mount(MenuItem("One", () => ()))
+    val item = focusableBox(m.root)
+    val rest = item.background
+    m.pointer.move(Offset(2, 2))
+    m.settle()
+    assert(item.background != rest)
