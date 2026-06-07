@@ -61,29 +61,37 @@ val App = view {
         text("suit — styling & input", size = 22, color = Color.rgb(0x0b1418)),
       ),
 
-      // Body: a padded column of cards. It sets `textColor` once; the card labels carry
-      // no colour of their own and inherit it through the cascade.
+      // Body: a scrolling column of cards. The viewport sets `textColor` once; the card
+      // labels carry no colour of their own and inherit it through the cascade. There are
+      // more cards than fit, so the wheel scrolls the list — clipped to the viewport, with
+      // the scroll position living on the viewport itself.
       box(flex = 1, padding = EdgeInsets.all(20), textColor = ink)(
-        col(spacing = 16)(
-          card(
-            row(crossAxisAlignment = CrossAxisAlignment.Center, spacing = 16)(
-              Button("Increment", () => setCount(count + 1)),
-              text(s"count: $count"),
-            ),
-          ),
-          card(
-            row(crossAxisAlignment = CrossAxisAlignment.Center, spacing = 16)(
-              Checkbox(checked, setChecked),
-              text(if checked then "enabled" else "disabled"),
-            ),
-          ),
-          card(
-            col(spacing = 10)(
-              text(s"level: ${(level * 100).toInt}%", color = muted),
-              box(width = 260)(
-                Slider(level, setLevel),
+        scrollView(Axis.Vertical)(
+          col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 16)(
+            // The three interactive cards, then filler cards so the column overflows the
+            // viewport and the wheel has something to scroll.
+            Seq(
+              card(
+                row(crossAxisAlignment = CrossAxisAlignment.Center, spacing = 16)(
+                  Button("Increment", () => setCount(count + 1)),
+                  text(s"count: $count"),
+                ),
               ),
-            ),
+              card(
+                row(crossAxisAlignment = CrossAxisAlignment.Center, spacing = 16)(
+                  Checkbox(checked, setChecked),
+                  text(if checked then "enabled" else "disabled"),
+                ),
+              ),
+              card(
+                col(spacing = 10)(
+                  text(s"level: ${(level * 100).toInt}%", color = muted),
+                  box(width = 260)(
+                    Slider(level, setLevel),
+                  ),
+                ),
+              ),
+            ).concat((1 to 6).map(i => card(text(s"item $i — scroll to see me"))))*,
           ),
         ),
       ),

@@ -42,6 +42,12 @@ final class RecordingCanvas extends Canvas:
   def popOpacity(): Unit =
     commands += Command.PopOpacity
 
+  def pushClip(rect: Rect, radius: BorderRadius): Unit =
+    commands += Command.PushClip(rect, radius)
+
+  def popClip(): Unit =
+    commands += Command.PopClip
+
 object RecordingCanvas:
   /** One recorded paint call. Defined on the companion rather than nested in the
     * instance so tests can name `RecordingCanvas.Command.FillRect(...)` to assert
@@ -57,3 +63,5 @@ object RecordingCanvas:
     case DrawText(origin: Offset, text: String, style: TextStyle)
     case PushOpacity(alpha: Double)
     case PopOpacity
+    case PushClip(rect: Rect, radius: BorderRadius)
+    case PopClip

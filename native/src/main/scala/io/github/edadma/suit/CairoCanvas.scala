@@ -185,3 +185,16 @@ final class CairoCanvas(cr: Context, fontFace: FontFace) extends Canvas:
     cr.popGroupToSource()
     cr.paintWithAlpha(alpha)
     cr.restore()
+
+  // Clipping rides on Cairo's own save/restore stack: `save` snapshots the clip region,
+  // the (rounded) path plus `clip` intersects it, and the matching `popClip` `restore`s
+  // the snapshot. Because Cairo intersects rather than replaces, nested clips compound,
+  // which is exactly the overflow-hidden semantics a scroll view inside a card needs.
+  def pushClip(rect: Rect, radius: BorderRadius): Unit =
+    cr.save()
+    if radius.isZero then cr.rectangle(rect.x, rect.y, rect.width, rect.height)
+    else roundedPath(rect, radius)
+    cr.clip()
+    cr.newPath() // `clip` keeps the path current; clear it so later drawing starts clean
+
+  def popClip(): Unit = cr.restore()

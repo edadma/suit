@@ -29,6 +29,7 @@ final class SuitHostConfig extends HostConfig:
     case "padding"  => new RenderPadding
     case "sizedBox" => new RenderConstrained
     case "stack"    => new RenderStack
+    case "scroll"   => new RenderScroll
     case "text"     => new RenderText("")
     case _          => new RenderBox
 
@@ -106,6 +107,11 @@ final class SuitHostConfig extends HostConfig:
       case (p: RenderPadding, "padding") => p.padding = asInsets(value)
 
       case (s: RenderStack, "alignment") => s.alignment = asAlignment(value)
+
+      case (s: RenderScroll, "axis") =>
+        s.axis = value match
+          case a: Axis => a
+          case _       => Axis.Vertical
 
       case (f: RenderFlex, "mainAxisAlignment") =>
         f.mainAxisAlignment = value match

@@ -244,6 +244,90 @@ final class RenderStack(var alignment: Alignment = Alignment.topLeft) extends Re
       ch.offset = alignment.inscribe(ch.size, size)
       i += 1
 
+/** A scrolling viewport over a single child that may be larger than it along one axis.
+  * The viewport fills the room its parent offers; the content is laid out free along the
+  * scroll axis (so it takes its natural extent, however tall or wide) and constrained to
+  * the viewport across it. A scroll position translates the content, which is clipped to
+  * the viewport so the overflow does not paint over neighbours.
+  *
+  * Scroll position is state held here on the render object, not in the component tree —
+  * the browser model, where an element remembers how far it is scrolled across re-renders
+  * (the reconciler retains this object, so the offset survives). The object handles its
+  * own `wheel` events: it registers a wheel handler on itself that scrolls along its axis,
+  * so dropping a [[RenderScroll]] under the pointer router is all that wheel scrolling
+  * needs — no application wiring. */
+final class RenderScroll(var axis: Axis = Axis.Vertical) extends RenderObject:
+  /** How far the content is scrolled along the axis, in pixels from the start. Always
+    * within `[0, maxScroll]`; [[scrollBy]] and `layout` keep it clamped. */
+  var scrollOffset: Double = 0.0
+
+  private var contentMain: Double  = 0.0
+  private var viewportMain: Double = 0.0
+
+  private def isVertical: Boolean = axis == Axis.Vertical
+
+  /** The furthest the content can scroll: the amount by which it overflows the viewport,
+    * or zero when it fits. */
+  def maxScroll: Double = math.max(0.0, contentMain - viewportMain)
+
+  // A wheel notch moves the view by this many pixels — a fixed step rather than the raw
+  // wheel delta (which SDL reports as a small ±1-per-notch float), so one notch scrolls a
+  // readable amount regardless of the platform's wheel granularity.
+  handlers("wheel") = e =>
+    val s = e.asInstanceOf[ScrollEvent]
+    val d = if isVertical then s.deltaY else s.deltaX
+    scrollBy(-d * RenderScroll.WheelStep)
+
+  /** Scroll by `delta` pixels along the axis (positive moves toward the content's end),
+    * clamped to `[0, maxScroll]`. Repositions the content and requests a frame when the
+    * offset actually changes; returns whether it did. */
+  def scrollBy(delta: Double): Boolean =
+    val next = math.max(0.0, math.min(scrollOffset + delta, maxScroll))
+    if next != scrollOffset then
+      scrollOffset = next
+      placeChild()
+      markDirty()
+      true
+    else false
+
+  // The content is positioned by negating the scroll offset, so the ordinary paint and
+  // hit-test walks (both of which use a child's `offset`) translate with the scroll for
+  // free — no special-casing in either pass.
+  private def placeChild(): Unit =
+    soleChild match
+      case ch: RenderObject => ch.offset = if isVertical then Offset(0, -scrollOffset) else Offset(-scrollOffset, 0)
+      case null             => ()
+
+  def layout(constraints: Constraints): Unit =
+    // Free along the scroll axis (content may overflow), bounded across it to the viewport.
+    val childConstraints =
+      if isVertical then Constraints(0, constraints.maxWidth, 0, Double.PositiveInfinity)
+      else Constraints(0, Double.PositiveInfinity, 0, constraints.maxHeight)
+    val childSize = soleChild match
+      case ch: RenderObject => ch.layout(childConstraints); ch.size
+      case null             => Size.zero
+
+    // The viewport fills the space offered; an unbounded axis (no scroll room defined)
+    // falls back to the content's extent, which simply disables scrolling on that axis.
+    val w = if constraints.maxWidth.isFinite then constraints.maxWidth else childSize.width
+    val h = if constraints.maxHeight.isFinite then constraints.maxHeight else childSize.height
+    size = constraints.constrain(Size(w, h))
+
+    contentMain = if isVertical then childSize.height else childSize.width
+    viewportMain = if isVertical then size.height else size.width
+    // Content may have shrunk since the last scroll; re-clamp before placing it.
+    scrollOffset = math.max(0.0, math.min(scrollOffset, maxScroll))
+    placeChild()
+
+  override def paint(canvas: Canvas, origin: Offset): Unit =
+    canvas.pushClip(Rect.at(origin, size), BorderRadius.zero)
+    paintChildren(canvas, origin)
+    canvas.popClip()
+
+object RenderScroll:
+  /** Pixels scrolled per wheel notch. */
+  val WheelStep: Double = 40.0
+
 /** A row or column — the main layout primitive. Children are laid end to end along the
   * **main axis** (horizontal for a row, vertical for a column) and sized across the
   * **cross axis**. Inflexible children (flex 0) take their natural main size; the

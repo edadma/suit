@@ -170,6 +170,15 @@ object dsl:
   def sizedBox(width: Double = Double.NaN, height: Double = Double.NaN)(children: VNode*): VNode =
     el("sizedBox", sized(sized(Map.empty[String, Prop], "width", width), "height", height), children)
 
+  /** A scrolling viewport over its content along `axis` (vertical by default). The
+    * viewport fills the space its parent gives it; the content takes its natural extent
+    * along the scroll axis and is clipped to the viewport, so anything past the edges is
+    * hidden rather than overflowing. The wheel scrolls it with no extra wiring — scroll
+    * position lives on the viewport and persists across re-renders. Give it a single
+    * content node (wrap several in a `col`/`row`). */
+  def scrollView(axis: Axis = Axis.Vertical)(children: VNode*): VNode =
+    el("scroll", Map("axis" -> PropValue(axis)), children)
+
   /** A z-ordered overlay: children stack back-to-front, each positioned by `alignment`. */
   def stack(alignment: Alignment = Alignment.topLeft)(children: VNode*): VNode =
     el("stack", Map("alignment" -> PropValue(alignment)), children)

@@ -48,3 +48,15 @@ trait Canvas:
 
   /** Close the most recent [[pushOpacity]] group, compositing it at the alpha given. */
   def popOpacity(): Unit
+
+  /** Restrict subsequent drawing to the (rounded) rectangle `rect` until the matching
+    * [[popClip]] runs — anything painted outside is discarded. A scroll view brackets its
+    * content this way so the part scrolled past its edges does not bleed over its
+    * neighbours; a rounded clip also gives an overflow-hidden card crisp corners. The
+    * clip intersects whatever clip is already in force, so nested clips compound, and a
+    * [[popClip]] restores exactly the region that was in effect before its push. Calls
+    * nest with [[pushOpacity]]/[[popOpacity]] as long as each push is balanced. */
+  def pushClip(rect: Rect, radius: BorderRadius): Unit
+
+  /** Close the most recent [[pushClip]], restoring the previous clip region. */
+  def popClip(): Unit
