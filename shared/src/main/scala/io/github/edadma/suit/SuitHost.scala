@@ -87,6 +87,8 @@ final class SuitHostConfig extends HostConfig:
       case (o, "flex")      => o.flex = asInt(value)
       // `focusable` applies to any object that should be able to take keyboard focus.
       case (o, "focusable") => o.focusable = value == true
+      // `acceptsText` marks an object that wants text-input while focused (a text field).
+      case (o, "acceptsText") => o.acceptsText = value == true
 
       case (b: RenderBox, "bg")           => b.background = asPaintOrNull(value)
       case (b: RenderBox, "border")       => b.border = asPaintOrNull(value)
@@ -97,6 +99,7 @@ final class SuitHostConfig extends HostConfig:
       case (b: RenderBox, "width")        => b.width = asDoubleOpt(value)
       case (b: RenderBox, "height")       => b.height = asDoubleOpt(value)
       case (b: RenderBox, "padding")      => b.padding = asInsets(value)
+      case (b: RenderBox, "clip")         => b.clipContent = value == true
       // Text-style cascade carriers: descendant text inherits these unless overridden.
       case (b: RenderBox, "textColor")    => b.textAttrs = b.textAttrs.copy(color = asColorOpt(value))
       case (b: RenderBox, "textSize")     => b.textAttrs = b.textAttrs.copy(size = asDoubleOpt(value))

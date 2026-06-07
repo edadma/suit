@@ -24,7 +24,8 @@ import io.github.edadma.suit.widgets.*
 // routers and the focus manager and pumps the motion clock, the widgets' `useState` writes
 // flow through the scheduler seam, the tree is marked dirty, and the loop repaints. Tab is
 // not wired here, so click a control to focus it, then use the keyboard (Space/Enter on the
-// button and checkbox, arrows on the slider).
+// button and checkbox, arrows on the slider, and full text editing — typing, selection,
+// caret movement — in the text field).
 
 /** A custom theme: a violet primary on slightly cooler surfaces, larger corners than the
   * stock theme. Swapping this one record restyles every control below. */
@@ -80,6 +81,7 @@ val App = view {
   val (checked, setChecked, _) = useState(false)
   val (level, setLevel, _)     = useState(0.4)
   val (details, setDetails, _) = useState(false)
+  val (name, setName, _)       = useState("")
 
   ThemeProvider(appTheme)(
     col(spacing = 16)(
@@ -124,6 +126,16 @@ val App = view {
                   box(width = 260)(
                     Slider(level, setLevel),
                   ),
+                ),
+              ),
+              // A text field: type into it, click/drag to select, arrows/Home/End to move,
+              // Ctrl+A to select all. The label below echoes the controlled value.
+              card(
+                col(spacing = 10)(
+                  col(crossAxisAlignment = CrossAxisAlignment.Stretch)(
+                    TextField(name, setName),
+                  ),
+                  text(if name.isEmpty then "type your name above" else s"hello, $name", color = muted),
                 ),
               ),
               // An enter/exit reveal: the button toggles a panel that animates in and out.

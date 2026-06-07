@@ -17,6 +17,9 @@ object widgets:
   private def clamp01(x: Double): Double =
     if x < 0.0 then 0.0 else if x > 1.0 then 1.0 else x
 
+  private def clampIdx(i: Int, n: Int): Int =
+    if i < 0 then 0 else if i > n then n else i
+
   /** A push button: a labelled, focusable rectangle that calls `onPressed` when clicked
     * (a press and release on the button) or activated from the keyboard (Space or Enter
     * while focused). It tints on hover and while held. It paints from the theme in
@@ -132,6 +135,127 @@ object widgets:
           align(Alignment(shown * 2 - 1, 0))(
             box(width = 16, height = 16, bg = theme.accent, border = theme.surface, borderWidth = 2, radius = 8)(),
           ),
+        ),
+      )
+    }
+
+  /** A single-line text field: a focusable, bordered box that edits a string. It is
+    * **controlled** — it renders the `value` it is given and reports edits through
+    * `onChange`, so the parent owns the text. While focused it receives typed characters
+    * (the runtime opens the platform text-input session for it) and editing keys: Backspace
+    * and Delete remove, the arrows / Home / End move the caret (with Shift to extend a
+    * selection), and Ctrl+A selects all. A click places the caret at the nearest character
+    * boundary and a drag selects a range; typing or a delete replaces the selection.
+    *
+    * Caret and selection positions come from measuring text prefixes through the installed
+    * [[TextMeasurer]], so the geometry is exact and JVM-testable. The content is clipped to
+    * the field. (The caret is solid rather than blinking, and the view does not yet scroll
+    * to keep a caret past the right edge in view — both are later refinements.) */
+  val TextField: Component2[String, String => Unit] =
+    component[String, String => Unit] { (value, onChange) =>
+      val theme                    = useTheme()
+      val (caret, setCaret, _)     = useState(0)
+      val (anchor, setAnchor, _)   = useState(0)
+      val (focused, setFocused, _) = useState(false)
+
+      val len    = value.length
+      val c      = clampIdx(caret, len)
+      val a      = clampIdx(anchor, len)
+      val selLo  = math.min(a, c)
+      val selHi  = math.max(a, c)
+      val hasSel = selLo != selHi
+
+      val style = TextStyle(size = theme.textSize, color = theme.surfaceText)
+      val padX  = 8.0
+      val padY  = 6.0
+
+      // Caret/selection geometry from measured prefixes; `lineH` from a non-empty sample so
+      // an empty field still has a full-height caret.
+      def prefixW(i: Int): Double = TextMeasurer.installed.measure(value.substring(0, i), style).width
+      val lineH                   = TextMeasurer.installed.measure(if value.isEmpty then " " else value, style).height
+
+      // The character boundary nearest to `x` (already relative to the text's left edge) —
+      // how a click or drag resolves to a caret index.
+      def indexAtX(x: Double): Int =
+        var best  = 0
+        var bestD = math.abs(x)
+        var i     = 1
+        while i <= len do
+          val d = math.abs(prefixW(i) - x)
+          if d < bestD then { bestD = d; best = i }
+          i += 1
+        best
+
+      def setCollapsed(i: Int): Unit = { setCaret(i); setAnchor(i) }
+
+      def replaceSel(insert: String): Unit =
+        onChange(value.substring(0, selLo) + insert + value.substring(selHi))
+        setCollapsed(selLo + insert.length)
+
+      def backspace(): Unit =
+        if hasSel then replaceSel("")
+        else if c > 0 then { onChange(value.substring(0, c - 1) + value.substring(c)); setCollapsed(c - 1) }
+
+      def del(): Unit =
+        if hasSel then replaceSel("")
+        else if c < len then { onChange(value.substring(0, c) + value.substring(c + 1)); setCollapsed(c) }
+
+      def moveTo(i: Int, extend: Boolean): Unit =
+        val ni = clampIdx(i, len)
+        setCaret(ni)
+        if !extend then setAnchor(ni)
+
+      def onKey(e: KeyEvent): Unit =
+        e.scancode match
+          case Key.Backspace             => backspace()
+          case Key.Delete                => del()
+          case Key.Left if !e.shift && hasSel  => setCollapsed(selLo)
+          case Key.Left                  => moveTo(c - 1, e.shift)
+          case Key.Right if !e.shift && hasSel => setCollapsed(selHi)
+          case Key.Right                 => moveTo(c + 1, e.shift)
+          case Key.Home                  => moveTo(0, e.shift)
+          case Key.End                   => moveTo(len, e.shift)
+          case Key.A if e.ctrl           => { setAnchor(0); setCaret(len) }
+          case _                         => ()
+
+      // The visual layers, back to front: a selection highlight, the text, the caret. Each
+      // is positioned along x by left padding measured to the relevant index.
+      val selLayer: Seq[VNode] =
+        if hasSel then
+          Seq(
+            box(padding = EdgeInsets(0, 0, 0, prefixW(selLo)))(
+              box(width = prefixW(selHi) - prefixW(selLo), height = lineH, bg = theme.accent.withAlpha(80))(),
+            ),
+          )
+        else Seq.empty
+
+      val caretLayer: Seq[VNode] =
+        if focused then
+          Seq(
+            box(padding = EdgeInsets(0, 0, 0, prefixW(c)))(
+              box(width = 2, height = lineH, bg = theme.surfaceText)(),
+            ),
+          )
+        else Seq.empty
+
+      box(
+        bg          = theme.surface,
+        border      = if focused then theme.accent else theme.border,
+        borderWidth = if focused then 2 else 1,
+        radius      = theme.radius,
+        padding     = EdgeInsets.symmetric(horizontal = padX, vertical = padY),
+        clip        = true,
+        focusable   = true,
+        acceptsText = true,
+        onMouseDown = e => setCollapsed(indexAtX(e.local.x - padX)),
+        onMouseMove = e => if e.button != 0 then setCaret(indexAtX(e.local.x - padX)),
+        onTextInput = e => replaceSel(e.text),
+        onKeyDown   = onKey,
+        onFocus     = () => setFocused(true),
+        onBlur      = () => setFocused(false),
+      )(
+        stack(Alignment.centerLeft)(
+          Seq.concat(selLayer, Seq(text(value, color = theme.surfaceText)), caretLayer)*,
         ),
       )
     }

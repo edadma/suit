@@ -36,16 +36,25 @@ final case class ScrollEvent(position: Offset, deltaX: Double, deltaY: Double)
 
 /** A keyboard event delivered to the focused object. `scancode` is the physical key
   * (see [[Key]] for the common names); `repeat` is true for the auto-repeat events a
-  * held key produces. Text entry — the Unicode a key press produces under the active
-  * layout — is a separate concern delivered as text-input events, not derived from
-  * scancodes here. */
-final case class KeyEvent(scancode: Int, repeat: Boolean = false)
+  * held key produces; `shift` / `ctrl` report whether those modifiers were held (the
+  * runtime fills them from the event's modifier bitmask), which a text field needs to tell
+  * a caret move from a selection extend. Text entry — the Unicode a key press produces
+  * under the active layout — is a separate concern delivered as [[TextInputEvent]]s, not
+  * derived from scancodes here. */
+final case class KeyEvent(scancode: Int, repeat: Boolean = false, shift: Boolean = false, ctrl: Boolean = false)
+
+/** A run of typed text delivered to the focused object. This is the layout-resolved
+  * Unicode a key press produces (so a composed or shifted character arrives as the actual
+  * string), the counterpart to a [[KeyEvent]]: editing keys (Backspace, arrows) come as
+  * key events, the characters they sit between come as text-input events. */
+final case class TextInputEvent(text: String)
 
 /** The common physical-key scancodes, named. These are the standard USB-HID usage
   * codes SDL reports as scancodes — a stable cross-platform numbering, not an SDL
   * implementation detail — so naming the handful suit's widgets react to keeps key
   * handling readable without leaking the backend. */
 object Key:
+  val A         = 4 // letters are USB-HID 4..29 (a..z); only the ones widgets react to are named
   val Enter     = 40
   val Escape    = 41
   val Backspace = 42
@@ -106,8 +115,18 @@ final class KeyRouter(focus: FocusManager):
       case r: RenderObject => r.handlers.get(event).foreach(_.apply(e))
       case null            => ()
 
-  def down(scancode: Int, repeat: Boolean): Unit = fire("keydown", KeyEvent(scancode, repeat))
-  def up(scancode: Int): Unit                     = fire("keyup", KeyEvent(scancode))
+  def down(scancode: Int, repeat: Boolean, shift: Boolean = false, ctrl: Boolean = false): Unit =
+    fire("keydown", KeyEvent(scancode, repeat, shift, ctrl))
+  def up(scancode: Int): Unit = fire("keyup", KeyEvent(scancode))
+
+/** Routes typed text to the focused object, the text-entry sibling of [[KeyRouter]]. The
+  * runtime delivers the platform's text-input events here; whichever object holds focus and
+  * has a `textinput` handler receives the typed string. */
+final class TextRouter(focus: FocusManager):
+  def input(text: String): Unit =
+    focus.focused match
+      case r: RenderObject => r.handlers.get("textinput").foreach(_.apply(TextInputEvent(text)))
+      case null            => ()
 
 /** Routes pointer activity into the render tree rooted at `root`, with bubbling,
   * hover, and pointer capture. It owns the small amount of state a pointer needs:

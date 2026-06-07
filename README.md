@@ -1,6 +1,8 @@
 # suit
 
+![Maven Central](https://img.shields.io/maven-central/v/io.github.edadma/suit_native0.5_3)
 [![Last Commit](https://img.shields.io/github/last-commit/edadma/suit)](https://github.com/edadma/suit/commits)
+![GitHub](https://img.shields.io/github/license/edadma/suit)
 ![Scala Version](https://img.shields.io/badge/Scala-3.8.4-blue.svg)
 ![Scala Native Version](https://img.shields.io/badge/Scala_Native-0.5.12-blue.svg)
 

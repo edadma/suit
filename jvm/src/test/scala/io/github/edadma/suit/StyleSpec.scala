@@ -60,6 +60,26 @@ class StyleSpec extends AnyFunSuite:
       RecordingCanvas.Command.FillRect(Rect(0, 0, 10, 10), Solid(Color(1, 2, 3))),
     ))
 
+  test("a clipping box brackets its children in a clip of its rounded rect"):
+    val b = new RenderBox
+    b.background = Color(1, 2, 3)
+    b.borderRadius = BorderRadius.all(4)
+    b.clipContent = true
+    val child = new RenderBox
+    child.background = Color(9, 9, 9)
+    child.width = Some(10)
+    child.height = Some(10)
+    b.insertChild(child, null)
+    b.layout(Constraints.tight(Size(10, 10)))
+    val c = new RecordingCanvas
+    b.paint(c, Offset.zero)
+    assert(c.commands.toList == List(
+      RecordingCanvas.Command.FillRoundedRect(Rect(0, 0, 10, 10), BorderRadius.all(4), Solid(Color(1, 2, 3))),
+      RecordingCanvas.Command.PushClip(Rect(0, 0, 10, 10), BorderRadius.all(4)),
+      RecordingCanvas.Command.FillRect(Rect(0, 0, 10, 10), Solid(Color(9, 9, 9))),
+      RecordingCanvas.Command.PopClip,
+    ))
+
   test("a translucent box brackets its painting in an opacity group"):
     val b = new RenderBox
     b.background = Color(1, 2, 3)

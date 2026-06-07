@@ -60,21 +60,24 @@ object dsl:
       width:        Double                         = Double.NaN,
       height:       Double                         = Double.NaN,
       padding:      EdgeInsets | Null              = null,
+      clip:         Boolean                        = false,
       textColor:    Color | Null                   = null,
       textSize:     Double                         = Double.NaN,
       flex:         Int                            = 0,
       focusable:    Boolean                        = false,
+      acceptsText:  Boolean                        = false,
       onClick:      (PointerEvent => Unit) | Null  = null,
       onMouseDown:  (PointerEvent => Unit) | Null  = null,
       onMouseUp:    (PointerEvent => Unit) | Null  = null,
       onMouseMove:  (PointerEvent => Unit) | Null  = null,
       onMouseEnter: (PointerEvent => Unit) | Null  = null,
       onMouseLeave: (PointerEvent => Unit) | Null  = null,
-      onWheel:      (ScrollEvent => Unit)  | Null  = null,
-      onKeyDown:    (KeyEvent => Unit)     | Null  = null,
-      onKeyUp:      (KeyEvent => Unit)     | Null  = null,
-      onFocus:      (() => Unit)           | Null  = null,
-      onBlur:       (() => Unit)           | Null  = null,
+      onWheel:      (ScrollEvent => Unit)     | Null = null,
+      onKeyDown:    (KeyEvent => Unit)        | Null = null,
+      onKeyUp:      (KeyEvent => Unit)        | Null = null,
+      onTextInput:  (TextInputEvent => Unit)  | Null = null,
+      onFocus:      (() => Unit)              | Null = null,
+      onBlur:       (() => Unit)              | Null = null,
   )(children: VNode*): VNode =
     var props = Map.empty[String, Prop]
     if bg != null then props = props.updated("bg", PropValue(bg))
@@ -87,10 +90,12 @@ object dsl:
     props = sized(props, "width", width)
     props = sized(props, "height", height)
     if padding != null then props = props.updated("padding", PropValue(padding))
+    if clip then props = props.updated("clip", PropValue(true))
     if textColor != null then props = props.updated("textColor", PropValue(textColor))
     props = sized(props, "textSize", textSize)
     if flex != 0 then props = props.updated("flex", PropValue(flex))
     if focusable then props = props.updated("focusable", PropValue(true))
+    if acceptsText then props = props.updated("acceptsText", PropValue(true))
     props = typed[PointerEvent](props, "click", onClick)
     props = typed[PointerEvent](props, "mousedown", onMouseDown)
     props = typed[PointerEvent](props, "mouseup", onMouseUp)
@@ -100,6 +105,7 @@ object dsl:
     props = typed[ScrollEvent](props, "wheel", onWheel)
     props = typed[KeyEvent](props, "keydown", onKeyDown)
     props = typed[KeyEvent](props, "keyup", onKeyUp)
+    props = typed[TextInputEvent](props, "textinput", onTextInput)
     props = focus(props, "focus", onFocus)
     props = focus(props, "blur", onBlur)
     el("box", props, children)

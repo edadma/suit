@@ -37,6 +37,12 @@ abstract class RenderObject:
     * their outer object. */
   var focusable: Boolean = false
 
+  /** Whether this object wants text-input events while focused. The runtime starts the
+    * platform's text-input session when focus lands on an object with this set (and stops it
+    * otherwise), so a text field's outer object sets it; plain focusable widgets leave it
+    * false and only see key events. */
+  var acceptsText: Boolean = false
+
   /** The text-style values this object contributes to the cascade. A [[RenderText]]
     * descendant inherits any field set here unless a nearer ancestor or its own explicit
     * value overrides it (see [[TextStyleAttrs]]). The default carrier sets nothing, so an
@@ -137,6 +143,7 @@ final class RenderBox extends RenderObject:
   var width: Option[Double]      = None
   var height: Option[Double]     = None
   var padding: EdgeInsets        = EdgeInsets.zero
+  var clipContent: Boolean       = false
 
   def layout(constraints: Constraints): Unit =
     val outer = constraints.tighten(width, height)
@@ -170,7 +177,14 @@ final class RenderBox extends RenderObject:
       case p: Paint => if rounded then canvas.fillRoundedRect(rect, borderRadius, p) else canvas.fillRect(rect, p)
       case null     => ()
 
-    paintChildren(canvas, origin)
+    // With `clipContent`, children are confined to the box's (rounded) rect — overflow
+    // hidden — so a long line or an absolutely-positioned child can't spill past the edges.
+    // The border is drawn after, outside the clip, so it stays crisp.
+    if clipContent then
+      canvas.pushClip(rect, borderRadius)
+      paintChildren(canvas, origin)
+      canvas.popClip()
+    else paintChildren(canvas, origin)
 
     border match
       case p: Paint if borderWidth > 0 =>

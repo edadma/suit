@@ -16,9 +16,7 @@ the render tree, layout, and input routing underneath give it pixels and behavio
 [= note =]
 A scrolling viewport is the [`scrollView`](/reference/dsl/#scrollview) DSL primitive (its
 scroll position lives on the render object, so it is a primitive rather than a composed
-widget). A `TextField` is still to come — the text-input plumbing now exists in
-[sdl3](https://sdl3.edadma.dev/), and the focus and keyboard infrastructure is in place, so
-it lands with the next batch of widgets rather than being approximated before then.
+widget).
 [= /note =]
 
 [= note =]
@@ -77,6 +75,41 @@ box(width = 240)(
   Slider(level, setLevel),
 )
 ```
+
+## TextField
+
+```scala
+val TextField: Component2[String, String => Unit]
+```
+
+A single-line text field — a focusable, bordered box that edits a string. It is
+**controlled**: it renders the `value` it is given and reports edits through `onChange`, so
+the parent owns the text. While focused it receives typed characters (the runtime opens the
+platform's text-input session for it) and editing keys:
+
+- **Backspace** / **Delete** remove before / after the caret (or the selection).
+- **Left** / **Right** / **Home** / **End** move the caret; hold **Shift** to extend a selection.
+- **Ctrl+A** selects all.
+- A **click** places the caret at the nearest character boundary; a **drag** selects a range.
+- Typing or a deletion replaces the current selection.
+
+Caret and selection geometry come from measuring text prefixes through the installed
+`TextMeasurer`, so positions are exact (and JVM-testable). The content is clipped to the
+field.
+
+```scala
+val (name, setName, _) = useState("")
+col(crossAxisAlignment = CrossAxisAlignment.Stretch)(
+  TextField(name, setName),
+)
+```
+
+[= note =]
+Give the field a definite width — put it in a `Stretch` column or a fixed-width `box` — so it
+fills the row; like the other controlled widgets it does not impose a width of its own. The
+caret is currently solid (not blinking) and the view does not yet scroll to follow a caret
+past the right edge; both are planned refinements.
+[= /note =]
 
 ## Theme
 

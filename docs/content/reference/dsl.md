@@ -42,14 +42,16 @@ def box(
     width:       Double              = Double.NaN,
     height:      Double              = Double.NaN,
     padding:     EdgeInsets | Null   = null,
+    clip:        Boolean             = false,  // overflow hidden — clip children to the box
     textColor:   Color | Null        = null,   // text-style cascade — see below
     textSize:    Double              = Double.NaN,
     flex:        Int                 = 0,
     focusable:   Boolean             = false,
+    acceptsText: Boolean             = false,  // open text input while focused (text fields)
     // pointer / wheel / key / focus handlers — see the Input guide
     onClick: (PointerEvent => Unit) | Null = null,
     /* onMouseDown, onMouseUp, onMouseMove, onMouseEnter, onMouseLeave,
-       onWheel, onKeyDown, onKeyUp, onFocus, onBlur */
+       onWheel, onKeyDown, onKeyUp, onTextInput, onFocus, onBlur */
 )(children: VNode*): VNode
 ```
 
@@ -57,8 +59,9 @@ def box(
 or a `LinearGradient` / `RadialGradient`; `borderWidth` sets the outline weight. `radius`
 rounds all four corners uniformly, or `corners` sets each independently; `shadow` casts a
 drop shadow; `opacity` fades the whole box (children included). `width` / `height` fix its
-size (omit to fill a tight parent or wrap a loose one); `padding` insets its child; `flex`
-makes it expand inside a row/column.
+size (omit to fill a tight parent or wrap a loose one); `padding` insets its child; `clip`
+hides anything the children draw outside the box (rounded corners included); `flex` makes it
+expand inside a row/column.
 
 `textColor` / `textSize` seed a **text-style cascade**: descendant `text` that doesn't fix
 its own colour or size inherits these, CSS-style, from the nearest ancestor that set them.

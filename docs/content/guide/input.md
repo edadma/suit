@@ -69,21 +69,37 @@ Mark an object focusable in the DSL with `focusable = true`; the built-in widget
 their outer object.
 
 ```scala
-final case class KeyEvent(scancode: Int, repeat: Boolean = false)
+final case class KeyEvent(scancode: Int, repeat: Boolean = false, shift: Boolean = false, ctrl: Boolean = false)
 ```
 
 `scancode` is the **physical** key as a standard USB-HID usage code — a stable
 cross-platform numbering, not an SDL detail. The `Key` object names the common ones:
 
 ```scala
+Key.A  // letters are USB-HID 4..29 (a..z); only the ones widgets use are named
 Key.Enter  Key.Escape  Key.Backspace  Key.Tab  Key.Space
 Key.Left   Key.Right   Key.Up         Key.Down
 Key.Home   Key.End     Key.Delete     Key.PageUp  Key.PageDown
 ```
 
-`repeat` is true for the auto-repeat events a held key produces. Text entry — the Unicode a
-key press produces under the active layout — is a separate concern (text-input events), not
-derived from scancodes here.
+`repeat` is true for the auto-repeat events a held key produces. `shift` / `ctrl` report the
+modifiers held at the time — the runtime fills them from the event's modifier bitmask — which
+is how a text field tells a caret move from a selection extend, or recognises Ctrl+A.
+
+## Text input
+
+Editing keys are scancodes, but the **characters** they sit between are a separate stream:
+the layout-resolved Unicode a key press produces (so a shifted or composed character arrives
+as the actual string). The runtime opens the platform text-input session whenever focus lands
+on an object that sets `acceptsText = true`, and delivers each typed run as a `TextInputEvent`
+to that object's `onTextInput` handler via `TextRouter`.
+
+```scala
+final case class TextInputEvent(text: String)
+```
+
+This is what `TextField` is built on: editing keys come through `onKeyDown`, the typed
+characters through `onTextInput`.
 
 ## Wheel
 
@@ -108,9 +124,11 @@ box(
   onMouseMove  = (e: PointerEvent) => ...,
   onMouseEnter = (e: PointerEvent) => ...,
   onMouseLeave = (e: PointerEvent) => ...,
-  onWheel      = (e: ScrollEvent)  => ...,
-  onKeyDown    = (e: KeyEvent)     => ...,
-  onKeyUp      = (e: KeyEvent)     => ...,
+  onWheel      = (e: ScrollEvent)     => ...,
+  onKeyDown    = (e: KeyEvent)        => ...,
+  onKeyUp      = (e: KeyEvent)        => ...,
+  acceptsText  = true,                          // open text input while focused
+  onTextInput  = (e: TextInputEvent)  => ...,
   onFocus      = () => ...,
   onBlur       = () => ...,
 )(children*)

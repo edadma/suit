@@ -98,7 +98,13 @@ object Suit:
     val focusManager = new FocusManager
     val router       = new PointerRouter(root, focusManager)
     val keyRouter    = new KeyRouter(focusManager)
+    val textRouter   = new TextRouter(focusManager)
     val clearColor   = Color(24, 24, 28)
+
+    // Whether the platform's text-input session is currently open. It is reconciled each
+    // iteration against the focused object: a text field (an object that `acceptsText`) opens
+    // the session while focused so its `TEXT_INPUT` events flow, and anything else closes it.
+    var textInputOn = false
 
     // Lay out and draw the current tree into the Cairo surface, then upload it. Called on
     // startup and again whenever a layout change marks the tree dirty.
@@ -133,9 +139,12 @@ object Suit:
             lastMouse = Offset(e.mouseX, e.mouseY)
             router.move(lastMouse)
           case MOUSE_WHEEL => router.wheel(lastMouse, e.wheelX, e.wheelY)
-          case KEY_DOWN    => keyRouter.down(e.keyScancode, e.keyRepeat)
-          case KEY_UP      => keyRouter.up(e.keyScancode)
-          case _           => ()
+          case KEY_DOWN =>
+            val mod = e.keyMod
+            keyRouter.down(e.keyScancode, e.keyRepeat, (mod & KMOD_SHIFT) != 0, (mod & KMOD_CTRL) != 0)
+          case KEY_UP    => keyRouter.up(e.keyScancode)
+          case TEXT_INPUT => textRouter.input(e.text)
+          case _          => ()
         event = pollEvent()
 
       // Run whatever the handlers produced (state updates, effects), advance any animation
@@ -143,6 +152,15 @@ object Suit:
       drainScheduler()
       clock.pump()
       drainScheduler()
+
+      // Open or close the platform text-input session to match the focused object, so a text
+      // field receives typed characters while focused and the IME is dismissed otherwise.
+      val wantText = focusManager.focused match
+        case r: RenderObject => r.acceptsText
+        case _               => false
+      if wantText != textInputOn then
+        if wantText then window.startTextInput() else window.stopTextInput()
+        textInputOn = wantText
 
       // Re-draw and re-upload only when the tree changed; blit and present every frame so an
       // expose or resize always shows a full frame.
