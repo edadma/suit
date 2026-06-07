@@ -52,7 +52,7 @@ lazy val suit = crossProject(JVMPlatform, NativePlatform)
     // needed. All three bindings come from Central; scala-native finds the Homebrew-installed
     // libSDL3 / libcairo / libfreetype via each binding's `@link`.
     libraryDependencies ++= Seq(
-      "io.github.edadma" %%% "sdl3"     % "0.2.2",
+      "io.github.edadma" %%% "sdl3"     % "0.2.3",
       "io.github.edadma" %%% "libcairo" % "0.0.4",
       "io.github.edadma" %%% "freetype" % "0.0.4",
     ),
