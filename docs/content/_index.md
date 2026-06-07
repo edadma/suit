@@ -23,7 +23,6 @@ The result is "Flutter in Scala Native": components written with hooks, laid out
 constraint negotiation, rendered to a native window.
 
 ```scala
-import io.github.edadma.vdom.*
 import io.github.edadma.suit.*
 import io.github.edadma.suit.dsl.*
 import io.github.edadma.suit.widgets.*

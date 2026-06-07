@@ -9,7 +9,6 @@ it in a native window.
 ## A counter
 
 ```scala
-import io.github.edadma.vdom.*
 import io.github.edadma.suit.*
 import io.github.edadma.suit.dsl.*
 import io.github.edadma.suit.widgets.*

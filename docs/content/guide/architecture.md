@@ -29,6 +29,12 @@ vdom is *host-agnostic*: the same reconciler and hooks drive the browser DOM in
 [riposte](https://github.com/edadma/riposte) and the screen here. The only thing that
 changes per host is the `HostConfig` binding and the leaf layer underneath it.
 
+You never import vdom directly. suit re-exports its consumer-facing surface — `view`,
+`component`, the hooks (`useState`, `useEffect`, …), and the `VNode` model — under
+`io.github.edadma.suit`, so an application imports only `io.github.edadma.suit.*` (plus
+`suit.dsl.*` / `suit.widgets.*`). vdom is an implementation detail, the way the browser's
+DOM engine is to a web page.
+
 ## The host binding
 
 `SuitHostConfig` is the single seam where vdom meets suit's renderer — the analogue of

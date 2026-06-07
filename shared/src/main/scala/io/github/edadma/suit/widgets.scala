@@ -1,6 +1,5 @@
 package io.github.edadma.suit
 
-import io.github.edadma.vdom.*
 import io.github.edadma.suit.dsl.*
 
 // The widget library — the salle-equivalent: small reusable controls composed from

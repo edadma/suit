@@ -1,7 +1,7 @@
 package io.github.edadma.suit
 
 import org.scalatest.funsuite.AnyFunSuite
-import io.github.edadma.vdom.{Host, Scheduler, VNode, createRoot}
+import io.github.edadma.vdom.{Host, Scheduler}
 import io.github.edadma.suit.widgets.*
 
 // Headless tests for the widget library. Widgets are vdom components, so these mount one

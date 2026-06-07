@@ -1,7 +1,7 @@
 package io.github.edadma.suit
 
 import scala.collection.mutable
-import io.github.edadma.vdom.{Host, Scheduler, VNode, createRoot}
+import io.github.edadma.vdom.{Host, Scheduler}
 import io.github.edadma.sdl3.{Color => SdlColor, *}
 import io.github.edadma.sdl3_ttf.{ttfInit, ttfQuit}
 

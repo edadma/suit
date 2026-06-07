@@ -1,7 +1,5 @@
 package io.github.edadma.suit
 
-import io.github.edadma.vdom.*
-
 // suit's declarative surface — the builders that produce vdom `VNode`s, the equivalent
 // of riposte's HTML DSL but for the render-tree element vocabulary. Each builder emits
 // a `VElement` whose tag selects a RenderObject kind and whose props are typed values
