@@ -52,8 +52,9 @@ object dsl:
     * when a pointer-press hit-tests to it. Children render inside, after the padding.
     *
     * `radius` rounds all four corners uniformly; pass `corners` for per-corner control.
-    * `textColor`/`textSize` set a text-style cascade: descendant `text` that doesn't fix
-    * its own colour/size inherits these (CSS-like inheritance, see [[TextStyleAttrs]]).
+    * `textColor`/`textSize`/`textWeight` set a text-style cascade: descendant `text` that
+    * doesn't fix its own colour/size/weight inherits these (CSS-like inheritance, see
+    * [[TextStyleAttrs]]). `textWeight` is a numeric weight (100–900, see [[FontWeight]]).
     *
     * `ref` binds the live [[RenderObject]] into a `useRef` box once it mounts, so a parent can
     * read its laid-out position and size (an overlay anchored to a trigger does this).
@@ -74,6 +75,7 @@ object dsl:
       ignorePointer: Boolean                        = false,
       textColor:     Color | Null                   = null,
       textSize:      Double                         = Double.NaN,
+      textWeight:    Int                            = 0,
       flex:          Int                            = 0,
       focusable:     Boolean                        = false,
       acceptsText:   Boolean                        = false,
@@ -106,6 +108,7 @@ object dsl:
     if ignorePointer then props = props.updated("ignorePointer", PropValue(true))
     if textColor != null then props = props.updated("textColor", PropValue(textColor))
     props = sized(props, "textSize", textSize)
+    if textWeight != 0 then props = props.updated("textWeight", PropValue(textWeight))
     if flex != 0 then props = props.updated("flex", PropValue(flex))
     if focusable then props = props.updated("focusable", PropValue(true))
     if acceptsText then props = props.updated("acceptsText", PropValue(true))
@@ -124,10 +127,11 @@ object dsl:
     val eref: ElementRef | Null = if ref != null then BoxRef(ref) else null
     el("box", props, children, eref)
 
-  /** A run of text. `color` and `size` are optional: omit either and it is **inherited**
-    * from the nearest enclosing container that sets a text colour/size (`box`'s
-    * `textColor`/`textSize`), falling back to the [[TextStyle.default]] if nothing in the
-    * tree sets one.
+  /** A run of text. `color`, `size`, and `weight` are optional: omit any and it is
+    * **inherited** from the nearest enclosing container that sets that text property (`box`'s
+    * `textColor`/`textSize`/`textWeight`), falling back to the [[TextStyle.default]] if
+    * nothing in the tree sets one. `weight` is a numeric font weight (100–900, see
+    * [[FontWeight]]) driven through the font's variable `wght` axis.
     *
     * It is single-line by default. Pass `maxLines` other than 1 (0 = unlimited) to wrap it
     * to the available width; `softWrap = false` then breaks only at explicit `\n`s. `overflow
@@ -137,6 +141,7 @@ object dsl:
       content:  String,
       size:     Double       = Double.NaN,
       color:    Color | Null = null,
+      weight:   Int          = 0,
       align:    TextAlign    = TextAlign.Left,
       maxLines: Int          = 1,
       overflow: TextOverflow = TextOverflow.Clip,
@@ -145,6 +150,7 @@ object dsl:
     var props = Map[String, Prop]("content" -> PropValue(content))
     props = sized(props, "size", size)
     if color != null then props = props.updated("color", PropValue(color))
+    if weight != 0 then props = props.updated("weight", PropValue(weight))
     if align != TextAlign.Left then props = props.updated("align", PropValue(align))
     if maxLines != 1 then props = props.updated("maxLines", PropValue(maxLines))
     if overflow != TextOverflow.Clip then props = props.updated("overflow", PropValue(overflow))

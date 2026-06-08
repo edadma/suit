@@ -107,6 +107,7 @@ final class SuitHostConfig extends HostConfig:
       // Text-style cascade carriers: descendant text inherits these unless overridden.
       case (b: RenderBox, "textColor")    => b.textAttrs = b.textAttrs.copy(color = asColorOpt(value))
       case (b: RenderBox, "textSize")     => b.textAttrs = b.textAttrs.copy(size = asDoubleOpt(value))
+      case (b: RenderBox, "textWeight")   => b.textAttrs = b.textAttrs.copy(weight = asIntOpt(value))
 
       case (c: RenderConstrained, "width")  => c.width = asDoubleOpt(value)
       case (c: RenderConstrained, "height") => c.height = asDoubleOpt(value)
@@ -140,8 +141,9 @@ final class SuitHostConfig extends HostConfig:
       case (t: RenderText, "content") => t.text = asString(value)
       // A text node's own colour/size are explicit overrides; unset (null) means inherit
       // from the cascade rather than snap to a default.
-      case (t: RenderText, "size")  => t.explicitSize = asDoubleOpt(value)
-      case (t: RenderText, "color") => t.explicitColor = asColorOpt(value)
+      case (t: RenderText, "size")   => t.explicitSize = asDoubleOpt(value)
+      case (t: RenderText, "color")  => t.explicitColor = asColorOpt(value)
+      case (t: RenderText, "weight") => t.explicitWeight = asIntOpt(value)
       // Multi-line controls; on removal each falls back to its single-line default.
       case (t: RenderText, "align") =>
         t.align = value match
@@ -199,6 +201,11 @@ final class SuitHostConfig extends HostConfig:
   private def asDoubleOpt(v: Any): Option[Double] = v match
     case d: Double => Some(d)
     case i: Int    => Some(i.toDouble)
+    case _         => None
+
+  private def asIntOpt(v: Any): Option[Int] = v match
+    case i: Int    => Some(i)
+    case d: Double => Some(d.toInt)
     case _         => None
 
   private def asDouble(v: Any): Double = v match

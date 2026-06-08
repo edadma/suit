@@ -3,7 +3,7 @@ package io.github.edadma.suit
 import scala.collection.mutable
 import io.github.edadma.vdom.{Host, Scheduler}
 import io.github.edadma.sdl3.{Color => SdlColor, *}
-import io.github.edadma.libcairo.{Format, imageSurfaceCreate, fontFaceCreateForFTFace}
+import io.github.edadma.libcairo.{Format, imageSurfaceCreate}
 import io.github.edadma.freetype.*
 
 // The runtime. It owns the SDL window and the Cairo drawing surface, installs the vdom
@@ -58,29 +58,28 @@ object Suit:
     cr.scale(device.scaleX, device.scaleY)
     val texture = renderer.createTexture(PIXELFORMAT_ARGB8888, TEXTUREACCESS_STREAMING, device.width, device.height)
 
-    // Load the font through FreeType and wrap it as a Cairo font face — a specific typeface,
-    // not a platform-resolved family name. With no `fontPath`, the Inter font embedded in
-    // the binary is loaded straight from memory; otherwise the given file is read. The face
-    // is held for the app's lifetime (Cairo is reference-counted, and nothing here is created
-    // per frame); the FreeType handles are released at shutdown, after the Cairo contexts
-    // that use them.
+    // Load the font through FreeType. With no `fontPath`, the variable Inter font embedded in
+    // the binary is loaded straight from memory; otherwise the given file is read. Inter is a
+    // variable font, so a face is created per weight on demand and wrapped as a Cairo font face
+    // (see [[Fonts]]); the faces are held for the app's lifetime (nothing here is created per
+    // frame) and the FreeType handles are released at shutdown, after the Cairo contexts that
+    // use them.
     val ftLib = initFreeType match
       case Right(lib) => lib
       case Left(err)  => System.err.println(s"suit: FreeType init failed ($err)"); return
-    val ftFace = (fontPath match
-      case null      => ftLib.newMemoryFace(InterFont.suit_inter_font_data(), InterFont.suit_inter_font_size().toLong, 0)
-      case p: String => ftLib.newFace(p, 0)
-    ) match
-      case Right(face) => face
-      case Left(err)   => System.err.println(s"suit: cannot load font ($err)"); return
-    val fontFace = fontFaceCreateForFTFace(ftFace.faceptr, 0)
+    val openFace: () => Either[Int, io.github.edadma.freetype.Face] = fontPath match
+      case null      => () => ftLib.newMemoryFace(InterFont.suit_inter_font_data(), InterFont.suit_inter_font_size().toLong, 0)
+      case p: String => () => ftLib.newFace(p, 0)
+    val fonts = Fonts.open(ftLib, openFace) match
+      case Right(f)  => f
+      case Left(msg) => System.err.println(s"suit: $msg"); return
 
     // Cairo serves both halves of text: the measurer the layout pass consults and the canvas
-    // that rasterises glyphs, both using the same face, so a string measures and paints
-    // identically.
-    val measurer = new CairoTextMeasurer(fontFace)
+    // that rasterises glyphs, both selecting the face for a run's weight from the same cache,
+    // so a string measures and paints identically.
+    val measurer = new CairoTextMeasurer(fonts)
     TextMeasurer.installed = measurer
-    val canvas = new CairoCanvas(cr, fontFace)
+    val canvas = new CairoCanvas(cr, fonts)
 
     val root = new RenderRoot(Size(width.toDouble, height.toDouble))
 
@@ -202,6 +201,6 @@ object Suit:
     texture.destroy()
     renderer.destroy()
     window.destroy()
-    ftFace.doneFace
+    fonts.close()
     ftLib.doneFreeType
     quit()

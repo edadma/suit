@@ -46,6 +46,7 @@ def box(
     ignorePointer: Boolean             = false,  // click-through: the box and subtree take no pointer
     textColor:     Color | Null        = null,   // text-style cascade — see below
     textSize:      Double              = Double.NaN,
+    textWeight:    Int                 = 0,       // 0 = inherit; 100–900 (see FontWeight)
     flex:          Int                 = 0,
     focusable:     Boolean             = false,
     acceptsText:   Boolean             = false,  // open text input while focused (text fields)
@@ -65,8 +66,10 @@ size (omit to fill a tight parent or wrap a loose one); `padding` insets its chi
 hides anything the children draw outside the box (rounded corners included); `flex` makes it
 expand inside a row/column.
 
-`textColor` / `textSize` seed a **text-style cascade**: descendant `text` that doesn't fix
-its own colour or size inherits these, CSS-style, from the nearest ancestor that set them.
+`textColor` / `textSize` / `textWeight` seed a **text-style cascade**: descendant `text` that
+doesn't fix its own colour, size, or weight inherits these, CSS-style, from the nearest ancestor
+that set them. `textWeight` is a numeric weight (`100`–`900`, see `FontWeight`) driven through
+the bundled variable font's `wght` axis.
 `ignorePointer` makes the box and its whole subtree transparent to hit-testing, so a click
 passes straight through to whatever is behind (a floating tooltip uses this). `ref` binds the
 live render object into a `useRef[RenderObject | Null](null)` box once it mounts, so a parent
@@ -80,6 +83,7 @@ def text(
     content:  String,
     size:     Double       = Double.NaN,
     color:    Color | Null = null,
+    weight:   Int          = 0,                  // 0 = inherit; 100–900 (see FontWeight)
     align:    TextAlign    = TextAlign.Left,     // Left | Center | Right
     maxLines: Int          = 1,                  // 1 = single line; 0 = unlimited
     overflow: TextOverflow = TextOverflow.Clip,  // Clip | Ellipsis
@@ -87,9 +91,11 @@ def text(
 ): VNode
 ```
 
-A run of text. `size` and `color` are **optional**: omit either and it is inherited from the
-nearest enclosing `box` that sets `textSize` / `textColor`, falling back to the default text
-style if nothing in the tree sets one.
+A run of text. `size`, `color`, and `weight` are **optional**: omit any and it is inherited from
+the nearest enclosing `box` that sets `textSize` / `textColor` / `textWeight`, falling back to the
+default text style if nothing in the tree sets one. `weight` is a numeric font weight (`100`–`900`,
+e.g. `FontWeight.Bold`) rendered through the bundled variable font's `wght` axis — one Inter file
+serves every weight.
 
 It is **single-line by default**. Set `maxLines` to something other than `1` (use `0` for
 unlimited) and it **word-wraps** to the width the layout gives it, breaking at spaces and
@@ -106,6 +112,7 @@ text(
 )
 text("Capped at two lines, the rest trimmed…", maxLines = 2, overflow = TextOverflow.Ellipsis)
 text("centred", align = TextAlign.Center)
+text("heavier", weight = FontWeight.Bold)        // 700; FontWeight has Thin…Black (100–900)
 ```
 
 ## svg

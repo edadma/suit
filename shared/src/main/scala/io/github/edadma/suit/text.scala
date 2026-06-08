@@ -10,16 +10,31 @@ package io.github.edadma.suit
 // and tests install a deterministic fake. This mirrors the `Canvas` seam (how to draw)
 // and `vdom.Host.config` (the installed host) — one global, swapped per environment.
 
-/** How a run of text is drawn: its point `size` and `color`. This is the *resolved*
-  * style — both fields concrete — that the measurement and paint seams receive. A
-  * [[RenderText]] computes it from its own explicit values overlaid on whatever it
-  * inherits (see [[TextStyleAttrs]]). Font family and weight are a single global choice
-  * for now (the runtime opens one font file); richer styling layers on here later
+/** How a run of text is drawn: its point `size`, `color`, and `weight`. This is the
+  * *resolved* style — every field concrete — that the measurement and paint seams receive. A
+  * [[RenderText]] computes it from its own explicit values overlaid on whatever it inherits
+  * (see [[TextStyleAttrs]]). `weight` is a CSS-style numeric weight (100–900) driven through
+  * the font's variable `wght` axis by the backend; a backend with only a fixed face ignores
+  * it. Font family is still a single global choice; richer styling layers on here later
   * without changing the layout contract. */
-final case class TextStyle(size: Double = 16.0, color: Color = Color(0, 0, 0))
+final case class TextStyle(size: Double = 16.0, color: Color = Color(0, 0, 0), weight: Int = FontWeight.Normal)
 
 object TextStyle:
   val default: TextStyle = TextStyle()
+
+/** Standard CSS numeric font weights, for naming the value that flows into a font's variable
+  * `wght` axis. The axis is continuous, so any value in range is valid; these are the common
+  * stops. */
+object FontWeight:
+  val Thin       = 100
+  val ExtraLight = 200
+  val Light      = 300
+  val Normal     = 400
+  val Medium     = 500
+  val SemiBold   = 600
+  val Bold       = 700
+  val ExtraBold  = 800
+  val Black      = 900
 
 /** How each line of a multi-line (or single-line) run is positioned horizontally within
   * the width the layout gave the text. `Left` is the default and the historical behaviour;
@@ -40,7 +55,11 @@ enum TextOverflow:
   * resolves an effective [[TextStyle]] by walking its ancestors and falling back to
   * [[TextStyle.default]] for anything no one set. Keeping inheritance in the render tree
   * (not at DSL-build time) is what makes it composable and JVM-testable. */
-final case class TextStyleAttrs(size: Option[Double] = None, color: Option[Color] = None)
+final case class TextStyleAttrs(
+    size: Option[Double] = None,
+    color: Option[Color] = None,
+    weight: Option[Int] = None,
+)
 
 object TextStyleAttrs:
   /** The neutral carrier: inherits everything, overrides nothing. Containers default to

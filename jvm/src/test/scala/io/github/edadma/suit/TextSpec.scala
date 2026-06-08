@@ -109,3 +109,56 @@ class TextSpec extends AnyFunSuite:
     h.setProperty(b, "textColor", Color(7, 8, 9))
     h.setProperty(b, "textSize", 13.0)
     assert(b.textAttrs == TextStyleAttrs(size = Some(13.0), color = Some(Color(7, 8, 9))))
+
+  // --- font weight in the cascade --------------------------------------------
+
+  test("weight defaults to Normal when nothing in the tree sets it"):
+    val t = new RenderText("x")
+    assert(t.resolvedStyle.weight == FontWeight.Normal)
+
+  test("text inherits weight from the nearest ancestor that sets it"):
+    val outer = new RenderBox
+    outer.textAttrs = TextStyleAttrs(weight = Some(FontWeight.Bold))
+    val middle = new RenderBox // transparent to the cascade
+    val t      = new RenderText("x")
+    outer.insertChild(middle, null)
+    middle.insertChild(t, null)
+    assert(t.resolvedStyle.weight == FontWeight.Bold)
+
+  test("a text node's own weight overrides an inherited one"):
+    val outer = new RenderBox
+    outer.textAttrs = TextStyleAttrs(weight = Some(FontWeight.Bold))
+    val t = new RenderText("x")
+    t.explicitWeight = Some(FontWeight.Light)
+    outer.insertChild(t, null)
+    assert(t.resolvedStyle.weight == FontWeight.Light)
+
+  test("the nearer ancestor wins when both set weight"):
+    val outer = new RenderBox
+    outer.textAttrs = TextStyleAttrs(weight = Some(FontWeight.Bold))
+    val inner = new RenderBox
+    inner.textAttrs = TextStyleAttrs(weight = Some(FontWeight.Medium))
+    val t = new RenderText("x")
+    outer.insertChild(inner, null)
+    inner.insertChild(t, null)
+    assert(t.resolvedStyle.weight == FontWeight.Medium)
+
+  test("weight cascades independently of size and colour"):
+    val outer = new RenderBox
+    outer.textAttrs = TextStyleAttrs(size = Some(20), color = Some(Color(9, 9, 9)), weight = Some(FontWeight.SemiBold))
+    val t = new RenderText("x")
+    outer.insertChild(t, null)
+    assert(t.resolvedStyle == TextStyle(20, Color(9, 9, 9), FontWeight.SemiBold))
+
+  test("the host config maps weight on a text node and textWeight on a box"):
+    val h = new SuitHostConfig
+    val t = h.createElement("text", null).asInstanceOf[RenderText]
+    h.setProperty(t, "weight", FontWeight.Bold)
+    assert(t.resolvedStyle.weight == FontWeight.Bold)
+    // removal (prop goes away) falls back to inherit/default
+    h.setProperty(t, "weight", null)
+    assert(t.resolvedStyle.weight == FontWeight.Normal)
+
+    val b = h.createElement("box", null).asInstanceOf[RenderBox]
+    h.setProperty(b, "textWeight", FontWeight.Medium)
+    assert(b.textAttrs.weight == Some(FontWeight.Medium))

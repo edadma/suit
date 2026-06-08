@@ -2,7 +2,7 @@ package io.github.edadma.suit
 
 import scala.collection.mutable
 import scala.scalanative.unsafe.*
-import io.github.edadma.libcairo.{Context, FontFace, Format, Pattern, imageSurfaceCreate, patternCreateLinear, patternCreateRadial}
+import io.github.edadma.libcairo.{Context, Format, Pattern, imageSurfaceCreate, patternCreateLinear, patternCreateRadial}
 
 // suit's production paint target: a Canvas backed by a Cairo drawing context. Cairo is a
 // real 2D vector engine, so every primitive is anti-aliased by its coverage rasteriser —
@@ -15,10 +15,11 @@ import io.github.edadma.libcairo.{Context, FontFace, Format, Pattern, imageSurfa
 // suit's paint pass offsets every object before calling — so the canvas applies no
 // transform of its own. Cairo channels are 0–1 doubles; suit's are 0–255 ints.
 //
-// Text uses a `FontFace` loaded from a specific font file through FreeType (see [[Suit]]),
-// not Cairo's "toy" `selectFontFace` API, so the typeface is exactly the one chosen rather
-// than whatever the platform resolves a family name to.
-final class CairoCanvas(cr: Context, fontFace: FontFace) extends Canvas:
+// Text uses faces loaded from a specific font through FreeType (see [[Fonts]]), not Cairo's
+// "toy" `selectFontFace` API, so the typeface is exactly the one chosen rather than whatever
+// the platform resolves a family name to; the face for a run's weight comes from the shared
+// `Fonts` cache.
+final class CairoCanvas(cr: Context, fonts: Fonts) extends Canvas:
 
   private def rgba(c: Color): Unit =
     cr.setSourceRGBA(c.r / 255.0, c.g / 255.0, c.b / 255.0, c.a / 255.0)
@@ -195,7 +196,7 @@ final class CairoCanvas(cr: Context, fontFace: FontFace) extends Canvas:
   // so paint lands exactly where layout reserved it.
   def drawText(origin: Offset, text: String, style: TextStyle): Unit =
     if text.nonEmpty then
-      cr.setFontFace(fontFace)
+      cr.setFontFace(fonts.faceFor(style.weight))
       cr.setFontSize(style.size)
       rgba(style.color)
       val fe = cr.fontExtents

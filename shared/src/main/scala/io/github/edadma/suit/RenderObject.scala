@@ -522,6 +522,7 @@ final class RenderText(var text: String) extends RenderObject:
     * anything inherited. */
   var explicitSize: Option[Double] = None
   var explicitColor: Option[Color] = None
+  var explicitWeight: Option[Int]  = None
 
   /** Per-line horizontal placement within the laid-out block. */
   var align: TextAlign = TextAlign.Left
@@ -548,15 +549,21 @@ final class RenderText(var text: String) extends RenderObject:
     * this node, then each ancestor's [[RenderObject.textAttrs]] from nearest to root —
     * and anything still unset falls back to [[TextStyle.default]]. */
   def resolvedStyle: TextStyle =
-    var size  = explicitSize
-    var color = explicitColor
+    var size   = explicitSize
+    var color  = explicitColor
+    var weight = explicitWeight
     var n: RenderObject | Null = parent
-    while n != null && (size.isEmpty || color.isEmpty) do
+    while n != null && (size.isEmpty || color.isEmpty || weight.isEmpty) do
       val a = n.asInstanceOf[RenderObject].textAttrs
       if size.isEmpty then size = a.size
       if color.isEmpty then color = a.color
+      if weight.isEmpty then weight = a.weight
       n = n.asInstanceOf[RenderObject].parent
-    TextStyle(size.getOrElse(TextStyle.default.size), color.getOrElse(TextStyle.default.color))
+    TextStyle(
+      size.getOrElse(TextStyle.default.size),
+      color.getOrElse(TextStyle.default.color),
+      weight.getOrElse(TextStyle.default.weight),
+    )
 
   def layout(constraints: Constraints): Unit =
     val style = resolvedStyle

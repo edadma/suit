@@ -13,7 +13,8 @@ import io.github.edadma.suit.widgets.*
 // card shadows swap at once because they all read the one theme record out of context. A
 // gradient header, rounded cards with drop shadows, the text-style cascade (the body sets a
 // `textColor` once and the labels inherit it), a typography card showing multi-line wrapping,
-// two-line ellipsis, and alignment, and an SVG card showing a vector icon — loaded once through
+// two-line ellipsis, and alignment, a font-weights card showing the same words across the
+// variable font's `wght` axis, and an SVG card showing a vector icon — loaded once through
 // librsvg and drawn crisp at several sizes — round out the picture.
 //
 // Motion runs throughout: the button tint fades on hover and press, the checkbox mark
@@ -225,6 +226,20 @@ val App = view {
                       overflow = TextOverflow.Ellipsis,
                     ),
                     text("right-aligned caption", color = muted, align = TextAlign.Right),
+                  ),
+                ),
+                // Font weights: one variable font (InterVariable), its `wght` axis driven per
+                // run. Each line is the same words at a different weight, all rendered from the
+                // single embedded font file — FreeType reshapes the outlines for each weight and
+                // Cairo caches a distinct face per weight behind the scenes.
+                card(
+                  col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 6)(
+                    text("Font weights — one variable font", color = muted),
+                    text("Light — the quick brown fox", weight = FontWeight.Light),
+                    text("Regular — the quick brown fox", weight = FontWeight.Normal),
+                    text("Medium — the quick brown fox", weight = FontWeight.Medium),
+                    text("SemiBold — the quick brown fox", weight = FontWeight.SemiBold),
+                    text("Bold — the quick brown fox", weight = FontWeight.Bold),
                   ),
                 ),
                 // SVG: a vector image rendered straight into the Cairo context through librsvg.
