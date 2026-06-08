@@ -216,6 +216,28 @@ class WidgetSpec extends AnyFunSuite:
     m.settle()
     assert(on)
 
+  test("a switch eases its track colour through intermediate values rather than snapping"):
+    // A controlled wrapper so clicking flips `on` and the transition actually runs. Driven a
+    // partial way through the 150ms transition, the track must be neither the off groove nor the
+    // on accent — proof it animates frame by frame instead of jumping.
+    val app = view {
+      val (on, setOn, _) = useState(false)
+      Switch(on, setOn)
+    }
+    val m = mount(app(), Size(44, 24))
+    m.pointer.down(Offset(22, 12), 1)
+    m.pointer.up(Offset(22, 12), 1)
+    Scheduler.flushSync()      // commit on = true; the transition starts
+    m.clockMs(0) += 75.0       // halfway through the 150ms ease
+    m.clock.pump()
+    Scheduler.flushSync()
+    m.root.layout(Constraints.tight(m.root.windowSize))
+    val track = focusableBox(m.root).background
+    assert(track != Solid(Theme.default.track))  // moved off the start
+    assert(track != Solid(Theme.default.accent)) // not yet at the end
+    m.settle()                                    // and it does reach the accent once settled
+    assert(focusableBox(m.root).background == Solid(Theme.default.accent))
+
   test("a switch tints its track to the accent when on"):
     val onM  = mount(Switch(true, _ => ()), Size(44, 24))
     val offM = mount(Switch(false, _ => ()), Size(44, 24))

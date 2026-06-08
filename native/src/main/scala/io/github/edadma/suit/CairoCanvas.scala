@@ -21,6 +21,23 @@ import io.github.edadma.libcairo.{Context, Format, Pattern, imageSurfaceCreate, 
 // `Fonts` cache.
 final class CairoCanvas(cr: Context, fonts: Fonts) extends Canvas:
 
+  // The inputs that determine a blurred shadow surface's pixels (everything but where it lands).
+  // Two shadows with the same key share one cached, pre-blurred surface.
+  private case class ShadowKey(
+      w:      Int,
+      h:      Int,
+      margin: Int,
+      color:  Color,
+      blurR:  Int,
+      spread: Double,
+      radius: BorderRadius,
+  )
+
+  // Cache of pre-blurred shadow surfaces, so the per-frame box blur is paid once per distinct
+  // shape. Bounded with LRU eviction; an evicted surface is destroyed. A handful of card sizes ×
+  // themes stays well under the cap, and resizing churns through it without leaking.
+  private val shadowCache = new LruCache[ShadowKey, io.github.edadma.libcairo.Surface](64, _.destroy())
+
   private def rgba(c: Color): Unit =
     cr.setSourceRGBA(c.r / 255.0, c.g / 255.0, c.b / 255.0, c.a / 255.0)
 
@@ -177,25 +194,37 @@ final class CairoCanvas(cr: Context, fonts: Fonts) extends Canvas:
     val sh     = math.ceil(shapeH).toInt + 2 * margin
     if sw <= 0 || sh <= 0 then return
 
-    val surface = imageSurfaceCreate(Format.ARGB32, sw, sh)
-    val scr     = surface.create
-    val shape   = Rect(margin.toDouble, margin.toDouble, shapeW, shapeH)
-    val grown = BorderRadius(
-      radius.topLeft + spread,
-      radius.topRight + spread,
-      radius.bottomRight + spread,
-      radius.bottomLeft + spread,
-    )
-    if grown.isZero then scr.rectangle(shape.x, shape.y, shape.width, shape.height)
-    else roundedPath(scr, shape, grown)
-    scr.setSourceRGBA(shadow.color.r / 255.0, shadow.color.g / 255.0, shadow.color.b / 255.0, shadow.color.a / 255.0)
-    scr.fill()
+    // The blurred shadow's pixels depend only on its shape, colour, and blur — not on where it
+    // lands — so it is cached and reused across frames. The box blur (a CPU pass over the whole
+    // surface) is the costly part; doing it once per distinct shape rather than every frame is
+    // what keeps a window full of soft-shadowed cards repainting cheaply. The cached surface is
+    // composited at the right place below; eviction destroys the surface.
+    val key = ShadowKey(sw, sh, margin, shadow.color, r, spread, radius)
+    val surface = shadowCache.getOrElseUpdate(
+      key, {
+        val s     = imageSurfaceCreate(Format.ARGB32, sw, sh)
+        val scr   = s.create
+        val shape = Rect(margin.toDouble, margin.toDouble, shapeW, shapeH)
+        val grown = BorderRadius(
+          radius.topLeft + spread,
+          radius.topRight + spread,
+          radius.bottomRight + spread,
+          radius.bottomLeft + spread,
+        )
+        if grown.isZero then scr.rectangle(shape.x, shape.y, shape.width, shape.height)
+        else roundedPath(scr, shape, grown)
+        scr.setSourceRGBA(shadow.color.r / 255.0, shadow.color.g / 255.0, shadow.color.b / 255.0, shadow.color.a / 255.0)
+        scr.fill()
 
-    // Blur the buffer directly, then mark it dirty so the composite below samples the blurred
-    // pixels and not Cairo's pre-blur snapshot.
-    surface.flush()
-    BoxBlur.blur(new PtrByteSurface(surface.getData, sw, sh, surface.getStride), r, passes)
-    surface.markDirty()
+        // Blur the buffer directly, then mark it dirty so later composites sample the blurred
+        // pixels and not Cairo's pre-blur snapshot.
+        s.flush()
+        BoxBlur.blur(new PtrByteSurface(s.getData, sw, sh, s.getStride), r, passes)
+        s.markDirty()
+        scr.destroy()
+        s
+      },
+    )
 
     // Place the surface so the shape sits under `rect`, offset by the shadow's displacement; the
     // margin and spread that padded the surface are subtracted back out.
@@ -203,9 +232,6 @@ final class CairoCanvas(cr: Context, fonts: Fonts) extends Canvas:
     val destY = rect.y + shadow.offset.y - spread - margin
     cr.setSourceSurface(surface, destX, destY)
     cr.paint()
-
-    scr.destroy()
-    surface.destroy()
 
   // `origin` is the text's top-left; Cairo draws from the baseline, so drop down by the
   // font's ascent. Measurement (see [[CairoTextMeasurer]]) uses the same family and size,
