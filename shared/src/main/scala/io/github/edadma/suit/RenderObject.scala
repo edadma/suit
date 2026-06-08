@@ -691,6 +691,28 @@ final class RenderSvg(var image: SvgImage | Null) extends RenderObject:
       case img: SvgImage => canvas.drawSvg(img, Rect.at(origin, size))
       case null          => ()
 
+/** A leaf that paints a raster (bitmap) image. It sizes to its explicit `width`/`height` when
+  * given, otherwise to the image's own pixel size, each clamped to the constraints. Painting hands
+  * the image and its laid-out rectangle to the canvas, which scales the pixels to fill it (see
+  * [[Canvas.drawImage]]). Like [[RenderSvg]] it is a leaf for hit-testing — wrap an interactive
+  * image in a `box` with the handlers. */
+final class RenderImage(var image: RasterImage | Null) extends RenderObject:
+  var width:  Option[Double] = None
+  var height: Option[Double] = None
+
+  def layout(constraints: Constraints): Unit =
+    val natural = image match
+      case img: RasterImage => Size(img.width.toDouble, img.height.toDouble)
+      case null             => Size.zero
+    val w = width.getOrElse(natural.width)
+    val h = height.getOrElse(natural.height)
+    size = constraints.constrain(Size(w, h))
+
+  override def paint(canvas: Canvas, origin: Offset): Unit =
+    image match
+      case img: RasterImage => canvas.drawImage(img, Rect.at(origin, size))
+      case null             => ()
+
 /** A non-visual node that only holds a position in the sibling order — vdom anchors
   * fragments, portals, and empty renders on one. Zero size, never painted, never a
   * hit-test target. */

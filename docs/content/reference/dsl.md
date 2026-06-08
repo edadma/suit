@@ -139,6 +139,32 @@ svg(icon, width = 72, height = 72)
 loader is native-only (it wraps librsvg); `SvgImage` itself is platform-neutral, so a headless
 test can supply its own stand-in.
 
+## image
+
+```scala
+def image(image: RasterImage, width: Double = Double.NaN, height: Double = Double.NaN): VNode
+```
+
+A raster (bitmap) image. It sizes to `width` / `height` when given, otherwise to the image's own
+pixel size, each clamped to the constraints, and scales to whatever box it ends up in. It is a
+leaf, so wrap it in a `box` for a background, padding, rounded corners (`clip = true`), or a click
+handler.
+
+Load a `RasterImage` from the platform loader (native `Raster`), which decodes JPEG/PNG/BMP/GIF/etc.
+through stb_image. (PNG also loads as an SVG-free raster here, though Cairo handles PNG natively too.)
+
+```scala
+val photo = Raster.fromFile("photo.jpg")   // or Raster.fromBytes(bytes)
+
+image(photo)                       // at the image's own pixel size
+image(photo, width = 96, height = 96)
+box(radius = 12, clip = true)(image(photo, width = 96, height = 96))  // rounded
+```
+
+`Raster.fromFile` / `Raster.fromBytes` throw if the image can't be decoded. The loader is
+native-only (it wraps stb_image + Cairo); `RasterImage` itself is platform-neutral, so a headless
+test can supply its own stand-in.
+
 ## scrollView
 
 ```scala

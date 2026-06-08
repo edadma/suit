@@ -14,8 +14,9 @@ import io.github.edadma.suit.widgets.*
 // gradient header, rounded cards with drop shadows, the text-style cascade (the body sets a
 // `textColor` once and the labels inherit it), a typography card showing multi-line wrapping,
 // two-line ellipsis, and alignment, a font-weights card showing the same words across the
-// variable font's `wght` axis, and an SVG card showing a vector icon — loaded once through
-// librsvg and drawn crisp at several sizes — round out the picture.
+// variable font's `wght` axis, an SVG card showing a vector icon — loaded once through librsvg and
+// drawn crisp at several sizes — and a raster card showing a JPEG decoded with stb_image round out
+// the picture.
 //
 // Motion runs throughout: the button tint fades on hover and press, the checkbox mark
 // scales and fades as it ticks, the slider thumb glides toward its value, and the "Show
@@ -54,6 +55,11 @@ private val appIcon: SvgImage = Svg.fromString(
     |        stroke-linecap="round" stroke-linejoin="round"/>
     |</svg>""".stripMargin,
 )
+
+// A raster photo decoded once at startup from the JPEG embedded in the binary. stb_image turns
+// the bytes into pixels, which become a Cairo surface the canvas blits and scales — the path SVG
+// (vectors) doesn't take. Decoding here, not per frame, keeps the loop cheap.
+private val photo: RasterImage = Raster.fromPtr(DemoImage.suit_demo_jpg_data(), DemoImage.suit_demo_jpg_size().toInt)
 
 /** A detail panel that animates on the way in and out. `usePresence` keeps it mounted
   * through its exit so the close can play, and `useTransition` fades and lifts it: the
@@ -251,6 +257,20 @@ val App = view {
                       svg(appIcon, width = 24, height = 24),
                       svg(appIcon, width = 48, height = 48),
                       svg(appIcon, width = 72, height = 72),
+                    ),
+                  ),
+                ),
+                // Raster image: a JPEG embedded in the binary, decoded once by stb_image into a
+                // Cairo surface and blitted/scaled by the canvas. The second copy is rounded by a
+                // clipping box, the same overflow-hidden path the scroll view and text field use.
+                card(
+                  col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
+                    text("Raster — a JPEG decoded with stb_image", color = muted),
+                    row(crossAxisAlignment = CrossAxisAlignment.Center, spacing = 16)(
+                      image(photo, width = 160, height = 100),
+                      box(radius = 12, clip = true)(
+                        image(photo, width = 96, height = 96),
+                      ),
                     ),
                   ),
                 ),

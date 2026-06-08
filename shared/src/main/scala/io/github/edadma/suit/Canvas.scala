@@ -34,6 +34,12 @@ trait Canvas:
     * doesn't recognise (e.g. a test stub on the Cairo backend) draws nothing. */
   def drawSvg(image: SvgImage, rect: Rect): Unit
 
+  /** Draw the raster `image` scaled to fill `rect`. The Cairo backend blits the decoded pixels
+    * (honouring the clip and opacity group in force), scaling between the source's pixel size and
+    * `rect`; the recording backend captures the call. An image the backend doesn't recognise
+    * (e.g. a test stub on the Cairo backend) draws nothing. */
+  def drawImage(image: RasterImage, rect: Rect): Unit
+
   /** Cast a drop shadow for the (rounded) rectangle `rect`. The backend renders the look
     * described by [[Shadow]]; keeping it a single seam call (rather than the render tree
     * composing many fills) lets a future blur-based backend replace the fake feather

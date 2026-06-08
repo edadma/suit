@@ -140,6 +140,22 @@ final class CairoCanvas(cr: Context, fonts: Fonts) extends Canvas:
       case s: CairoSvg => s.handle.renderDocument(cr, rect.x, rect.y, rect.width, rect.height)
       case _           => ()
 
+  // Blit a decoded bitmap into the context, scaling from its pixel size to `rect`. The surface is
+  // set as the source under a translate+scale, then a rectangle the size of the source is filled,
+  // so it lands exactly in `rect` and composites with the active clip and opacity group. Only a
+  // Cairo-backed bitmap carries a real surface; any other RasterImage (a test stub) is a no-op.
+  def drawImage(image: RasterImage, rect: Rect): Unit =
+    image match
+      case b: CairoBitmap =>
+        cr.save()
+        cr.translate(rect.x, rect.y)
+        if b.width > 0 && b.height > 0 then cr.scale(rect.width / b.width, rect.height / b.height)
+        cr.setSourceSurface(b.surface, 0, 0)
+        cr.rectangle(0, 0, b.width.toDouble, b.height.toDouble)
+        cr.fill()
+        cr.restore()
+      case _ => ()
+
   // Cast a real soft shadow: draw the (spread) rounded shape filled with the shadow colour into
   // an offscreen ARGB32 surface, blur that surface, and composite it back at the shadow's offset.
   // Cairo has no blur primitive, so the softening is a separable box blur (three passes ≈ a

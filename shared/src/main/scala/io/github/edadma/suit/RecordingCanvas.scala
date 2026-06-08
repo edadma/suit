@@ -33,6 +33,9 @@ final class RecordingCanvas extends Canvas:
   def drawSvg(image: SvgImage, rect: Rect): Unit =
     commands += Command.DrawSvg(image, rect)
 
+  def drawImage(image: RasterImage, rect: Rect): Unit =
+    commands += Command.DrawImage(image, rect)
+
   def drawShadow(rect: Rect, radius: BorderRadius, shadow: Shadow): Unit =
     commands += Command.DrawShadow(rect, radius, shadow)
 
@@ -63,6 +66,7 @@ object RecordingCanvas:
     case FillCircle(center: Offset, radius: Double, paint: Paint)
     case Line(a: Offset, b: Offset, width: Double, paint: Paint)
     case DrawSvg(image: SvgImage, rect: Rect)
+    case DrawImage(image: RasterImage, rect: Rect)
     case DrawShadow(rect: Rect, radius: BorderRadius, shadow: Shadow)
     case DrawText(origin: Offset, text: String, style: TextStyle)
     case PushOpacity(alpha: Double)

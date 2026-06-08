@@ -167,6 +167,17 @@ object dsl:
     props = sized(props, "height", height)
     el("svg", props, Nil)
 
+  /** A raster (bitmap) image. It sizes to `width`/`height` when given, otherwise to the image's
+    * own pixel size, and scales to whatever box it ends up in. Pass a [[RasterImage]] from the
+    * platform loader (`Raster.fromFile` / `Raster.fromBytes` on Native, which decodes JPEG/PNG/
+    * etc.). It is a leaf — wrap it in a `box` for a background, padding, rounding (`clip = true`),
+    * or a click handler. */
+  def image(image: RasterImage, width: Double = Double.NaN, height: Double = Double.NaN): VNode =
+    var props = Map[String, Prop]("image" -> PropValue(image))
+    props = sized(props, "width", width)
+    props = sized(props, "height", height)
+    el("image", props, Nil)
+
   /** A horizontal stack. Children are laid left to right; flexible children share the
     * leftover width. See [[MainAxisAlignment]] / [[CrossAxisAlignment]] / [[MainAxisSize]]. */
   def row(
