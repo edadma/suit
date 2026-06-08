@@ -79,7 +79,7 @@ object Suit:
     // so a string measures and paints identically.
     val measurer = new CairoTextMeasurer(fonts)
     TextMeasurer.installed = measurer
-    val canvas = new CairoCanvas(cr, fonts)
+    val canvas = new CairoCanvas(cr, fonts, device.scaleX, device.scaleY)
 
     val root = new RenderRoot(Size(width.toDouble, height.toDouble))
 

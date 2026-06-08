@@ -19,7 +19,13 @@ import io.github.edadma.libcairo.{Context, Format, Pattern, imageSurfaceCreate, 
 // "toy" `selectFontFace` API, so the typeface is exactly the one chosen rather than whatever
 // the platform resolves a family name to; the face for a run's weight comes from the shared
 // `Fonts` cache.
-final class CairoCanvas(cr: Context, fonts: Fonts) extends Canvas:
+// `shadowScaleX` / `shadowScaleY` are the device-pixel scale of the backing surface (1.0 on a
+// 1× display). The canvas transform already maps logical coordinates to device pixels, so most
+// drawing is resolution-independent for free; the one exception is the shadow, which is
+// rasterised into an offscreen buffer and would soften if that buffer were at logical size and
+// then upscaled. It is rendered at this scale and composited back down so it stays sharp at 2×.
+final class CairoCanvas(cr: Context, fonts: Fonts, shadowScaleX: Double = 1.0, shadowScaleY: Double = 1.0)
+    extends Canvas:
 
   // The inputs that determine a blurred shadow surface's pixels (everything but where it lands).
   // Two shadows with the same key share one cached, pre-blurred surface.
@@ -183,13 +189,19 @@ final class CairoCanvas(cr: Context, fonts: Fonts) extends Canvas:
   // is what let the fake-feather version be swapped out with no RenderObject change.
   def drawShadow(rect: Rect, radius: BorderRadius, shadow: Shadow): Unit =
     val passes = 3
-    val r      = math.max(1, math.round(shadow.blur / passes.toDouble).toInt)
-    val margin = r * passes + 1
     val spread = shadow.spread
+    val sx     = shadowScaleX
+    val sy     = shadowScaleY
 
-    // The shape grows by `spread` on every side; the surface adds the blur margin around that.
-    val shapeW = rect.width + 2 * spread
-    val shapeH = rect.height + 2 * spread
+    // Everything below is in DEVICE pixels, so the soft edge is rasterised and blurred at the
+    // display's true resolution and stays sharp at 2×. The blur radius is isotropic; the larger
+    // axis scale keeps it from under-blurring on a non-uniform display. The shape grows by
+    // `spread` on every side; the surface adds the blur margin around that.
+    val cs     = math.max(sx, sy)
+    val r      = math.max(1, math.round(shadow.blur / passes.toDouble * cs).toInt)
+    val margin = r * passes + 1
+    val shapeW = (rect.width + 2 * spread) * sx
+    val shapeH = (rect.height + 2 * spread) * sy
     val sw     = math.ceil(shapeW).toInt + 2 * margin
     val sh     = math.ceil(shapeH).toInt + 2 * margin
     if sw <= 0 || sh <= 0 then return
@@ -206,10 +218,10 @@ final class CairoCanvas(cr: Context, fonts: Fonts) extends Canvas:
         val scr   = s.create
         val shape = Rect(margin.toDouble, margin.toDouble, shapeW, shapeH)
         val grown = BorderRadius(
-          radius.topLeft + spread,
-          radius.topRight + spread,
-          radius.bottomRight + spread,
-          radius.bottomLeft + spread,
+          (radius.topLeft + spread) * cs,
+          (radius.topRight + spread) * cs,
+          (radius.bottomRight + spread) * cs,
+          (radius.bottomLeft + spread) * cs,
         )
         if grown.isZero then scr.rectangle(shape.x, shape.y, shape.width, shape.height)
         else roundedPath(scr, shape, grown)
@@ -226,12 +238,19 @@ final class CairoCanvas(cr: Context, fonts: Fonts) extends Canvas:
       },
     )
 
-    // Place the surface so the shape sits under `rect`, offset by the shadow's displacement; the
-    // margin and spread that padded the surface are subtracted back out.
-    val destX = rect.x + shadow.offset.x - spread - margin
-    val destY = rect.y + shadow.offset.y - spread - margin
-    cr.setSourceSurface(surface, destX, destY)
-    cr.paint()
+    // Composite the device-resolution surface back into the (logical) scene: position it under
+    // `rect`, then undo the canvas's device scale so the high-res pixels land one-to-one on the
+    // backbuffer (the same translate+scale blit `drawImage` uses for a bitmap). The margin and
+    // spread that padded the surface are subtracted back out, in logical units.
+    val destX = rect.x + shadow.offset.x - spread - margin / sx
+    val destY = rect.y + shadow.offset.y - spread - margin / sy
+    cr.save()
+    cr.translate(destX, destY)
+    cr.scale(1.0 / sx, 1.0 / sy)
+    cr.setSourceSurface(surface, 0, 0)
+    cr.rectangle(0, 0, sw.toDouble, sh.toDouble)
+    cr.fill()
+    cr.restore()
 
   // `origin` is the text's top-left; Cairo draws from the baseline, so drop down by the
   // font's ascent. Measurement (see [[CairoTextMeasurer]]) uses the same family and size,
