@@ -275,6 +275,13 @@ object dsl:
   def sizedBox(width: Double = Double.NaN, height: Double = Double.NaN)(children: VNode*): VNode =
     el("sizedBox", sized(sized(Map.empty[String, Prop], "width", width), "height", height), children)
 
+  /** Caps its child to a maximum size without forcing it: the child sizes to its content but
+    * never exceeds `maxWidth`/`maxHeight` (Flutter's `ConstrainedBox`). Omit an axis to leave it
+    * uncapped. Use it to bound a block of wrapping text or a dialog so it grows with its content
+    * up to a limit rather than sprawling to the full width. */
+  def constrainedBox(maxWidth: Double = Double.NaN, maxHeight: Double = Double.NaN)(children: VNode*): VNode =
+    el("sizedBox", sized(sized(Map.empty[String, Prop], "maxWidth", maxWidth), "maxHeight", maxHeight), children)
+
   /** A scrolling viewport over its content along `axis` (vertical by default). The
     * viewport fills the space its parent gives it; the content takes its natural extent
     * along the scroll axis and is clipped to the viewport, so anything past the edges is

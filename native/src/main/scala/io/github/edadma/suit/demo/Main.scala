@@ -356,7 +356,7 @@ val App = view {
                     Dialog(dialog, () => setDialog(false))(
                       col(spacing = 16)(
                         text("A modal dialog", size = 18),
-                        text("It floats above the page, dims the rest, and traps focus until you dismiss it.", color = muted),
+                        text("It floats above the page, dims the rest, and traps focus until you dismiss it.", color = muted, maxLines = 0),
                         row(mainAxisAlignment = MainAxisAlignment.End)(
                           Button("Close", () => setDialog(false)),
                         ),

@@ -78,6 +78,22 @@ class LayoutSpec extends AnyFunSuite:
     assert(s.size == Size(120, 60))
     assert(inner.size == Size(120, 60))      // tight constraints reached the child
 
+  test("a max-width box caps a wide child but leaves a narrow one alone"):
+    // A child wider than the cap is clamped to it; a child narrower than the cap keeps its size.
+    val wide = new RenderConstrained
+    wide.maxWidth = Some(200)
+    val w = child(wide, fixed(500, 40))
+    wide.layout(Constraints.loose(Size(1000, 1000)))
+    assert(w.size == Size(200, 40))  // capped to the max
+    assert(wide.size == Size(200, 40))
+
+    val narrow = new RenderConstrained
+    narrow.maxWidth = Some(200)
+    val n = child(narrow, fixed(80, 40))
+    narrow.layout(Constraints.loose(Size(1000, 1000)))
+    assert(n.size == Size(80, 40))   // under the cap → unchanged
+    assert(narrow.size == Size(80, 40))
+
   // --- RenderPadding ---------------------------------------------------------
 
   test("padding insets its child and grows by the insets"):
@@ -223,6 +239,17 @@ class LayoutSpec extends AnyFunSuite:
     assert(box.background == null)
     h.setProperty(b, "width", null)
     assert(box.width == None)
+
+  test("the host config maps max-width/height onto a constrained box"):
+    val h = new SuitHostConfig
+    val c = h.createElement("sizedBox", null)
+    val cb = c.asInstanceOf[RenderConstrained]
+    h.setProperty(c, "maxWidth", 420.0)
+    assert(cb.maxWidth == Some(420.0))
+    h.setProperty(c, "maxHeight", 300.0)
+    assert(cb.maxHeight == Some(300.0))
+    h.setProperty(c, "maxWidth", null)
+    assert(cb.maxWidth == None)
 
   test("the host config sets flex-layout enums"):
     val h = new SuitHostConfig

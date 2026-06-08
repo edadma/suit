@@ -49,6 +49,21 @@ class DialogSpec extends AnyFunSuite:
     root.layout(Constraints.tight(size))
     Mounted(root, overlay, focus, new PointerRouter(root, focus), clock, clockMs)
 
+  private def allObjects(o: RenderObject): List[RenderObject] =
+    o :: o.children.toList.flatMap(allObjects)
+
+  test("a dialog caps its content to its width"):
+    // A child far wider than the dialog's width must be clamped to it, so body content stays
+    // within the modal instead of sprawling — the bound that lets text wrap.
+    val m = mount(
+      Dialog(open = true, onClose = () => (), width = 300)(sizedBox(width = 999, height = 20)()),
+      Size(800, 600),
+    )
+    m.settle()
+    val constraineds = allObjects(m.overlay).collect { case c: RenderConstrained => c }
+    assert(constraineds.nonEmpty)
+    assert(constraineds.forall(_.size.width <= 300)) // the 999-wide child was capped to the dialog width
+
   test("a closed dialog portals nothing into the overlay"):
     val m = mount(Dialog(open = false, onClose = () => ())(text("body")))
     m.settle()

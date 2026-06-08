@@ -242,16 +242,31 @@ final class RenderBox extends RenderObject:
 
     if faded then canvas.popOpacity()
 
-/** Forces a fixed size onto its child (SwiftUI's `.frame` / Flutter's `SizedBox`).
-  * Each given axis is handed to the child as a tight constraint; an axis left unset
-  * passes the parent's constraint straight through. With no child it simply occupies
-  * the requested size. Unlike [[RenderBox]] it has no appearance — it is pure layout. */
+/** Forces a fixed size onto its child (SwiftUI's `.frame` / Flutter's `SizedBox`), and/or
+  * caps it to a maximum (Flutter's `ConstrainedBox`). A fixed `width`/`height` is handed to the
+  * child as a tight constraint; a `maxWidth`/`maxHeight` instead lowers the *maximum* the child
+  * may take while leaving it free to be smaller, so the child sizes to its content up to that
+  * cap (what bounds a dialog's width so its text wraps without forcing a tiny dialog wide). An
+  * axis with neither passes the parent's constraint straight through. With no child it occupies
+  * the resulting size. Unlike [[RenderBox]] it has no appearance — it is pure layout. */
 final class RenderConstrained extends RenderObject:
-  var width: Option[Double]  = None
-  var height: Option[Double] = None
+  var width: Option[Double]     = None
+  var height: Option[Double]    = None
+  var maxWidth: Option[Double]  = None
+  var maxHeight: Option[Double] = None
 
   def layout(constraints: Constraints): Unit =
-    val c = constraints.tighten(width, height)
+    // Lower the available maximums by any cap (keeping the minimums valid), then tighten the
+    // fixed axes within what's left.
+    val capW = maxWidth.getOrElse(Double.PositiveInfinity)
+    val capH = maxHeight.getOrElse(Double.PositiveInfinity)
+    val capped = Constraints(
+      constraints.minWidth.min(capW),
+      constraints.maxWidth.min(capW),
+      constraints.minHeight.min(capH),
+      constraints.maxHeight.min(capH),
+    )
+    val c = capped.tighten(width, height)
     soleChild match
       case ch: RenderObject =>
         ch.layout(c)

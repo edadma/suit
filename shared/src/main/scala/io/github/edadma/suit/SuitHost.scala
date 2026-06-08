@@ -111,8 +111,10 @@ final class SuitHostConfig extends HostConfig:
       case (b: RenderBox, "textSize")     => b.textAttrs = b.textAttrs.copy(size = asDoubleOpt(value))
       case (b: RenderBox, "textWeight")   => b.textAttrs = b.textAttrs.copy(weight = asIntOpt(value))
 
-      case (c: RenderConstrained, "width")  => c.width = asDoubleOpt(value)
-      case (c: RenderConstrained, "height") => c.height = asDoubleOpt(value)
+      case (c: RenderConstrained, "width")     => c.width = asDoubleOpt(value)
+      case (c: RenderConstrained, "height")    => c.height = asDoubleOpt(value)
+      case (c: RenderConstrained, "maxWidth")  => c.maxWidth = asDoubleOpt(value)
+      case (c: RenderConstrained, "maxHeight") => c.maxHeight = asDoubleOpt(value)
 
       case (p: RenderPadding, "padding") => p.padding = asInsets(value)
 

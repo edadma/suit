@@ -254,6 +254,7 @@ def Dialog(
     onClose:      () => Unit,
     maskClosable: Boolean = true,
     exitMs:       Int     = 200,
+    width:        Double  = 420,
 )(children: VNode*): VNode
 ```
 
@@ -268,6 +269,11 @@ tree. Opening moves focus into the dialog and **traps Tab** within it; Escape cl
 anywhere inside; closing **restores focus** to whatever held it before. The scrim and card
 fade in and the dialog stays mounted through its close animation (`exitMs`) before unmounting,
 via `usePresence` + `useTransition`.
+
+The content is **capped to `width` pixels** — sized to its content but never wider — so body
+text has a width to wrap into. Remember `text` is single-line by default, so pass it `maxLines`
+other than 1 (e.g. `maxLines = 0` for unlimited) to wrap. Pass `width = Double.NaN` to leave the
+card uncapped (a long single line then grows it unbounded).
 
 The overlay layer is provided by `Suit.run`; with none available (outside a running app) the
 dialog renders nothing. A headless test wires its own through `OverlayContext` — see

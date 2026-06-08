@@ -311,6 +311,18 @@ def sizedBox(width: Double = Double.NaN, height: Double = Double.NaN)(children: 
 A fixed-size box with no appearance: forces `width`/`height` onto its child (or occupies
 that size with no child). Omit an axis to leave it to the parent.
 
+## constrainedBox
+
+```scala
+def constrainedBox(maxWidth: Double = Double.NaN, maxHeight: Double = Double.NaN)(children: VNode*): VNode
+```
+
+Caps its child to a maximum *without* forcing it — the child sizes to its content but never
+exceeds `maxWidth`/`maxHeight` (Flutter's `ConstrainedBox`). Omit an axis to leave it uncapped.
+Use it to bound a block of wrapping text or a panel so it grows with its content up to a limit
+rather than sprawling to the full width. (`sizedBox` pins an exact size; `constrainedBox` only
+sets a ceiling.)
+
 ## stack / align / center
 
 ```scala

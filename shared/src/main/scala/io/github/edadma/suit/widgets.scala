@@ -517,9 +517,9 @@ object widgets:
   // The modal implementation. Props are a tuple: open flag, close callback, whether a scrim
   // click dismisses, and the exit-animation duration. A friendlier `Dialog(...)` wrapper
   // below names them.
-  private val DialogImpl: ContainerP[(Boolean, () => Unit, Boolean, Int)] =
-    container[(Boolean, () => Unit, Boolean, Int)] { (props, children) =>
-      val (open, onClose, maskClosable, exitMs) = props
+  private val DialogImpl: ContainerP[(Boolean, () => Unit, Boolean, Int, Double)] =
+    container[(Boolean, () => Unit, Boolean, Int, Double)] { (props, children) =>
+      val (open, onClose, maskClosable, exitMs, width) = props
       val theme    = useTheme()
       val env      = useOverlay()
       val presence = usePresence(open, exitMs)
@@ -572,7 +572,7 @@ object widgets:
                   focusable   = true,
                   onClick     = _ => (),
                   onKeyDown   = e => if e.scancode == Key.Escape then onClose(),
-                )(children*),
+                )(constrainedBox(maxWidth = width)(children*)),
               ),
             ),
           )
@@ -590,14 +590,20 @@ object widgets:
     * anywhere inside; closing restores focus to whatever held it before. The scrim and card
     * fade and the card settles in through [[usePresence]] + [[useTransition]], and the dialog
     * stays mounted through its close animation (`exitMs`) before unmounting. With no overlay
-    * layer available — outside a running app — it renders nothing. */
+    * layer available — outside a running app — it renders nothing.
+    *
+    * The content is capped to `width` pixels — sized to its content but never wider — so body
+    * text has a width to wrap into; pass that text `maxLines` other than 1, since `text` is
+    * single-line by default. Pass `width = Double.NaN` to leave it uncapped (a long single line
+    * then grows the card unbounded). */
   def Dialog(
       open:         Boolean,
       onClose:      () => Unit,
       maskClosable: Boolean = true,
       exitMs:       Int     = 200,
+      width:        Double  = 420,
   )(children: VNode*): VNode =
-    DialogImpl((open, onClose, maskClosable, exitMs))(children*)
+    DialogImpl((open, onClose, maskClosable, exitMs, width))(children*)
 
   // The shared mechanism behind the positioned overlays (Menu, Tooltip). Unlike a modal, these
   // anchor to a trigger rather than centring, so the card is portaled into the overlay and
