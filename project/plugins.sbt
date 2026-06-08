@@ -5,3 +5,8 @@
 // `shared` sources) crosses to the JVM; the SDL runtime stays Native-only.
 addSbtPlugin("org.scala-native"   % "sbt-scala-native"              % "0.5.12")
 addSbtPlugin("org.portable-scala" % "sbt-scala-native-crossproject" % "1.3.2")
+
+// Maven Central publishing: artifact signing + the Sonatype Central tasks. Only the
+// Native artifact ships; the JVM build is test-only and skips publishing.
+addSbtPlugin("com.github.sbt" % "sbt-pgp"      % "2.3.1")
+addSbtPlugin("org.xerial.sbt" % "sbt-sonatype" % "3.12.2")

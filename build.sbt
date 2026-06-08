@@ -1,8 +1,50 @@
+import xerial.sbt.Sonatype.sonatypeCentralHost
 import sbtcrossproject.CrossPlugin.autoImport.{crossProject, CrossType}
 
 ThisBuild / scalaVersion := "3.8.4"
 ThisBuild / organization := "io.github.edadma"
-ThisBuild / version      := "0.0.1-SNAPSHOT"
+ThisBuild / version      := "0.0.1"
+
+// --- Maven Central publishing ----------------------------------------------
+// Metadata for the generated POM and the Sonatype Central wiring, mirroring the
+// edadma cross-project template. Credentials live outside the repo (in
+// ~/.sbt/.../sonatype.sbt), so nothing secret is checked in. Only the Native
+// artifact ships — it is the product; the JVM build is the headless test harness
+// and the root aggregator both skip publishing (see below).
+ThisBuild / organizationName     := "edadma"
+ThisBuild / organizationHomepage := Some(url("https://github.com/edadma"))
+ThisBuild / licenses             := Seq("ISC" -> url("https://opensource.org/licenses/ISC"))
+ThisBuild / versionScheme        := Some("semver-spec")
+ThisBuild / homepage             := Some(url("https://github.com/edadma/suit"))
+ThisBuild / description :=
+  "A declarative, reactive UI toolkit for Scala Native: a constraint-layout render tree over " +
+    "the vdom core, drawn through Cairo with SDL3 as the platform layer."
+ThisBuild / scmInfo := Some(
+  ScmInfo(
+    url("https://github.com/edadma/suit"),
+    "scm:git@github.com:edadma/suit.git",
+  ),
+)
+ThisBuild / developers := List(
+  Developer(
+    id = "edadma",
+    name = "Edward A. Maxedon, Sr.",
+    email = "edadma@gmail.com",
+    url = url("https://github.com/edadma"),
+  ),
+)
+
+ThisBuild / sonatypeCredentialHost := sonatypeCentralHost
+ThisBuild / sonatypeProfileName    := "io.github.edadma"
+ThisBuild / publishTo              := sonatypePublishToBundle.value
+ThisBuild / publishMavenStyle      := true
+ThisBuild / Test / publishArtifact := false
+ThisBuild / publishConfiguration :=
+  publishConfiguration.value.withOverwrite(true).withChecksums(Vector.empty)
+
+// `publishMavenStyle` is read by the publish task rather than another setting, so
+// the unused-key linter flags the ThisBuild form; it is genuinely in effect.
+Global / excludeLintKeys += publishMavenStyle
 
 // suit — a declarative, reactive UI toolkit for Scala Native that renders through
 // SDL3. The vdom core (https://github.com/edadma/riposte) supplies the Widget and
@@ -21,13 +63,13 @@ ThisBuild / version      := "0.0.1-SNAPSHOT"
 //     and salle's components are tested off-device, and is the whole reason the layout
 //     engine was kept FFI-free (no Yoga, no C solver).
 //
-// vdom is pulled live from the sibling riposte checkout as a source dependency (its
-// JVM and Native cross-targets, project ids `vdomJVM` / `vdomNative`), so the core and
-// this host iterate in lockstep with no publish round-trip. Those two vdom targets are
-// unpublished (only `vdom.js` is on Central, for riposte's POM), so the source
-// ProjectRef is the supported way to consume them until the HostConfig surface
-// stabilises and `vdom.native` graduates to Maven Central. SDL3 comes from Central;
-// scala-native finds the Homebrew-installed libSDL3 via the binding's `@link("SDL3")`.
+// The Native build consumes the vdom core from Maven Central (`io.github.edadma::vdom`),
+// so suit is a self-contained publishable library — sim3d and other apps depend on the
+// published artifact with no source checkout. The JVM build is test-only and unpublished;
+// since vdom's JVM artifact is unpublished too, it keeps source-depending on the sibling
+// riposte checkout's `vdomJVM` for the headless reconciler/hooks substrate the layout tests
+// mount on. SDL3 and the other native libs come from Central; scala-native finds the
+// Homebrew-installed shared libraries via each binding's `@link`.
 lazy val suit = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .in(file("."))
@@ -40,10 +82,17 @@ lazy val suit = crossProject(JVMPlatform, NativePlatform)
       "-language:implicitConversions",
     ),
   )
+  // The Native build consumes the vdom core from Maven Central — the published artifact, so
+  // suit itself can be published and consumed (by sim3d and others) without a source checkout.
+  // The JVM build is test-only and unpublished, and vdom's JVM artifact is unpublished too, so
+  // it keeps source-depending on the sibling riposte checkout's `vdomJVM` for the headless
+  // reconciler/hooks substrate the layout tests mount on.
   .jvmConfigure(_.dependsOn(ProjectRef(file("../riposte"), "vdomJVM")))
-  .nativeConfigure(_.dependsOn(ProjectRef(file("../riposte"), "vdomNative")))
   .jvmSettings(
-    // Headless layout/render tests only — the JVM build ships nothing.
+    // Headless layout/render tests only — the JVM build ships nothing, so it is not published
+    // (which also means it never needs vdom's JVM artifact on Central).
+    publish / skip      := true,
+    publishLocal / skip := true,
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test,
     // The tests install process-global host seams (the vdom HostConfig, the scheduler, and
     // the motion clock) before driving a mount, so suites must not run concurrently or they
@@ -59,8 +108,9 @@ lazy val suit = crossProject(JVMPlatform, NativePlatform)
     // Homebrew-installed libSDL3 / libcairo / libfreetype / librsvg / libturbojpeg via each
     // binding's `@link`.
     libraryDependencies ++= Seq(
-      "io.github.edadma" %%% "sdl3"     % "0.2.4",
-      "io.github.edadma" %%% "libcairo" % "0.0.5",
+      "io.github.edadma" %%% "vdom"      % "0.3.1",
+      "io.github.edadma" %%% "sdl3"      % "0.2.4",
+      "io.github.edadma" %%% "libcairo"  % "0.0.5",
       "io.github.edadma" %%% "freetype"  % "0.0.6",
       "io.github.edadma" %%% "librsvg"   % "0.0.2",
       "io.github.edadma" %%% "turbojpeg" % "0.0.1",

@@ -204,7 +204,7 @@ object Suit:
       // field receives typed characters while focused and the IME is dismissed otherwise.
       val wantText = focusManager.focused match
         case r: RenderObject => r.acceptsText
-        case _               => false
+        case null            => false
       if wantText != textInputOn then
         if wantText then window.startTextInput() else window.stopTextInput()
         textInputOn = wantText
