@@ -48,13 +48,19 @@ class MenuSpec extends AnyFunSuite:
 
   /** An app with a trigger box (anchored via a ref) at the top, then a Menu over it. `extra`
     * lets a test push the trigger down the window to exercise the flip-above behaviour. */
-  private def menuApp(open: Boolean, onClose: () => Unit, items: Seq[(String, () => Unit)], extra: Double = 0.0): VNode =
+  private def menuApp(
+      open:      Boolean,
+      onClose:   () => Unit,
+      items:     Seq[(String, () => Unit)],
+      extra:     Double    = 0.0,
+      placement: Placement = Placement(),
+  ): VNode =
     view {
       val ref = useRef[RenderObject | Null](null)
       col()(
         box(width = 80, height = extra)(),
         box(ref = ref, width = 80, height = 20)(),
-        Menu(open, onClose, ref, width = 100)(items.map { case (l, f) => MenuItem(l, f) }*),
+        Menu(open, onClose, ref, width = 100, placement = placement)(items.map { case (l, f) => MenuItem(l, f) }*),
       )
     }.apply()
 
@@ -78,6 +84,26 @@ class MenuSpec extends AnyFunSuite:
     m.settle()
     val placed = m.overlay.children.head.children.head.children.head
     assert(placed.offset.y < 270.0) // above the trigger (which starts at y=270)
+
+  test("a placement gap offsets the card from its anchor"):
+    val m = mount(menuApp(
+      open = true, () => (), Seq("One" -> (() => ())),
+      placement = Placement(gap = 8),
+    ))
+    m.settle()
+    val placed = m.overlay.children.head.children.head.children.head
+    assert(placed.offset.y == 28.0) // 20px trigger + 8px gap
+    assert(placed.offset.x == 0.0)
+
+  test("a Right placement opens to the side of the trigger"):
+    val m = mount(menuApp(
+      open = true, () => (), Seq("One" -> (() => ())),
+      placement = Placement(side = PopoverSide.Right),
+    ))
+    m.settle()
+    val placed = m.overlay.children.head.children.head.children.head
+    assert(placed.offset.x == 80.0) // to the right of the 80px-wide trigger
+    assert(placed.offset.y == 0.0)  // top-aligned with the trigger at y=0
 
   test("clicking outside the menu dismisses it"):
     var closed = 0

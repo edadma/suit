@@ -94,8 +94,10 @@ platform's text-input session for it) and editing keys:
 - Typing or a deletion replaces the current selection.
 
 Caret and selection geometry come from measuring text prefixes through the installed
-`TextMeasurer`, so positions are exact (and JVM-testable). The content is clipped to the
-field.
+`TextMeasurer`, so positions are exact (and JVM-testable). The content is clipped to the field
+and **scrolls horizontally** to keep the caret in view once the text outgrows it. The caret
+**blinks** while the field is focused and snaps solid for a full interval after any edit or
+caret move, so it is steady the instant you type.
 
 ```scala
 val (name, setName, _) = useState("")
@@ -106,9 +108,7 @@ col(crossAxisAlignment = CrossAxisAlignment.Stretch)(
 
 [= note =]
 Give the field a definite width — put it in a `Stretch` column or a fixed-width `box` — so it
-fills the row; like the other controlled widgets it does not impose a width of its own. The
-caret is currently solid (not blinking) and the view does not yet scroll to follow a caret
-past the right edge; both are planned refinements.
+fills the row; like the other controlled widgets it does not impose a width of its own.
 [= /note =]
 
 ## Switch
@@ -294,11 +294,12 @@ col(spacing = 16)(
 
 ```scala
 def Menu(
-    open:    Boolean,
-    onClose: () => Unit,
-    anchor:  Ref[RenderObject | Null],
-    exitMs:  Int    = 150,
-    width:   Double = 180,
+    open:      Boolean,
+    onClose:   () => Unit,
+    anchor:    Ref[RenderObject | Null],
+    exitMs:    Int       = 150,
+    width:     Double    = 180,
+    placement: Placement = Placement(),
 )(items: VNode*): VNode
 
 val MenuItem: Component2[String, () => Unit]
@@ -333,13 +334,38 @@ Fill it with `MenuItem`s — focusable rows that call their `onSelect` on a clic
 Enter while focused, and highlight on hover. Wire each `onSelect` to do the action and close the
 menu.
 
+Pass a `placement` to prefer a different side or add a gap (see [Placement](#placement) below);
+the menu still flips and slides to stay on-screen.
+
+## Placement
+
+```scala
+case class Placement(
+    side:  PopoverSide  = PopoverSide.Below,  // Below | Above | Right | Left
+    gap:   Double       = 0.0,
+    align: PopoverAlign = PopoverAlign.Start, // Start | Center | End
+)
+```
+
+How a positioned overlay (`Menu`, `Tooltip`) places itself against its trigger: the preferred
+`side`, the `gap` in pixels between trigger and card, and the cross-axis `align`. It expresses a
+*preference*, not a fixed position — the popover flips to the opposite side when the preferred one
+would run off-screen, and slides along the cross axis to stay visible. The default — below, flush,
+left-aligned — is the ordinary dropdown placement.
+
+```scala
+Menu(open, onClose, anchor, placement = Placement(side = PopoverSide.Above, gap = 6))(...)
+Tooltip("Saved", placement = Placement(side = PopoverSide.Above))(text("Drafts"))
+```
+
 ## Tooltip
 
 ```scala
 def Tooltip(
-    label:   String,
-    delayMs: Int = 400,
-    exitMs:  Int = 120,
+    label:     String,
+    delayMs:   Int       = 400,
+    exitMs:    Int       = 120,
+    placement: Placement = Placement(),
 )(trigger: VNode*): VNode
 ```
 
@@ -347,7 +373,8 @@ A small label that appears beside its trigger on hover. Wrap the trigger as the 
 tooltip attaches the hover tracking and an anchor itself, so callers wire nothing. It portals
 into the overlay layer and floats just below the trigger (flipping and sliding to stay
 on-screen), and is **click-through** — it never intercepts a click meant for what is underneath.
-It shows after a short hover `delayMs` and fades on both ends.
+It shows after a short hover `delayMs` and fades on both ends. Pass a `placement` to prefer a
+different side — a tooltip often reads better [above](#placement) its trigger.
 
 ```scala
 Tooltip("Saved automatically.")(

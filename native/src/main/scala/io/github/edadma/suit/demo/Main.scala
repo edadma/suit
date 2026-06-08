@@ -338,7 +338,10 @@ val App = view {
                       MenuItem("Duplicate", () => setMenu(false)),
                       MenuItem("Delete", () => setMenu(false)),
                     ),
-                    Tooltip("Portals into the overlay; click-through.")(
+                    Tooltip(
+                      "Portals into the overlay; click-through.",
+                      placement = Placement(side = PopoverSide.Above, gap = 6),
+                    )(
                       text("hover me", color = muted),
                     ),
                   ),

@@ -223,6 +223,25 @@ component, so there is no reconcile per frame; hold the animated state in a `use
 identity is stable, so the `draw` closure reads it without changing). If the callback also needs
 the vnode tree to change, call a `useState` setter from inside it as usual.
 
+### useInterval
+
+```scala
+def useInterval(
+    cb:          () => Unit,
+    ms:          Int,
+    enabled:     Boolean    = true,
+    restartKeys: Array[Any] = Array(),
+)(using Hooks): Unit
+```
+
+suit's `setInterval`: `cb` runs every `ms` milliseconds while the component is mounted, riding the
+same timer seam the motion hooks use. `enabled` gates it — while `false` no timer is armed, so an
+idle component leaves the clock idle rather than pinning it active. The interval re-arms from *now*
+whenever `ms`, `enabled`, or any value in `restartKeys` changes, which lets a phase restart on
+demand (the text-field caret bumps a counter in `restartKeys` so it stays solid for a full interval
+after each keystroke). Unlike `useFrame` it does not request a repaint; the usual `cb` flips a
+`useState`, which re-renders on its own.
+
 ## scrollView
 
 ```scala

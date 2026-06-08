@@ -24,16 +24,33 @@ class TextFieldSpec extends AnyFunSuite with BeforeAndAfterEach:
     allObjects(root).collectFirst { case b: RenderBox if b.focusable => b }.get
 
   private class Harness(val current: () => String, m: Mounted):
+    def root: RenderRoot          = m.root
     def field: RenderBox          = focusableBox(m.root)
     def focus(): Unit             = { m.focus.focus(field); m.settle() }
+    def blur(): Unit              = { m.focus.blur(); m.settle() }
+    def clockActive: Boolean      = m.clock.active
     def typeText(s: String): Unit = { m.text.input(s); m.settle() }
     def key(scancode: Int, shift: Boolean = false, ctrl: Boolean = false): Unit =
       m.keys.down(scancode, repeat = false, shift = shift, ctrl = ctrl); m.settle()
     def click(x: Double): Unit = { m.pointer.down(Offset(x, 12), 1); m.pointer.up(Offset(x, 12), 1); m.settle() }
     def drag(x0: Double, x1: Double): Unit =
       m.pointer.down(Offset(x0, 12), 1); m.pointer.move(Offset(x1, 12)); m.pointer.up(Offset(x1, 12), 1); m.settle()
+    /** Advance the motion clock by `ms` and pump it, committing whatever the blink interval
+      * queued — the deterministic way to step the caret blink in a headless test. */
+    def advance(ms: Double): Unit = { m.clockMs(0) += ms; m.clock.pump(); m.settle() }
+    /** Is the caret (a 2-wide bar) currently in the render tree? */
+    def caretShown: Boolean =
+      allObjects(m.root).exists { case b: RenderBox => b.width.contains(2.0); case _ => false }
 
-  private case class Mounted(root: RenderRoot, pointer: PointerRouter, keys: KeyRouter, text: TextRouter, focus: FocusManager):
+  private case class Mounted(
+      root:    RenderRoot,
+      pointer: PointerRouter,
+      keys:    KeyRouter,
+      text:    TextRouter,
+      focus:   FocusManager,
+      clock:   FrameClock,
+      clockMs: Array[Double],
+  ):
     def settle(): Unit =
       Scheduler.flushSync()
       root.layout(Constraints.tight(root.windowSize))
@@ -43,7 +60,10 @@ class TextFieldSpec extends AnyFunSuite with BeforeAndAfterEach:
     * so it fills the row and click coordinates map across the whole field. */
   private def mount(initial: String = ""): Harness =
     Host.config = new SuitHostConfig
-    var live  = initial
+    val clockMs = new Array[Double](1)
+    val clock   = new FrameClock(() => clockMs(0))
+    clock.install()
+    var live = initial
     val app = view {
       val (v, setV, _) = useState(initial)
       live = v
@@ -54,8 +74,9 @@ class TextFieldSpec extends AnyFunSuite with BeforeAndAfterEach:
     Scheduler.flushSync()
     root.layout(Constraints.tight(Size(240, 40)))
     val focus = new FocusManager
-    val m     = Mounted(root, new PointerRouter(root, focus), new KeyRouter(focus), new TextRouter(focus), focus)
-    val h     = new Harness(() => live, m)
+    val m =
+      Mounted(root, new PointerRouter(root, focus), new KeyRouter(focus), new TextRouter(focus), focus, clock, clockMs)
+    val h = new Harness(() => live, m)
     h.focus()
     h
 
@@ -136,3 +157,59 @@ class TextFieldSpec extends AnyFunSuite with BeforeAndAfterEach:
     val h = mount()
     assert(h.field.focusable)
     assert(h.field.acceptsText)
+
+  // --- caret blink ---------------------------------------------------------
+
+  test("the caret blinks while focused"):
+    val h = mount("abc")     // mount focuses it
+    assert(h.caretShown)     // solid on focus
+    h.advance(530)           // one full interval → caret off
+    assert(!h.caretShown)
+    h.advance(530)           // → back on
+    assert(h.caretShown)
+
+  test("an edit shows a solid caret immediately and restarts the blink"):
+    val h = mount("abc")
+    h.advance(530)           // blink to the off phase
+    assert(!h.caretShown)
+    h.typeText("d")          // an edit forces the caret solid
+    assert(h.caretShown)
+    h.advance(529)           // still within the restarted interval
+    assert(h.caretShown)
+
+  test("an unfocused field shows no caret and arms no blink timer"):
+    val h = mount("abc")
+    assert(h.clockActive)    // focused: the blink interval is running
+    h.blur()
+    assert(!h.caretShown)
+    assert(!h.clockActive)   // blurring cancels the timer, leaving the clock idle
+
+  // --- scroll to caret -----------------------------------------------------
+
+  // The 240-wide field, less 8px padding each side, shows 224px ≈ 22 monospace glyphs.
+  private def caretBox(h: Harness): RenderBox =
+    allObjects(h.root).collectFirst { case b: RenderBox if b.width.contains(2.0) => b }.get
+
+  test("the caret stays within the field when the text overflows it"):
+    val h = mount()
+    h.typeText("abcdefghijklmnopqrstuvwxyz0123456789") // 36 glyphs ≈ 360px, well past 224
+    val field = h.field
+    val cx    = caretBox(h).absoluteOffset.x
+    assert(cx >= field.absoluteOffset.x)
+    assert(cx <= field.absoluteOffset.x + field.size.width)
+
+  test("a short value does not scroll — the caret sits at the measured offset"):
+    val h = mount()
+    h.typeText("abc")                       // fits with room to spare → no scroll
+    val field = h.field
+    val cx    = caretBox(h).absoluteOffset.x
+    // caret after "abc" = 8 padding + 30 from the field's left edge, no scroll applied
+    assert(math.abs(cx - (field.absoluteOffset.x + 8 + 30)) < 1e-6)
+
+  test("moving Home after overflow scrolls the start back into view"):
+    val h = mount()
+    h.typeText("abcdefghijklmnopqrstuvwxyz0123456789")
+    h.key(Key.Home)                         // caret to 0 → text anchors left again
+    val field = h.field
+    val cx    = caretBox(h).absoluteOffset.x
+    assert(math.abs(cx - (field.absoluteOffset.x + 8)) < 1e-6) // caret at the left padding

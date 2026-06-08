@@ -222,6 +222,40 @@ class InputSpec extends AnyFunSuite:
     assert(!fm.focusables(trap).contains(a))
     assert(!fm.focusables(trap).contains(b))
 
+  test("traps stack: the innermost governs Escape and Tab, and releasing restores the outer"):
+    // An outer trap (o1, o2) with an inner trap (i1) pushed over it — a menu opened from inside
+    // a dialog. While the inner trap is active, Tab cycles only its focusables and Escape runs
+    // only the inner handler. Releasing the inner trap uncovers the outer one again.
+    def f: RenderBox = { val b = fixed(10, 10); b.focusable = true; b }
+    val outer = fixed(50, 50); val o1 = f; val o2 = f
+    outer.insertChild(o1, null); outer.insertChild(o2, null)
+    val inner = fixed(20, 20); val i1 = f
+    inner.insertChild(i1, null)
+    val root = fixed(100, 100)
+    root.insertChild(outer, null); root.insertChild(inner, null)
+
+    var outerEsc = 0
+    var innerEsc = 0
+    val fm = new FocusManager
+    fm.trap(outer, () => outerEsc += 1)
+    assert(fm.trapRoot eq outer)
+
+    fm.trap(inner, () => innerEsc += 1) // nest the inner trap over the outer
+    assert(fm.trapRoot eq inner)
+    fm.focusNext(root); assert(fm.isFocused(i1)) // Tab confined to the inner trap
+    fm.focusNext(root); assert(fm.isFocused(i1)) // only one focusable: it stays put
+    assert(fm.escape() && innerEsc == 1 && outerEsc == 0) // Escape peels only the inner
+
+    fm.releaseTrap()                    // inner closed → outer governs again
+    assert(fm.trapRoot eq outer)
+    fm.focus(null)
+    fm.focusNext(root); assert(fm.isFocused(o1)) // Tab now cycles the outer trap's focusables
+    fm.focusNext(root); assert(fm.isFocused(o2))
+    assert(fm.escape() && outerEsc == 1)
+
+    fm.releaseTrap()
+    assert(fm.trapRoot == null && !fm.escape()) // fully released: Escape no longer consumed
+
   // --- ignore pointer ------------------------------------------------------
 
   test("an ignore-pointer object is transparent to hit-testing"):

@@ -22,6 +22,28 @@ object widgets:
   private def clampIdx(i: Int, n: Int): Int =
     if i < 0 then 0 else if i > n then n else i
 
+  /** Which side of its trigger a positioned overlay (menu, tooltip) prefers to open on. The
+    * popover flips to the opposite side when the preferred one would run off-screen. */
+  enum PopoverSide:
+    case Below, Above, Right, Left
+
+  /** Where the overlay sits along the cross axis relative to its trigger: for `Below`/`Above`
+    * this aligns the card's left edge, centre, or right edge to the trigger; for `Right`/`Left`
+    * it aligns the top, middle, or bottom. */
+  enum PopoverAlign:
+    case Start, Center, End
+
+  /** How a positioned overlay places itself against its trigger: the preferred [[PopoverSide]],
+    * the `gap` in pixels between trigger and card, and the cross-axis [[PopoverAlign]]. The
+    * popover still keeps the card on-screen — it flips to the opposite side when the preferred
+    * one overflows and slides along the cross axis — so this expresses the *preference*, not a
+    * fixed position. The default (below, flush, left-aligned) is the dropdown-menu placement. */
+  case class Placement(
+      side:  PopoverSide  = PopoverSide.Below,
+      gap:   Double       = 0.0,
+      align: PopoverAlign = PopoverAlign.Start,
+  )
+
   /** A push button: a labelled, focusable rectangle that calls `onPressed` when clicked
     * (a press and release on the button) or activated from the keyboard (Space or Enter
     * while focused). It tints on hover and while held. It paints from the theme in
@@ -150,15 +172,25 @@ object widgets:
     * boundary and a drag selects a range; typing or a delete replaces the selection.
     *
     * Caret and selection positions come from measuring text prefixes through the installed
-    * [[TextMeasurer]], so the geometry is exact and JVM-testable. The content is clipped to
-    * the field. (The caret is solid rather than blinking, and the view does not yet scroll
-    * to keep a caret past the right edge in view — both are later refinements.) */
+    * [[TextMeasurer]], so the geometry is exact and JVM-testable. The content is clipped to the
+    * field and scrolls horizontally to keep the caret in view once the text outgrows it. The
+    * caret blinks while focused and snaps solid for a full interval after any edit or move. */
   val TextField: Component2[String, String => Unit] =
     component[String, String => Unit] { (value, onChange) =>
       val theme                    = useTheme()
       val (caret, setCaret, _)     = useState(0)
       val (anchor, setAnchor, _)   = useState(0)
       val (focused, setFocused, _) = useState(false)
+
+      // The caret blinks while the field is focused. `blinkOn` flips on an interval; bumping
+      // `blinkEpoch` restarts that interval's phase (and `restartBlink` also forces the caret
+      // solid), so any edit or caret move shows a solid caret for a full interval before it
+      // resumes blinking — the behaviour every text field has. The interval is gated on focus,
+      // so an unfocused field arms no timer and leaves the clock idle.
+      val (blinkOn, setBlinkOn, updateBlinkOn) = useState(true)
+      val (blinkEpoch, _, bumpBlink)           = useState(0)
+      def restartBlink(): Unit                 = { setBlinkOn(true); bumpBlink(_ + 1) }
+      useInterval(() => updateBlinkOn(b => !b), 530, enabled = focused, restartKeys = Array(blinkEpoch))
 
       val len    = value.length
       val c      = clampIdx(caret, len)
@@ -176,6 +208,19 @@ object widgets:
       def prefixW(i: Int): Double = TextMeasurer.installed.measure(value.substring(0, i), style).width
       val lineH                   = TextMeasurer.installed.measure(if value.isEmpty then " " else value, style).height
 
+      // Scroll the content horizontally so the caret stays in view once the text outgrows the
+      // field. The field's laid-out width is read back from a ref (the render object persists
+      // across renders, so its size from the last layout is available here) and reduced by the
+      // padding to the visible text width; `scrollX` is the smallest left shift that keeps the
+      // caret inside that width, so a caret near the start anchors the text left and a caret past
+      // the right edge pulls the text along. The shift applies to every layer together.
+      val fieldRef = useRef[RenderObject | Null](null)
+      val contentW = fieldRef.current match
+        case r: RenderObject => math.max(0.0, r.size.width - 2 * padX)
+        case null            => 0.0
+      val caretX  = prefixW(c)
+      val scrollX = if contentW <= 0.0 then 0.0 else math.max(0.0, caretX - contentW + 2.0)
+
       // The character boundary nearest to `x` (already relative to the text's left edge) —
       // how a click or drag resolves to a caret index.
       def indexAtX(x: Double): Int =
@@ -188,7 +233,7 @@ object widgets:
           i += 1
         best
 
-      def setCollapsed(i: Int): Unit = { setCaret(i); setAnchor(i) }
+      def setCollapsed(i: Int): Unit = { setCaret(i); setAnchor(i); restartBlink() }
 
       def replaceSel(insert: String): Unit =
         onChange(value.substring(0, selLo) + insert + value.substring(selHi))
@@ -206,6 +251,7 @@ object widgets:
         val ni = clampIdx(i, len)
         setCaret(ni)
         if !extend then setAnchor(ni)
+        restartBlink()
 
       def onKey(e: KeyEvent): Unit =
         e.scancode match
@@ -217,7 +263,7 @@ object widgets:
           case Key.Right                 => moveTo(c + 1, e.shift)
           case Key.Home                  => moveTo(0, e.shift)
           case Key.End                   => moveTo(len, e.shift)
-          case Key.A if e.ctrl           => { setAnchor(0); setCaret(len) }
+          case Key.A if e.ctrl           => { setAnchor(0); setCaret(len); restartBlink() }
           case _                         => ()
 
       // The visual layers, back to front: a selection highlight, the text, the caret. Each
@@ -225,16 +271,16 @@ object widgets:
       val selLayer: Seq[VNode] =
         if hasSel then
           Seq(
-            box(padding = EdgeInsets(0, 0, 0, prefixW(selLo)))(
+            box(padding = EdgeInsets(0, 0, 0, prefixW(selLo) - scrollX))(
               box(width = prefixW(selHi) - prefixW(selLo), height = lineH, bg = theme.accent.withAlpha(80))(),
             ),
           )
         else Seq.empty
 
       val caretLayer: Seq[VNode] =
-        if focused then
+        if focused && blinkOn then
           Seq(
-            box(padding = EdgeInsets(0, 0, 0, prefixW(c)))(
+            box(padding = EdgeInsets(0, 0, 0, prefixW(c) - scrollX))(
               box(width = 2, height = lineH, bg = theme.surfaceText)(),
             ),
           )
@@ -249,15 +295,20 @@ object widgets:
         clip        = true,
         focusable   = true,
         acceptsText = true,
-        onMouseDown = e => setCollapsed(indexAtX(e.local.x - padX)),
-        onMouseMove = e => if e.button != 0 then setCaret(indexAtX(e.local.x - padX)),
+        ref         = fieldRef,
+        onMouseDown = e => setCollapsed(indexAtX(e.local.x - padX + scrollX)),
+        onMouseMove = e => if e.button != 0 then setCaret(indexAtX(e.local.x - padX + scrollX)),
         onTextInput = e => replaceSel(e.text),
         onKeyDown   = onKey,
-        onFocus     = () => setFocused(true),
+        onFocus     = () => { setFocused(true); restartBlink() },
         onBlur      = () => setFocused(false),
       )(
         stack(Alignment.centerLeft)(
-          Seq.concat(selLayer, Seq(text(value, color = theme.surfaceText)), caretLayer)*,
+          Seq.concat(
+            selLayer,
+            Seq(box(padding = EdgeInsets(0, 0, 0, -scrollX))(text(value, color = theme.surfaceText))),
+            caretLayer,
+          )*,
         ),
       )
     }
@@ -564,6 +615,7 @@ object widgets:
       onDismiss: (() => Unit) | Null,
       trapFocus: Boolean,
       card:      VNode,
+      placement: Placement = Placement(),
   )(using Hooks): VNode =
     val env            = useOverlay()
     val cardRef        = useRef[RenderObject | Null](null)
@@ -603,17 +655,47 @@ object widgets:
     env.overlay match
       case o: RenderObject if mounted =>
         val win = o.size
-        val (ax, ay, ah) = anchor.current match
+        val (ax, ay, aw, ah) = anchor.current match
           case r: RenderObject =>
             val off = r.absoluteOffset
-            (off.x, off.y, r.size.height)
-          case null => (0.0, 0.0, 0.0)
+            (off.x, off.y, r.size.width, r.size.height)
+          case null => (0.0, 0.0, 0.0, 0.0)
 
-        // Below the anchor by default; flip above when the card would run off the bottom and
-        // there is room above. Aligned to the anchor's left edge, slid left to stay on-screen.
-        val below = ay + ah
-        val top   = if below + sz.height > win.height && ay - sz.height >= 0.0 then ay - sz.height else below
-        val left  = math.max(0.0, math.min(ax, win.width - sz.width))
+        // Place the card on the preferred side of the trigger, flipping to the opposite side
+        // when it would run off-screen and there is room the other way; along the cross axis it
+        // aligns to the trigger per the placement and slides back on-screen if it would overflow.
+        val gap = placement.gap
+        def clamp(v: Double, max: Double): Double = math.max(0.0, math.min(v, max))
+        val crossX = placement.align match
+          case PopoverAlign.Start  => ax
+          case PopoverAlign.Center => ax + (aw - sz.width) / 2
+          case PopoverAlign.End    => ax + aw - sz.width
+        val crossY = placement.align match
+          case PopoverAlign.Start  => ay
+          case PopoverAlign.Center => ay + (ah - sz.height) / 2
+          case PopoverAlign.End    => ay + ah - sz.height
+
+        val (left, top) = placement.side match
+          case PopoverSide.Below =>
+            val belowTop = ay + ah + gap
+            val aboveTop = ay - gap - sz.height
+            val y        = if belowTop + sz.height > win.height && aboveTop >= 0.0 then aboveTop else belowTop
+            (clamp(crossX, win.width - sz.width), y)
+          case PopoverSide.Above =>
+            val aboveTop = ay - gap - sz.height
+            val belowTop = ay + ah + gap
+            val y        = if aboveTop < 0.0 && belowTop + sz.height <= win.height then belowTop else aboveTop
+            (clamp(crossX, win.width - sz.width), y)
+          case PopoverSide.Right =>
+            val rightLeft = ax + aw + gap
+            val leftLeft  = ax - gap - sz.width
+            val x         = if rightLeft + sz.width > win.width && leftLeft >= 0.0 then leftLeft else rightLeft
+            (x, clamp(crossY, win.height - sz.height))
+          case PopoverSide.Left =>
+            val leftLeft  = ax - gap - sz.width
+            val rightLeft = ax + aw + gap
+            val x         = if leftLeft < 0.0 && rightLeft + sz.width <= win.width then rightLeft else leftLeft
+            (x, clamp(crossY, win.height - sz.height))
 
         // Invisible until measured, so the first frame (laid out at the initial guess) never
         // shows; by the time the fade reveals it, it sits at the resolved position.
@@ -661,9 +743,9 @@ object widgets:
 
   // The dropdown menu implementation. Props: open flag, close callback, the anchor ref (placed
   // on the trigger by the caller), the exit-fade duration, and the menu width.
-  private val MenuImpl: ContainerP[(Boolean, () => Unit, Ref[RenderObject | Null], Int, Double)] =
-    container[(Boolean, () => Unit, Ref[RenderObject | Null], Int, Double)] { (props, items) =>
-      val (open, onClose, anchor, exitMs, width) = props
+  private val MenuImpl: ContainerP[(Boolean, () => Unit, Ref[RenderObject | Null], Int, Double, Placement)] =
+    container[(Boolean, () => Unit, Ref[RenderObject | Null], Int, Double, Placement)] { (props, items) =>
+      val (open, onClose, anchor, exitMs, width, placement) = props
       val theme    = useTheme()
       val presence = usePresence(open, exitMs)
       val amt      = useTransition(if presence.phase == PresencePhase.Open then 1.0 else 0.0, exitMs)
@@ -685,7 +767,7 @@ object widgets:
         ),
       )
 
-      popover(anchor, presence.mounted, amt, onDismiss = onClose, trapFocus = true, card = card)
+      popover(anchor, presence.mounted, amt, onDismiss = onClose, trapFocus = true, card = card, placement = placement)
     }
 
   /** A dropdown menu anchored to a trigger. It is **controlled** — the caller owns `open` and
@@ -697,21 +779,23 @@ object widgets:
     * A click anywhere outside the menu dismisses it (a transparent full-window catcher, not a
     * dimming scrim), as does Escape; opening traps Tab within the menu and restores focus on
     * close. The menu fades in and out through [[usePresence]] + [[useTransition]]. With no
-    * overlay layer available it renders nothing. Fill it with [[MenuItem]]s. */
+    * overlay layer available it renders nothing. Fill it with [[MenuItem]]s. Pass a [[Placement]]
+    * to prefer a different side or add a gap; it still flips and slides to stay on-screen. */
   def Menu(
-      open:    Boolean,
-      onClose: () => Unit,
-      anchor:  Ref[RenderObject | Null],
-      exitMs:  Int    = 150,
-      width:   Double = 180,
+      open:      Boolean,
+      onClose:   () => Unit,
+      anchor:    Ref[RenderObject | Null],
+      exitMs:    Int       = 150,
+      width:     Double    = 180,
+      placement: Placement = Placement(),
   )(items: VNode*): VNode =
-    MenuImpl((open, onClose, anchor, exitMs, width))(items*)
+    MenuImpl((open, onClose, anchor, exitMs, width, placement))(items*)
 
   // The tooltip implementation. Props: the label, the hover delay before it shows, and the
   // exit-fade duration. The trigger comes as the children.
-  private val TooltipImpl: ContainerP[(String, Int, Int)] =
-    container[(String, Int, Int)] { (props, children) =>
-      val (label, delayMs, exitMs) = props
+  private val TooltipImpl: ContainerP[(String, Int, Int, Placement)] =
+    container[(String, Int, Int, Placement)] { (props, children) =>
+      val (label, delayMs, exitMs, placement) = props
       val theme                    = useTheme()
       val anchor                   = useRef[RenderObject | Null](null)
       val (hover, setHover, _)     = useState(false)
@@ -735,7 +819,7 @@ object widgets:
       VFragment(
         Vector(
           box(ref = anchor, onMouseEnter = _ => setHover(true), onMouseLeave = _ => setHover(false))(children*),
-          popover(anchor, presence.mounted, amt, onDismiss = null, trapFocus = false, card = card),
+          popover(anchor, presence.mounted, amt, onDismiss = null, trapFocus = false, card = card, placement = placement),
         ),
       )
     }
@@ -746,10 +830,12 @@ object widgets:
     * sliding to stay on-screen), and is **click-through** — it never intercepts a click meant
     * for what is underneath. It shows after a short hover `delayMs` and fades on both ends
     * through [[usePresence]] + [[useTransition]]. With no overlay layer available it shows
-    * nothing (the trigger still renders). */
+    * nothing (the trigger still renders). Pass a [[Placement]] to prefer a different side (a
+    * tooltip often reads better above its trigger) or add a gap. */
   def Tooltip(
-      label:   String,
-      delayMs: Int = 400,
-      exitMs:  Int = 120,
+      label:     String,
+      delayMs:   Int       = 400,
+      exitMs:    Int       = 120,
+      placement: Placement = Placement(),
   )(trigger: VNode*): VNode =
-    TooltipImpl((label, delayMs, exitMs))(trigger*)
+    TooltipImpl((label, delayMs, exitMs, placement))(trigger*)

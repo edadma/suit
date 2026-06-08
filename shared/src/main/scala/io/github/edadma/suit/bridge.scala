@@ -161,6 +161,47 @@ def useFrame(cb: Double => Unit)(using Hooks): Unit =
     Array(),
   )
 
+/** Run `cb` every `ms` milliseconds while the calling component is mounted — suit's
+  * `setInterval`. It rides the same one-shot timer seam the motion hooks use
+  * (`vdom.Timers`, which `Suit.run`'s loop pumps), self-rescheduling after each fire, so it
+  * keeps the same cadence as `useTransition` / `usePresence` and is just as testable
+  * headlessly (a `FrameClock` over a hand-advanced clock fires it deterministically). Unlike
+  * [[useFrame]] it does not request a repaint — the typical use is to flip a `useState`, which
+  * already re-renders; pass a no-side-effect `cb` only if it drives a repaint another way.
+  *
+  * `enabled` gates it: while false no timer is armed, so an idle field stops the loop instead
+  * of pinning the clock active. The interval re-arms from now whenever `ms`, `enabled`, or any
+  * value in `restartKeys` changes — bump a counter in `restartKeys` to restart the phase, which
+  * is how a caret blink stays solid for a full interval after each keystroke. */
+def useInterval(
+    cb:          () => Unit,
+    ms:          Int,
+    enabled:     Boolean    = true,
+    restartKeys: Array[Any] = Array(),
+)(using Hooks): Unit =
+  useEffect(
+    () =>
+      if !enabled then noCleanup
+      else
+        var cancelled                   = false
+        var cancel: (() => Unit) | Null = null
+        def arm(): Unit =
+          cancel = vdom.Timers.schedule(
+            () =>
+              if !cancelled then
+                cb()
+                arm(),
+            ms,
+          )
+        arm()
+        () =>
+          cancelled = true
+          val c = cancel
+          if c != null then c()
+    ,
+    restartKeys ++ Array[Any](ms, enabled),
+  )
+
 // --- component / container / context builders -------------------------------
 
 def component[P](render: P => (Hooks ?=> VNode)): Component[P] = vdom.component(render)

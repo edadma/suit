@@ -75,36 +75,42 @@ object Key:
   * object should receive a key. Focus changes fire `focus` / `blur` handlers (with no
   * payload) so a widget can re-style itself. */
 final class FocusManager:
-  private var _focused: RenderObject | Null   = null
-  private var _trap: RenderObject | Null      = null
-  private var _onEscape: (() => Unit) | Null  = null
+  private var _focused: RenderObject | Null = null
+
+  // Active focus traps, innermost last — a stack so overlays nest: a menu opened from inside a
+  // dialog pushes its own trap over the dialog's, and only the top one governs Tab and Escape
+  // until it is released, restoring the one beneath. A single field could not express that
+  // nesting; the stack is what makes stacked modals behave.
+  private val _traps = scala.collection.mutable.Stack.empty[(RenderObject, () => Unit)]
 
   def focused: RenderObject | Null        = _focused
   def isFocused(o: RenderObject): Boolean = _focused eq o
 
-  /** The subtree focus is currently trapped within, or null when nothing traps it. While a
-    * trap is active, Tab traversal is confined to this subtree (see [[focusNext]]) and Escape
-    * runs the trap's handler (see [[escape]]) — the behaviour a modal dialog needs. */
-  def trapRoot: RenderObject | Null = _trap
+  /** The subtree focus is currently trapped within (the innermost active trap), or null when
+    * nothing traps it. While a trap is active, Tab traversal is confined to this subtree (see
+    * [[focusNext]]) and Escape runs the trap's handler (see [[escape]]) — the behaviour a modal
+    * dialog needs. */
+  def trapRoot: RenderObject | Null =
+    if _traps.isEmpty then null else _traps.top._1
 
   /** Trap focus within `root`: Tab cycles only inside it and [[escape]] invokes `onEscape`.
-    * A modal sets this when it opens and clears it with [[releaseTrap]] when it closes. */
+    * An overlay pushes a trap when it opens and pops it with [[releaseTrap]] when it closes;
+    * traps stack, so opening a second overlay over the first nests rather than replacing it. */
   def trap(root: RenderObject, onEscape: () => Unit): Unit =
-    _trap = root
-    _onEscape = onEscape
+    _traps.push((root, onEscape))
 
-  /** Release the active focus trap (the modal closed). */
+  /** Release the innermost focus trap (the topmost overlay closed), uncovering the one beneath
+    * if any. A no-op when nothing is trapped. */
   def releaseTrap(): Unit =
-    _trap = null
-    _onEscape = null
+    if _traps.nonEmpty then _traps.pop(): Unit
 
-  /** Invoke the active trap's escape handler if one is set, returning whether it was — the
-    * runtime calls this on the Escape key so a trapping modal closes from anywhere inside it,
-    * regardless of which control holds focus, and a plain (untrapped) Escape still routes to
-    * the focused object as an ordinary key. */
+  /** Invoke the innermost trap's escape handler if one is active, returning whether it was —
+    * the runtime calls this on the Escape key so a trapping modal closes from anywhere inside
+    * it, regardless of which control holds focus, and a plain (untrapped) Escape still routes
+    * to the focused object as an ordinary key. With nested traps only the topmost reacts, so
+    * Escape peels overlays off one at a time. */
   def escape(): Boolean =
-    val h = _onEscape
-    if h != null then { h(); true } else false
+    if _traps.isEmpty then false else { _traps.top._2(); true }
 
   /** Move focus to `o` (or clear it with `null`). A no-op if `o` is already focused;
     * otherwise fires `blur` on the object losing focus and `focus` on the one gaining
@@ -144,7 +150,7 @@ final class FocusManager:
     * runtime calls on the Tab key. While a focus trap is active the walk is scoped to the
     * trapped subtree instead of `root`, so Tab cannot leave an open modal. */
   def focusNext(root: RenderObject, backward: Boolean = false): Unit =
-    val scope = _trap match
+    val scope = trapRoot match
       case t: RenderObject => t
       case null            => root
     val list = focusables(scope)

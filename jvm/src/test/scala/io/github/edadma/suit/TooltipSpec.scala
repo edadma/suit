@@ -46,10 +46,13 @@ class TooltipSpec extends AnyFunSuite:
 
   // The trigger sits in a column so its wrapper wraps the small trigger box (a bare wrapper
   // would fill the window), giving the tooltip a sensible anchor rectangle at the origin.
-  private def tooltipApp: VNode =
+  private def tooltipApp: VNode = tooltipApp()
+
+  private def tooltipApp(placement: Placement = Placement(), extra: Double = 0.0): VNode =
     view {
       col()(
-        Tooltip("hint")(box(width = 60, height = 24)()),
+        box(width = 60, height = extra)(),
+        Tooltip("hint", placement = placement)(box(width = 60, height = 24)()),
       )
     }.apply()
 
@@ -74,6 +77,15 @@ class TooltipSpec extends AnyFunSuite:
     val placed = layer.children.head.children.head // layer -> positioned -> card
     val p      = placed.absoluteOffset
     assert(m.overlay.hitTest(Offset(p.x + 1, p.y + 1), m.overlay.absoluteOffset) == null)
+
+  test("an Above placement floats the tooltip above its trigger"):
+    // Push the trigger down so there is room above it, then prefer the Above side.
+    val m = mount(tooltipApp(placement = Placement(side = PopoverSide.Above), extra = 120))
+    m.pointer.move(Offset(10, 130)) // hover the trigger, now at y=120
+    m.settle()
+    assert(m.overlay.children.nonEmpty)
+    val placed = m.overlay.children.head.children.head.children.head // layer -> positioned -> card
+    assert(placed.offset.y < 120.0) // sits above the trigger's top edge at y=120
 
   test("leaving the trigger hides the tooltip again"):
     val m = mount(tooltipApp)
