@@ -134,3 +134,34 @@ laid out in logical coordinates rasterises at the display's true resolution, and
 and glyph lands on physical pixels rather than being stretched up after the fact. On an
 ordinary 1× display the ratio is 1 and this path is a no-op. The small ratio computation is
 the one piece that crosses into `shared/` (`DeviceSurface`) so it stays unit-tested.
+
+## Repaint boundaries
+
+Repainting **only when something changed** is the first half of efficient redraw; the second
+is repainting only *what* changed. A typical app — a control panel of widgets next to an
+animating canvas — would otherwise re-rasterise the entire window on every animation frame,
+throwing away the static UI's pixels just to draw them again. suit avoids this with **repaint
+boundaries**, the same idea as Flutter's `RepaintBoundary`.
+
+A boundary is a render object that caches and repaints independently of the rest of the tree.
+The root is a boundary — the whole window — and a `canvas` is a nested one. When a change
+occurs, `markDirty` walks to the root and marks the **nearest enclosing boundary**: a change
+in the static UI reaches the root (so the whole scene re-rasterises), while a change inside a
+canvas stops at the canvas (so only its region does). The drawing surface is *persistent* —
+on a partial frame the runtime never clears it wholesale — so the static UI's pixels from the
+previous frame simply remain while the canvas's region is repainted in place over them.
+
+Canvases are also *live surfaces*: a canvas stepped by `useFrame` reads mutable application
+state the reconciler never sees, so there is no `markDirty` to locate the change. A frame
+request (the `Repaint` seam) instead marks every live surface for repaint and leaves the rest
+cached. Either way, the per-frame cost while a canvas animates is one canvas region, not the
+whole window. The decision logic (which boundary a change marks, which regions a partial
+frame repaints) and the in-place boundary repaint (`Compositor.repaintBoundary`, written
+against the `Canvas` seam) both live in `shared/`, so they are unit-tested headlessly.
+
+Boundary content is assumed to cover its bounds opaquely — the floor under a partial repaint
+is a fill to the window background, not whatever happened to be behind the boundary. That
+holds for a drawing surface that paints its own background, which is the case a canvas serves.
+A fully general layer tree — cached offscreen surfaces a boundary can re-composite without
+re-rasterising, group-opacity layers, partial texture upload of just the damaged rect — is a
+further step beyond this region-level model.

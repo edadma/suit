@@ -104,9 +104,12 @@ object Suit:
     clock.install()
 
     // The repaint seam: an imperative animation (a canvas driven by `useFrame`) changes nothing
-    // in the tree, so it asks for the next frame to be drawn through here. Setting the root dirty
-    // is exactly what a `markDirty` would do; the loop's dirty check then repaints.
-    Repaint.request = () => root.dirty = true
+    // in the tree, so it asks for the next frame to be drawn through here. The seam cannot say
+    // which canvas advanced, so it marks every live surface for repaint and requests a frame;
+    // the static UI, not a live surface, stays cached and is not re-rasterised.
+    Repaint.request = () =>
+      root.invalidateLiveSurfaces()
+      root.dirty = true
 
     // Pointer events route by hit-test; key events route to whatever the focus manager
     // currently holds (a press updates focus through the same pointer router).
@@ -121,15 +124,29 @@ object Suit:
     // the session while focused so its `TEXT_INPUT` events flow, and anything else closes it.
     var textInputOn = false
 
-    // Lay out and draw the current tree into the Cairo surface, then upload it. Called on
-    // startup and again whenever a layout change marks the tree dirty.
+    // Lay out and draw the current frame into the Cairo surface, then upload it. Called on
+    // startup and whenever the tree is marked dirty. The surface is persistent — it is never
+    // cleared wholesale on a partial frame — which is what makes boundary compositing work:
+    // untouched pixels from the previous frame simply remain.
+    //
+    // When the root boundary is dirty (a change in the static UI), the whole scene is
+    // re-rasterised: an opaque background fill replaces the previous frame, then the tree
+    // paints on top. When only nested boundaries are dirty (an animating canvas), just those
+    // regions are repainted in place and the rest of the window's pixels are left as they
+    // were — so the static UI is not re-rasterised at frame rate. Layout always runs (it is
+    // cheap next to rasterisation and keeps every boundary's absolute position current); a
+    // needs-layout vs needs-paint split is a later optimisation.
     def repaint(): Unit =
       root.layout(Constraints.tight(root.windowSize))
-      // Fill the background opaque, then paint the tree on top. The opaque fill replaces
-      // the previous frame, so no separate clear is needed.
-      cr.setSourceRGBA(clearColor.r / 255.0, clearColor.g / 255.0, clearColor.b / 255.0, 1.0)
-      cr.paint()
-      root.paint(canvas, Offset.zero)
+      if root.needsRepaint then
+        cr.setSourceRGBA(clearColor.r / 255.0, clearColor.g / 255.0, clearColor.b / 255.0, 1.0)
+        cr.paint()
+        root.paint(canvas, Offset.zero)
+        root.clearRepaintFlags()
+      else
+        for boundary <- root.dirtyBoundaries do
+          Compositor.repaintBoundary(canvas, boundary, clearColor)
+          boundary.needsRepaint = false
       surface.flush()
       texture.update(surface.getData, surface.getStride)
 

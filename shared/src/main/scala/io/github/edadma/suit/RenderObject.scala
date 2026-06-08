@@ -49,6 +49,25 @@ abstract class RenderObject:
     * clicks meant for the content it hovers over. */
   var ignorePointer: Boolean = false
 
+  /** Whether this object caches and repaints independently of the rest of the tree — a
+    * **repaint boundary** (Flutter's `RepaintBoundary`). When only the content inside a
+    * boundary changes, the runtime re-rasterises just that boundary's region and leaves
+    * the rest of the window's pixels untouched, so an animating canvas does not force the
+    * static UI around it to redraw. The root is a boundary (the whole window); a canvas is
+    * a nested one. Boundary content is assumed to cover its bounds opaquely. */
+  def isRepaintBoundary: Boolean = false
+
+  /** Whether this boundary's content is driven imperatively rather than by the reconciler —
+    * a **live surface** that must be re-rasterised on every frame the loop runs (a canvas
+    * stepped by `useFrame`, whose painter reads mutable state the tree cannot see). Implies
+    * [[isRepaintBoundary]]. A frame request ([[Repaint]]) re-rasterises every live surface. */
+  def isLiveSurface: Boolean = false
+
+  /** Set when this boundary's subtree changed since it last painted, so the next frame
+    * re-rasterises it. Only meaningful on a [[isRepaintBoundary]]; [[markDirty]] sets it on
+    * the nearest enclosing boundary. A fresh boundary starts dirty so it paints once. */
+  var needsRepaint: Boolean = true
+
   /** The text-style values this object contributes to the cascade. A [[RenderText]]
     * descendant inherits any field set here unless a nearer ancestor or its own explicit
     * value overrides it (see [[TextStyleAttrs]]). The default carrier sets nothing, so an
@@ -104,13 +123,25 @@ abstract class RenderObject:
     child.parent = null
     markDirty()
 
-  /** Signal that the frame is stale. Propagates up to the root, which holds the flag
-    * the frame loop reads. No distinction is made yet between needs-layout and
-    * needs-paint — any change requests a fresh frame; splitting the two is a later
+  /** Signal that the frame is stale. Walks to the root, marking the **nearest enclosing
+    * repaint boundary** so only that region re-rasterises, and setting the root's live
+    * "needs a frame" flag the loop reads. A change in the static UI reaches the root
+    * boundary (a full repaint); a change inside a canvas stops at the canvas boundary (a
+    * partial repaint of just its region). No needs-layout vs needs-paint distinction is
+    * made yet — any change requests a fresh frame; splitting the two is a later
     * optimisation. */
   def markDirty(): Unit =
-    val p = parent
-    if p != null then p.markDirty()
+    var node: RenderObject | Null = this
+    var boundaryMarked            = false
+    while node != null do
+      val r = node.asInstanceOf[RenderObject]
+      if !boundaryMarked && r.isRepaintBoundary then
+        r.needsRepaint = true
+        boundaryMarked = true
+      r match
+        case root: RenderRoot => root.dirty = true
+        case _                => ()
+      node = r.parent
 
   /** The deepest RenderObject whose bounds contain `point` (absolute coordinates),
     * or null if `point` is outside this object. `origin` is this object's absolute
@@ -729,6 +760,11 @@ final class RenderImage(var image: RasterImage | Null) extends RenderObject:
   * on every repaint; to animate, advance application state and request a frame (see `useFrame`),
   * which marks the tree dirty and repaints. */
 final class RenderCanvas extends RenderObject:
+  /** A canvas is a repaint boundary, and a *live* one: its painter reads mutable application
+    * state the reconciler never sees, so a frame request re-rasterises it and nothing else. */
+  override def isRepaintBoundary: Boolean = true
+  override def isLiveSurface: Boolean     = true
+
   /** The application's draw routine: given the canvas and the widget's size (in its own local
     * coordinate space), it issues the drawing for the current frame. Defaults to a no-op so an
     * un-wired canvas simply paints nothing. */
@@ -760,9 +796,15 @@ final class RenderAnchor(val label: String) extends RenderObject:
   * flag that the runtime's loop reads; any [[RenderObject.markDirty]] in the tree
   * bubbles here and sets it. It lays out its single child tight to the window size. */
 final class RenderRoot(var windowSize: Size) extends RenderObject:
-  var dirty: Boolean = true // paint once on startup
+  /** The root is the outermost repaint boundary: the whole window. Its layer is the live
+    * surface the runtime presents, so [[needsRepaint]] here means "re-rasterise the whole
+    * scene". */
+  override def isRepaintBoundary: Boolean = true
 
-  override def markDirty(): Unit = dirty = true
+  /** A frame is needed — the flag the runtime's loop reads each iteration. Distinct from
+    * [[needsRepaint]]: a canvas tick sets `dirty` (run a frame) and the canvas's own
+    * `needsRepaint` (re-rasterise just it), leaving the root's `needsRepaint` clear. */
+  var dirty: Boolean = true // paint once on startup
 
   def layout(constraints: Constraints): Unit =
     size = windowSize
@@ -772,3 +814,43 @@ final class RenderRoot(var windowSize: Size) extends RenderObject:
       child.layout(Constraints.tight(size))
       child.offset = Offset.zero
       i += 1
+
+  /** The nested repaint boundaries whose subtree changed since they last painted — the
+    * regions a partial frame must re-rasterise. A dirty boundary is not descended into: its
+    * own repaint already covers everything below it (including deeper boundaries). The root
+    * itself is never included; a dirty root means a full repaint, handled separately. */
+  def dirtyBoundaries: List[RenderObject] =
+    val out = mutable.ListBuffer.empty[RenderObject]
+    def walk(n: RenderObject): Unit =
+      var i = 0
+      while i < n.children.length do
+        val c = n.children(i)
+        if c.isRepaintBoundary && c.needsRepaint then out += c
+        else walk(c)
+        i += 1
+    walk(this)
+    out.toList
+
+  /** Mark every live surface in the tree as needing repaint. A frame request from an
+    * imperative animation ([[Repaint]]) cannot say which canvas advanced, so each live
+    * surface re-rasterises on the next frame; the static UI (not a live surface) is left
+    * cached. */
+  def invalidateLiveSurfaces(): Unit =
+    def walk(n: RenderObject): Unit =
+      if n.isLiveSurface then n.needsRepaint = true
+      var i = 0
+      while i < n.children.length do
+        walk(n.children(i))
+        i += 1
+    walk(this)
+
+  /** Clear the repaint flag on every boundary in the tree (including the root) after a full
+    * frame has re-rasterised the whole scene. */
+  def clearRepaintFlags(): Unit =
+    def walk(n: RenderObject): Unit =
+      if n.isRepaintBoundary then n.needsRepaint = false
+      var i = 0
+      while i < n.children.length do
+        walk(n.children(i))
+        i += 1
+    walk(this)
