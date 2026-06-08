@@ -150,8 +150,9 @@ pixel size, each clamped to the constraints, and scales to whatever box it ends 
 leaf, so wrap it in a `box` for a background, padding, rounded corners (`clip = true`), or a click
 handler.
 
-Load a `RasterImage` from the platform loader (native `Raster`), which decodes JPEG/PNG/BMP/GIF/etc.
-through stb_image. (PNG also loads as an SVG-free raster here, though Cairo handles PNG natively too.)
+Load a `RasterImage` from the platform loader (native `Raster`), which decodes JPEG through
+turbojpeg (libjpeg-turbo). PNG is handled separately by Cairo, so for raster the loader is your
+JPEG path.
 
 ```scala
 val photo = Raster.fromFile("photo.jpg")   // or Raster.fromBytes(bytes)
@@ -162,7 +163,7 @@ box(radius = 12, clip = true)(image(photo, width = 96, height = 96))  // rounded
 ```
 
 `Raster.fromFile` / `Raster.fromBytes` throw if the image can't be decoded. The loader is
-native-only (it wraps stb_image + Cairo); `RasterImage` itself is platform-neutral, so a headless
+native-only (it wraps turbojpeg + Cairo); `RasterImage` itself is platform-neutral, so a headless
 test can supply its own stand-in.
 
 ## scrollView

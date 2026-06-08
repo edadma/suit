@@ -15,7 +15,7 @@ import io.github.edadma.suit.widgets.*
 // `textColor` once and the labels inherit it), a typography card showing multi-line wrapping,
 // two-line ellipsis, and alignment, a font-weights card showing the same words across the
 // variable font's `wght` axis, an SVG card showing a vector icon — loaded once through librsvg and
-// drawn crisp at several sizes — and a raster card showing a JPEG decoded with stb_image round out
+// drawn crisp at several sizes — and a raster card showing a JPEG decoded with turbojpeg round out
 // the picture.
 //
 // Motion runs throughout: the button tint fades on hover and press, the checkbox mark
@@ -56,8 +56,8 @@ private val appIcon: SvgImage = Svg.fromString(
     |</svg>""".stripMargin,
 )
 
-// A raster photo decoded once at startup from the JPEG embedded in the binary. stb_image turns
-// the bytes into pixels, which become a Cairo surface the canvas blits and scales — the path SVG
+// A raster photo decoded once at startup from the JPEG embedded in the binary. turbojpeg turns
+// the bytes into pixels straight inside a Cairo surface the canvas blits and scales — the path SVG
 // (vectors) doesn't take. Decoding here, not per frame, keeps the loop cheap.
 private val photo: RasterImage = Raster.fromPtr(DemoImage.suit_demo_jpg_data(), DemoImage.suit_demo_jpg_size().toInt)
 
@@ -260,12 +260,12 @@ val App = view {
                     ),
                   ),
                 ),
-                // Raster image: a JPEG embedded in the binary, decoded once by stb_image into a
+                // Raster image: a JPEG embedded in the binary, decoded once by turbojpeg into a
                 // Cairo surface and blitted/scaled by the canvas. The second copy is rounded by a
                 // clipping box, the same overflow-hidden path the scroll view and text field use.
                 card(
                   col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
-                    text("Raster — a JPEG decoded with stb_image", color = muted),
+                    text("Raster — a JPEG decoded with turbojpeg", color = muted),
                     row(crossAxisAlignment = CrossAxisAlignment.Center, spacing = 16)(
                       image(photo, width = 160, height = 100),
                       box(radius = 12, clip = true)(

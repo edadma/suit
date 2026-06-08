@@ -2,31 +2,19 @@ package io.github.edadma.suit
 
 import scala.scalanative.unsafe.*
 import io.github.edadma.libcairo.{Surface, Format, imageSurfaceCreate}
+import io.github.edadma.turbojpeg.{Decoder, PixelFormat}
 
-// The native raster backend: decode an image with stb_image (vendored, compiled into the
-// binary — see resources/scala-native/stb_image_impl.c) and pack its pixels into a Cairo
-// image surface that CairoCanvas can blit. stb appears only here; the render tree, the DSL,
-// and the Canvas trait stay platform-neutral behind the shared RasterImage type.
+import java.io.{File, FileInputStream}
+
+// The native raster backend: decode a JPEG with turbojpeg (libjpeg-turbo) straight into a Cairo
+// surface that CairoCanvas can blit. turbojpeg appears only here; the render tree, the DSL, and the
+// Canvas trait stay platform-neutral behind the shared RasterImage type.
 //
-// Cairo only decodes PNG itself, so anything else (JPEG above all) needs an external decoder.
-// stb hands back tightly-packed RGBA; Cairo's ARGB32 wants premultiplied BGRA in native byte
-// order, so the copy below swaps channels and premultiplies as it fills the surface's buffer —
-// the same direct-buffer-write-then-mark-dirty path the blurred shadows use.
-
-/** A stb_image bytes wrapper. Holds a stb decoder symbol table reached from Scala. */
-@extern
-private object StbImage:
-  def stbi_load(filename: CString, x: Ptr[CInt], y: Ptr[CInt], channels: Ptr[CInt], desired: CInt): Ptr[Byte] = extern
-  def stbi_load_from_memory(
-      buffer: Ptr[Byte],
-      len: CInt,
-      x: Ptr[CInt],
-      y: Ptr[CInt],
-      channels: Ptr[CInt],
-      desired: CInt,
-  ): Ptr[Byte]                            = extern
-  def stbi_image_free(retval: Ptr[Byte]): Unit = extern
-  def stbi_failure_reason(): CString           = extern
+// Cairo only decodes PNG itself, so JPEG needs an external decoder. The win over a general decoder
+// is that turbojpeg can write its output directly into a buffer we own, in the pixel layout we ask
+// for: a JPEG has no alpha, so requesting BGRA yields B,G,R,0xFF per pixel — exactly Cairo's ARGB32
+// byte order for an opaque pixel. We hand turbojpeg the Cairo surface's own buffer and stride, so it
+// decodes in place with no copy and no per-channel conversion.
 
 /** A Cairo-surface-backed [[RasterImage]]. Holds an ARGB32 surface that [[CairoCanvas.drawImage]]
   * blits into its context. Call [[destroy]] to release the surface when the image is no longer
@@ -35,67 +23,48 @@ final class CairoBitmap(val surface: Surface, val width: Int, val height: Int) e
   /** Release the underlying Cairo surface. */
   def destroy(): Unit = surface.destroy()
 
-/** Loads raster images into [[RasterImage]]s on the native backend, decoding JPEG/PNG/BMP/GIF/etc.
-  * through stb_image. Each loader throws if the source can't be decoded. */
+/** Loads raster images into [[RasterImage]]s on the native backend, decoding JPEG through
+  * turbojpeg. Each loader throws `io.github.edadma.turbojpeg.TurboJpegException` if the data isn't a
+  * decodable JPEG. (PNG is handled elsewhere by Cairo directly.) */
 object Raster:
-  /** Decode from a file path. */
-  def fromFile(path: String): RasterImage =
-    val x  = stackalloc[CInt]()
-    val y  = stackalloc[CInt]()
-    val ch = stackalloc[CInt]()
-    val px = Zone(StbImage.stbi_load(toCString(path), x, y, ch, 4))
-    if px == null then throw new RuntimeException(s"suit: cannot decode image '$path': ${failureReason()}")
-    build(px, !x, !y)
+  /** Decode a JPEG file. */
+  def fromFile(path: String): RasterImage = build(readFile(path))
 
-  /** Decode from encoded bytes already in memory (a `.jpg`/`.png`/… read or embedded). */
-  def fromBytes(data: Array[Byte]): RasterImage =
-    val len = data.length
-    Zone:
-      val buf = alloc[Byte](len)
-      var i   = 0
-      while i < len do
-        buf(i) = data(i)
-        i += 1
-      fromPtr(buf, len)
+  /** Decode JPEG bytes already in memory (read from disk, or embedded). */
+  def fromBytes(data: Array[Byte]): RasterImage = build(data)
 
-  /** Decode from encoded bytes held at a native pointer — for an asset compiled into the binary,
-    * avoiding a copy. `data` need only stay valid for the duration of this call. */
+  /** Decode JPEG bytes held at a native pointer — for an asset compiled into the binary. The bytes
+    * are copied into a managed array (turbojpeg reads from one); `data` need only stay valid for the
+    * duration of this call. */
   def fromPtr(data: Ptr[Byte], len: Int): RasterImage =
-    val x  = stackalloc[CInt]()
-    val y  = stackalloc[CInt]()
-    val ch = stackalloc[CInt]()
-    val px = StbImage.stbi_load_from_memory(data, len, x, y, ch, 4)
-    if px == null then throw new RuntimeException(s"suit: cannot decode image: ${failureReason()}")
-    build(px, !x, !y)
+    val arr = new Array[Byte](len)
+    var i   = 0
+    while i < len do
+      arr(i) = data(i)
+      i += 1
+    build(arr)
 
-  private def failureReason(): String =
-    val r = StbImage.stbi_failure_reason()
-    if r == null then "unknown" else fromCString(r)
+  // Read the header for the dimensions, make an ARGB32 surface, then decode straight into its pixel
+  // buffer as BGRA (= opaque ARGB32) at the surface's own stride — no copy, no conversion.
+  private def build(jpeg: Array[Byte]): CairoBitmap =
+    val dec = Decoder()
+    try
+      val info    = dec.readHeader(jpeg)
+      val surface = imageSurfaceCreate(Format.ARGB32, info.width, info.height)
+      dec.decompress(jpeg, surface.getData, surface.getStride, PixelFormat.BGRA)
+      surface.markDirty()
+      new CairoBitmap(surface, info.width, info.height)
+    finally dec.close()
 
-  // Pack stb's RGBA pixels into a fresh ARGB32 Cairo surface (premultiplied BGRA, native order),
-  // mark the buffer dirty so Cairo samples the written pixels, then free stb's buffer.
-  private def build(px: Ptr[Byte], w: Int, h: Int): CairoBitmap =
-    val surface = imageSurfaceCreate(Format.ARGB32, w, h)
-    val dst     = surface.getData
-    val stride  = surface.getStride
-    var yy      = 0
-    while yy < h do
-      val rowSrc = yy * w * 4
-      val rowDst = yy * stride
-      var xx     = 0
-      while xx < w do
-        val si = rowSrc + xx * 4
-        val r  = px(si) & 0xff
-        val g  = px(si + 1) & 0xff
-        val b  = px(si + 2) & 0xff
-        val a  = px(si + 3) & 0xff
-        val di = rowDst + xx * 4
-        dst(di) = ((b * a + 127) / 255).toByte     // B, premultiplied (exact for opaque a=255)
-        dst(di + 1) = ((g * a + 127) / 255).toByte // G
-        dst(di + 2) = ((r * a + 127) / 255).toByte // R
-        dst(di + 3) = a.toByte                       // A
-        xx += 1
-      yy += 1
-    surface.markDirty()
-    StbImage.stbi_image_free(px)
-    new CairoBitmap(surface, w, h)
+  private def readFile(path: String): Array[Byte] =
+    val file = new File(path)
+    val len  = file.length().toInt
+    val arr  = new Array[Byte](len)
+    val in   = new FileInputStream(file)
+    try
+      var off = 0
+      while off < len do
+        val n = in.read(arr, off, len - off)
+        if n < 0 then off = len else off += n
+    finally in.close()
+    arr
