@@ -103,6 +103,11 @@ object Suit:
     val clock = new FrameClock(() => System.nanoTime() / 1.0e6)
     clock.install()
 
+    // The repaint seam: an imperative animation (a canvas driven by `useFrame`) changes nothing
+    // in the tree, so it asks for the next frame to be drawn through here. Setting the root dirty
+    // is exactly what a `markDirty` would do; the loop's dirty check then repaints.
+    Repaint.request = () => root.dirty = true
+
     // Pointer events route by hit-test; key events route to whatever the focus manager
     // currently holds (a press updates focus through the same pointer router).
     val focusManager = new FocusManager

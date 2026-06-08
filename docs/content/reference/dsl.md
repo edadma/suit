@@ -166,6 +166,63 @@ box(radius = 12, clip = true)(image(photo, width = 96, height = 96))  // rounded
 native-only (it wraps turbojpeg + Cairo); `RasterImage` itself is platform-neutral, so a headless
 test can supply its own stand-in.
 
+## canvas
+
+```scala
+def canvas(
+    width:  Double = Double.NaN,
+    height: Double = Double.NaN,
+    ref:    Ref[RenderObject | Null] | Null = null,
+    focusable: Boolean = false,
+    // pointer / wheel / key handlers — see the Input guide
+)(draw: (Canvas, Size) => Unit): VNode
+```
+
+A direct drawing surface — the toolkit's `<canvas>`. `draw` is handed the **same `Canvas`** the
+built-in widgets paint through, plus the surface's `Size`, and issues the drawing for the current
+frame. It draws in a **local** coordinate space whose origin is the canvas's own top-left
+(`0..width` × `0..height`), and the drawing is clipped to the canvas's bounds, so it cannot spill
+past the edges. It sizes to `width` / `height` when given, otherwise **fills** the space its
+parent offers.
+
+It is a leaf in the render tree, but it still takes pointer, wheel, and key handlers (and
+`focusable`), so an interactive surface — a sim you can click into, a sketch pad — works. Because
+the same `Canvas` seam backs it, the draw routine is testable against a `RecordingCanvas` exactly
+as suit's own widgets are.
+
+```scala
+canvas(width = 400, height = 300) { (c, size) =>
+  c.fillRect(Rect(0, 0, size.width, size.height), Color.rgb(0x101418))
+  c.fillCircle(Offset(size.width / 2, size.height / 2), 40, Color.rgb(0x6c5ce7))
+}
+```
+
+To **animate**, drive it with [`useFrame`](#useframe): keep the changing state in a `useRef`,
+advance it in the callback, and read it back in `draw`.
+
+```scala
+val phase = useRef(0.0)
+useFrame(_ => phase.current += 0.03)
+canvas(height = 120) { (c, size) =>
+  val x = size.width / 2 + math.cos(phase.current) * 40
+  c.fillCircle(Offset(x, size.height / 2), 8, Color.rgb(0x9c6bff))
+}
+```
+
+### useFrame
+
+```scala
+def useFrame(cb: Double => Unit)(using Hooks): Unit
+```
+
+suit's `requestAnimationFrame`: `cb` runs once per frame for as long as the calling component is
+mounted, receiving the current time in milliseconds (the same clock the motion hooks ease over).
+After each tick it requests a repaint, so a `canvas` whose `draw` reads state the callback advanced
+re-runs that frame. It advances state **imperatively** and repaints — it does *not* re-render the
+component, so there is no reconcile per frame; hold the animated state in a `useRef` (whose
+identity is stable, so the `draw` closure reads it without changing). If the callback also needs
+the vnode tree to change, call a `useState` setter from inside it as usual.
+
 ## scrollView
 
 ```scala

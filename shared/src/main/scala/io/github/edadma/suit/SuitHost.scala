@@ -34,6 +34,7 @@ final class SuitHostConfig extends HostConfig:
     case "text"     => new RenderText("")
     case "svg"      => new RenderSvg(null)
     case "image"    => new RenderImage(null)
+    case "canvas"   => new RenderCanvas
     case _          => new RenderBox
 
   def createText(text: String): AnyRef    = new RenderText(text)
@@ -172,6 +173,15 @@ final class SuitHostConfig extends HostConfig:
           case _              => null
       case (s: RenderImage, "width")  => s.width = asDoubleOpt(value)
       case (s: RenderImage, "height") => s.height = asDoubleOpt(value)
+
+      // The draw routine arrives as a two-argument function; on removal it falls back to a
+      // no-op so a canvas whose painter is dropped renders blank rather than holding a stale one.
+      case (c: RenderCanvas, "draw") =>
+        c.painter = value match
+          case f: Function2[?, ?, ?] => f.asInstanceOf[(Canvas, Size) => Unit]
+          case _                     => (_, _) => ()
+      case (c: RenderCanvas, "width")  => c.width = asDoubleOpt(value)
+      case (c: RenderCanvas, "height") => c.height = asDoubleOpt(value)
 
       case _ => ()
     obj.markDirty()

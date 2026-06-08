@@ -178,6 +178,52 @@ object dsl:
     props = sized(props, "height", height)
     el("image", props, Nil)
 
+  /** A direct drawing surface — the toolkit's `<canvas>`. `draw` is handed the same [[Canvas]]
+    * suit's widgets paint through, plus the surface's [[Size]], and issues the drawing for the
+    * current frame in a **local** coordinate space (origin at the canvas's top-left); the drawing
+    * is clipped to the canvas's bounds. It sizes to `width`/`height` when given, otherwise fills
+    * the space its parent offers. It is a leaf in the tree but takes pointer/key handlers, so an
+    * interactive surface works; to animate, advance state in a `useFrame` callback (which
+    * repaints) and read it in `draw`.
+    *
+    * ```scala
+    * canvas(width = 400, height = 300) { (c, size) =>
+    *   c.fillRect(Rect(0, 0, size.width, size.height), Color.rgb(0x101418))
+    *   c.fillCircle(Offset(size.width / 2, size.height / 2), 40, Color.rgb(0x6c5ce7))
+    * }
+    * ```
+    */
+  def canvas(
+      width:        Double                         = Double.NaN,
+      height:       Double                         = Double.NaN,
+      ref:          Ref[RenderObject | Null] | Null = null,
+      onClick:      (PointerEvent => Unit) | Null  = null,
+      onMouseDown:  (PointerEvent => Unit) | Null  = null,
+      onMouseUp:    (PointerEvent => Unit) | Null  = null,
+      onMouseMove:  (PointerEvent => Unit) | Null  = null,
+      onMouseEnter: (PointerEvent => Unit) | Null  = null,
+      onMouseLeave: (PointerEvent => Unit) | Null  = null,
+      onWheel:      (ScrollEvent => Unit)     | Null = null,
+      onKeyDown:    (KeyEvent => Unit)        | Null = null,
+      onKeyUp:      (KeyEvent => Unit)        | Null = null,
+      focusable:    Boolean                        = false,
+  )(draw: (Canvas, Size) => Unit): VNode =
+    var props = Map[String, Prop]("draw" -> PropValue(draw))
+    props = sized(props, "width", width)
+    props = sized(props, "height", height)
+    if focusable then props = props.updated("focusable", PropValue(true))
+    props = typed[PointerEvent](props, "click", onClick)
+    props = typed[PointerEvent](props, "mousedown", onMouseDown)
+    props = typed[PointerEvent](props, "mouseup", onMouseUp)
+    props = typed[PointerEvent](props, "mousemove", onMouseMove)
+    props = typed[PointerEvent](props, "mouseenter", onMouseEnter)
+    props = typed[PointerEvent](props, "mouseleave", onMouseLeave)
+    props = typed[ScrollEvent](props, "wheel", onWheel)
+    props = typed[KeyEvent](props, "keydown", onKeyDown)
+    props = typed[KeyEvent](props, "keyup", onKeyUp)
+    val eref: ElementRef | Null = if ref != null then BoxRef(ref) else null
+    el("canvas", props, Nil, eref)
+
   /** A horizontal stack. Children are laid left to right; flexible children share the
     * leftover width. See [[MainAxisAlignment]] / [[CrossAxisAlignment]] / [[MainAxisSize]]. */
   def row(

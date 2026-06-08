@@ -54,6 +54,12 @@ final class RecordingCanvas extends Canvas:
   def popClip(): Unit =
     commands += Command.PopClip
 
+  def pushTranslate(dx: Double, dy: Double): Unit =
+    commands += Command.PushTranslate(dx, dy)
+
+  def popTranslate(): Unit =
+    commands += Command.PopTranslate
+
 object RecordingCanvas:
   /** One recorded paint call. Defined on the companion rather than nested in the
     * instance so tests can name `RecordingCanvas.Command.FillRect(...)` to assert
@@ -73,3 +79,5 @@ object RecordingCanvas:
     case PopOpacity
     case PushClip(rect: Rect, radius: BorderRadius)
     case PopClip
+    case PushTranslate(dx: Double, dy: Double)
+    case PopTranslate

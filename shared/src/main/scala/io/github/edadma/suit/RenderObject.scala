@@ -713,6 +713,41 @@ final class RenderImage(var image: RasterImage | Null) extends RenderObject:
       case img: RasterImage => canvas.drawImage(img, Rect.at(origin, size))
       case null             => ()
 
+/** A direct drawing surface — the toolkit's analogue of an HTML `<canvas>`. It hands the
+  * application the very [[Canvas]] suit's own widgets paint through, so a custom drawing (a
+  * chart, a game, a physics simulation) issues the same primitives the rest of the UI does and
+  * is just as testable against a [[RecordingCanvas]] off-device.
+  *
+  * It sizes to its explicit `width`/`height` when given, otherwise **fills** the space the
+  * parent offers (an unbounded axis collapses to nothing), so a bare canvas expands to its
+  * region. It is a leaf for the render tree — it has no children — but not for input: give it
+  * pointer or key handlers and an interactive surface (a sim you can click into) works.
+  *
+  * Painting brackets the application's `painter` with a clip to the widget's bounds and a
+  * translation to its top-left, so the app draws in a **local** coordinate space (origin at the
+  * widget, `0..width` x `0..height`) and cannot spill past its edges. The painter is re-invoked
+  * on every repaint; to animate, advance application state and request a frame (see `useFrame`),
+  * which marks the tree dirty and repaints. */
+final class RenderCanvas extends RenderObject:
+  /** The application's draw routine: given the canvas and the widget's size (in its own local
+    * coordinate space), it issues the drawing for the current frame. Defaults to a no-op so an
+    * un-wired canvas simply paints nothing. */
+  var painter: (Canvas, Size) => Unit = (_, _) => ()
+  var width:  Option[Double]          = None
+  var height: Option[Double]          = None
+
+  def layout(constraints: Constraints): Unit =
+    val w = width.getOrElse(if constraints.maxWidth.isFinite then constraints.maxWidth else 0.0)
+    val h = height.getOrElse(if constraints.maxHeight.isFinite then constraints.maxHeight else 0.0)
+    size = constraints.constrain(Size(w, h))
+
+  override def paint(canvas: Canvas, origin: Offset): Unit =
+    canvas.pushClip(Rect.at(origin, size), BorderRadius.zero)
+    canvas.pushTranslate(origin.x, origin.y)
+    painter(canvas, size)
+    canvas.popTranslate()
+    canvas.popClip()
+
 /** A non-visual node that only holds a position in the sibling order — vdom anchors
   * fragments, portals, and empty renders on one. Zero size, never painted, never a
   * hit-test target. */

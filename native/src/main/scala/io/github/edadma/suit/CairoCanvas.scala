@@ -249,6 +249,16 @@ final class CairoCanvas(cr: Context, fonts: Fonts) extends Canvas:
 
   def popClip(): Unit = cr.restore()
 
+  // Translation rides Cairo's save/restore stack like clipping: `save` snapshots the current
+  // transform (which already carries the base HiDPI scale), `translate` shifts the origin, and
+  // the matching `popTranslate` `restore`s the snapshot. A canvas widget brackets its app's draw
+  // routine with this so the app paints from a local origin.
+  def pushTranslate(dx: Double, dy: Double): Unit =
+    cr.save()
+    cr.translate(dx, dy)
+
+  def popTranslate(): Unit = cr.restore()
+
 // A [[ByteSurface]] view over a Cairo image surface's native pixel buffer, so [[BoxBlur]] can
 // convolve a shadow surface in place. `data` is the pointer from `getData` (valid after a flush
 // and until the surface is drawn to again); `stride` is its row pitch in bytes.

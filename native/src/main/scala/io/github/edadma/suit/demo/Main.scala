@@ -15,8 +15,9 @@ import io.github.edadma.suit.widgets.*
 // `textColor` once and the labels inherit it), a typography card showing multi-line wrapping,
 // two-line ellipsis, and alignment, a font-weights card showing the same words across the
 // variable font's `wght` axis, an SVG card showing a vector icon — loaded once through librsvg and
-// drawn crisp at several sizes — and a raster card showing a JPEG decoded with turbojpeg round out
-// the picture.
+// drawn crisp at several sizes — a raster card showing a JPEG decoded with turbojpeg, and a canvas
+// card drawing arbitrary 2D graphics — an orbiting comet animated with `useFrame` — through the same
+// Canvas seam the widgets use, round out the picture.
 //
 // Motion runs throughout: the button tint fades on hover and press, the checkbox mark
 // scales and fades as it ticks, the slider thumb glides toward its value, and the "Show
@@ -88,6 +89,37 @@ private val DetailPanel: Component[Boolean] =
         ),
       )
     else VEmpty
+  }
+
+/** A live drawing surface — the Canvas widget. The application is handed the very same
+  * [[Canvas]] the widgets above paint through and draws whatever it likes in a local
+  * coordinate space clipped to the widget's bounds. The animation state (an orbit phase) lives
+  * in a `useRef`; `useFrame` advances it each frame and requests a repaint without re-rendering,
+  * and the canvas's `draw` reads it back — so the comet spins continuously while the rest of the
+  * window stays put. It reads the active theme for the dot colour, recolouring with everything
+  * else. */
+private val OrbitCanvas: Component[Unit] =
+  view {
+    val theme = useTheme()
+    val phase = useRef(0.0)
+    useFrame(_ => phase.current += 0.03)
+
+    canvas(height = 120) { (c, size) =>
+      val w = size.width
+      val h = size.height
+      c.fillRect(Rect(0, 0, w, h), Color.rgb(0x0b1220))
+      val cx = w / 2
+      val cy = h / 2
+      val r  = math.min(w, h) / 2 - 16
+      val n  = 14
+      var i  = 0
+      while i < n do
+        val a    = phase.current - i * 0.16
+        val rad  = 3.0 + (n - i) * 0.55
+        val fade = (n - i).toDouble / n
+        c.fillCircle(Offset(cx + math.cos(a) * r, cy + math.sin(a) * r), rad, theme.primary.withAlpha((255 * fade).toInt))
+        i += 1
+    }
   }
 
 val App = view {
@@ -272,6 +304,15 @@ val App = view {
                         image(photo, width = 96, height = 96),
                       ),
                     ),
+                  ),
+                ),
+                // A live canvas: arbitrary 2D drawing through the same Canvas the widgets use,
+                // animated by useFrame. The orbiting comet advances a phase held in a ref each
+                // frame and repaints; the rest of the window stays still. A clipping box rounds it.
+                card(
+                  col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
+                    text("Canvas — custom drawing, animated with useFrame", color = muted),
+                    box(radius = 12, clip = true)(OrbitCanvas()),
                   ),
                 ),
                 // An enter/exit reveal: the button toggles a panel that animates in and out.

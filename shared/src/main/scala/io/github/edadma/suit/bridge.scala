@@ -129,6 +129,38 @@ def useThrottledValue[T](value: T, intervalMs: Int)(using Hooks): T =
 def usePresence(open: Boolean, exitMs: Int)(using Hooks): Presence =
   vdom.usePresence(open, exitMs)
 
+/** Run `cb` once per animation frame for as long as the calling component is mounted — suit's
+  * `requestAnimationFrame`. It rides the same frame seam the motion hooks use (`Suit.run`'s
+  * loop is the clock), so each tick fires once per loop iteration; `cb` receives the current
+  * time in milliseconds (the same clock `useTransition` eases over), letting it advance by a
+  * real delta. After each tick it requests a repaint ([[Repaint]]), so a [[RenderCanvas]] whose
+  * `draw` reads state the callback advanced re-runs that frame. Unmounting stops the loop.
+  *
+  * It advances state imperatively and repaints — it does **not** re-render the component, so
+  * there is no reconcile per frame. Hold the animated state in a `useRef` (its identity is
+  * stable, so the canvas's `draw` closure can read it without changing), step it in the
+  * callback, and read it back in `draw`:
+  * {{{
+  * val sim = useRef(World.initial)
+  * useFrame { now => sim.current = sim.current.step(dt) }
+  * canvas(){ (c, size) => sim.current.render(c, size) }
+  * }}}
+  * If the callback also needs the vnode tree to change (animating a widget's props), call a
+  * `useState` setter from inside it — that re-renders as usual, on top of the repaint. */
+def useFrame(cb: Double => Unit)(using Hooks): Unit =
+  useEffect(
+    () =>
+      var cancelled = false
+      def tick(): Unit =
+        if !cancelled then
+          cb(vdom.Transition.now())
+          Repaint.request() // redraw this frame even though the tree did not change
+          vdom.Transition.requestFrame(() => tick())
+      vdom.Transition.requestFrame(() => tick())
+      () => cancelled = true,
+    Array(),
+  )
+
 // --- component / container / context builders -------------------------------
 
 def component[P](render: P => (Hooks ?=> VNode)): Component[P] = vdom.component(render)

@@ -72,3 +72,14 @@ trait Canvas:
 
   /** Close the most recent [[pushClip]], restoring the previous clip region. */
   def popClip(): Unit
+
+  /** Shift the coordinate origin by `(dx, dy)` until the matching [[popTranslate]] runs:
+    * subsequent drawing at a coordinate `p` lands where `p + (dx, dy)` was before. A
+    * [[RenderCanvas]] brackets the application's draw routine this way so the app paints in a
+    * **local** space whose origin is the widget's top-left, rather than in absolute window
+    * coordinates. The shift composes with whatever translation is already in force and nests
+    * with [[pushClip]]/[[pushOpacity]] as long as each push is balanced. */
+  def pushTranslate(dx: Double, dy: Double): Unit
+
+  /** Close the most recent [[pushTranslate]], restoring the previous coordinate origin. */
+  def popTranslate(): Unit
