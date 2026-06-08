@@ -3,7 +3,7 @@ import sbtcrossproject.CrossPlugin.autoImport.{crossProject, CrossType}
 
 ThisBuild / scalaVersion := "3.8.4"
 ThisBuild / organization := "io.github.edadma"
-ThisBuild / version      := "0.0.2"
+ThisBuild / version      := "0.0.3"
 
 // --- Maven Central publishing ----------------------------------------------
 // Metadata for the generated POM and the Sonatype Central wiring, mirroring the
@@ -110,9 +110,9 @@ lazy val suit = crossProject(JVMPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "io.github.edadma" %%% "vdom"      % "0.3.1",
       "io.github.edadma" %%% "sdl3"      % "0.2.4",
-      "io.github.edadma" %%% "libcairo"  % "0.0.5",
+      "io.github.edadma" %%% "libcairo"  % "0.0.6",
       "io.github.edadma" %%% "freetype"  % "0.0.6",
-      "io.github.edadma" %%% "librsvg"   % "0.0.2",
+      "io.github.edadma" %%% "librsvg"   % "0.0.3",
       "io.github.edadma" %%% "turbojpeg" % "0.0.1",
     ),
   )
