@@ -124,6 +124,14 @@ object Suit:
     // the session while focused so its `TEXT_INPUT` events flow, and anything else closes it.
     var textInputOn = false
 
+    // The overlay layer sits as the root's last child, so it paints above the application and
+    // is hit before it. The app is wrapped in a provider that hands this layer and the focus
+    // manager down through context, so dialogs (and later menus and tooltips) can portal their
+    // content into it and trap focus without reaching for the runtime globally. It is allocated
+    // here so the partial-frame compositor below can re-paint it over an animating boundary it
+    // sits above; it is mounted into the tree just before the first frame.
+    val overlay = new RenderOverlay
+
     // Lay out and draw the current frame into the Cairo surface, then upload it. Called on
     // startup and whenever the tree is marked dirty. The surface is persistent — it is never
     // cleared wholesale on a partial frame — which is what makes boundary compositing work:
@@ -143,18 +151,10 @@ object Suit:
         cr.paint()
         root.paint(canvas, Offset.zero)
         root.clearRepaintFlags()
-      else
-        for boundary <- root.dirtyBoundaries do
-          Compositor.repaintBoundary(canvas, boundary, clearColor)
-          boundary.needsRepaint = false
+      else Compositor.partialFrame(canvas, root.dirtyBoundaries, overlay, clearColor)
       surface.flush()
       texture.update(surface.getData, surface.getStride)
 
-    // The overlay layer sits as the root's last child, so it paints above the application and
-    // is hit before it. The app is wrapped in a provider that hands this layer and the focus
-    // manager down through context, so dialogs (and later menus and tooltips) can portal their
-    // content into it and trap focus without reaching for the runtime globally.
-    val overlay = new RenderOverlay
     createRoot(root).render(OverlayContext.provide(OverlayEnv(overlay, focusManager), app))
     root.insertChild(overlay, null)
     drainScheduler() // commit any effects the initial mount queued

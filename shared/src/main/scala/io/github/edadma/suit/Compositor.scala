@@ -36,3 +36,30 @@ object Compositor:
     boundary.paint(canvas, origin)
 
     for _ <- clips do canvas.popClip()
+
+  /** Composite a whole partial frame: repaint each dirty `boundary` in place (clearing its
+    * repaint flag), then — if the always-on-top `overlay` layer has content — re-paint that
+    * layer over each repainted region, clipped to it.
+    *
+    * The re-composite is what keeps an animating boundary from bleeding through an open dialog
+    * or menu. The overlay (a portaled dialog scrim, a menu) paints *above* the application, so
+    * a boundary beneath it that re-rasterises only its own region would overwrite the overlay's
+    * pixels there. Painting the overlay back over each repainted region restores exactly what a
+    * full repaint would have left on top — at the cost of re-rasterising only the overlay's
+    * intersection with the animating regions, not the whole window. With no overlay content the
+    * step is skipped and this is just the per-boundary repaint. */
+  def partialFrame(
+      canvas:     Canvas,
+      boundaries: List[RenderObject],
+      overlay:    RenderObject,
+      background: Color,
+  ): Unit =
+    for b <- boundaries do
+      repaintBoundary(canvas, b, background)
+      b.needsRepaint = false
+    if overlay.children.nonEmpty then
+      val overlayOrigin = overlay.absoluteOffset
+      for b <- boundaries do
+        canvas.pushClip(Rect.at(b.absoluteOffset, b.size), BorderRadius.zero)
+        overlay.paint(canvas, overlayOrigin)
+        canvas.popClip()

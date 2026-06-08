@@ -90,6 +90,47 @@ class RepaintSpec extends AnyFunSuite:
       case _                                                => false
     })
 
+  test("partialFrame re-composites the overlay over an animating boundary beneath it"):
+    // A full-window canvas with an overlay (a dialog) on top of it. A partial frame repaints the
+    // canvas region, then must paint the overlay back over that region — otherwise the animation
+    // bleeds through the open dialog.
+    val root    = new RenderRoot(Size(200, 100))
+    val canvas  = new RenderCanvas
+    val overlay = new RenderOverlay
+    val dialog  = new RenderBox
+    dialog.background = Solid(Color(7, 7, 7))
+    canvas.painter    = (c, s) => c.fillRect(Rect(0, 0, s.width, s.height), Solid(Color(1, 2, 3)))
+    root.insertChild(canvas, null)
+    overlay.insertChild(dialog, null)
+    root.insertChild(overlay, null)
+    root.clearRepaintFlags()
+    root.layout(Constraints.tight(root.windowSize))
+    canvas.needsRepaint = true
+
+    val rec = new RecordingCanvas
+    Compositor.partialFrame(rec, root.dirtyBoundaries, overlay, Color(9, 9, 9))
+    val region = Rect(0, 0, 200, 100)
+    val cmds   = rec.commands.toList
+    val canvasFill  = cmds.indexOf(Command.FillRect(region, Solid(Color(1, 2, 3)))) // the animation
+    val overlayFill = cmds.indexOf(Command.FillRect(region, Solid(Color(7, 7, 7)))) // the dialog
+    assert(canvasFill >= 0 && overlayFill >= 0)
+    assert(overlayFill > canvasFill)                                       // dialog re-drawn on top
+    assert(cmds(overlayFill - 1) == Command.PushClip(region, BorderRadius.zero)) // clipped to the region
+    assert(cmds(overlayFill + 1) == Command.PopClip)
+    assert(!canvas.needsRepaint)                                           // boundary flag cleared
+
+  test("partialFrame with an empty overlay just repaints the boundaries"):
+    val (root, _, canvas) = scene()
+    canvas.painter = (c, s) => c.fillRect(Rect(0, 0, s.width, s.height), Solid(Color(1, 2, 3)))
+    root.layout(Constraints.tight(root.windowSize))
+    canvas.needsRepaint = true
+    val overlay = new RenderOverlay // no children: nothing on top
+    val rec     = new RecordingCanvas
+    Compositor.partialFrame(rec, root.dirtyBoundaries, overlay, Color(9, 9, 9))
+    // No clip/paint pairs beyond the boundary's own — same output as repaintBoundary alone.
+    assert(!rec.commands.exists { case Command.FillRect(_, Solid(Color(7, 7, 7, _))) => true; case _ => false })
+    assert(!canvas.needsRepaint)
+
   test("repaintBoundary replays an ancestor clip so a scrolled canvas stays confined"):
     // root -> scroll (viewport) -> canvas, with the canvas scrolled partly above the viewport.
     val root   = new RenderRoot(Size(200, 100))
