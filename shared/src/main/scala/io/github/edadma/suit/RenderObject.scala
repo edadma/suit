@@ -83,6 +83,13 @@ abstract class RenderObject:
     * override, draw themselves first, then call [[paintChildren]]. */
   def paint(canvas: Canvas, origin: Offset): Unit = paintChildren(canvas, origin)
 
+  /** The clip this object imposes on its descendants, in absolute coordinates, or `None`
+    * if it does not clip. A scroll view confines its content to its viewport, a box with
+    * `clipContent` to its (rounded) rect; the partial-repaint path
+    * ([[Compositor.repaintBoundary]]) replays these so a boundary nested inside them is
+    * confined exactly as a full repaint confines it. Valid only after a layout pass. */
+  def clipShape: Option[(Rect, BorderRadius)] = None
+
   protected def paintChildren(canvas: Canvas, origin: Offset): Unit =
     var i = 0
     while i < children.length do
@@ -182,6 +189,9 @@ final class RenderBox extends RenderObject:
   var height: Option[Double]     = None
   var padding: EdgeInsets        = EdgeInsets.zero
   var clipContent: Boolean       = false
+
+  override def clipShape: Option[(Rect, BorderRadius)] =
+    if clipContent then Some((Rect.at(absoluteOffset, size), borderRadius)) else None
 
   def layout(constraints: Constraints): Unit =
     val outer = constraints.tighten(width, height)
@@ -315,6 +325,9 @@ final class RenderScroll(var axis: Axis = Axis.Vertical) extends RenderObject:
 
   private var contentMain: Double  = 0.0
   private var viewportMain: Double = 0.0
+
+  override def clipShape: Option[(Rect, BorderRadius)] =
+    Some((Rect.at(absoluteOffset, size), BorderRadius.zero))
 
   private def isVertical: Boolean = axis == Axis.Vertical
 

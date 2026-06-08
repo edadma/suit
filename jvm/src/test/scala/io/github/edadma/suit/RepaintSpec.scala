@@ -68,22 +68,20 @@ class RepaintSpec extends AnyFunSuite:
     root.clearRepaintFlags()
     assert(!root.needsRepaint && !canvas.needsRepaint)
 
-  test("repaintBoundary clips to the boundary, clears it, and paints only that subtree"):
+  test("repaintBoundary clears the boundary and paints only that subtree"):
     val (root, box, canvas) = scene()
     box.background = Solid(Color(50, 60, 70)) // if the box were painted it would show here
     canvas.painter = (c, s) => c.fillRect(Rect(0, 0, s.width, s.height), Solid(Color(1, 2, 3)))
     root.layout(Constraints.tight(root.windowSize))
     val rec = new RecordingCanvas
     Compositor.repaintBoundary(rec, canvas, Color(9, 9, 9))
-    val region = Rect(0, 0, 200, 100) // root stacks children full-window
+    val region = Rect(0, 0, 200, 100) // root stacks children full-window; no clipping ancestors
     assert(rec.commands.toList == List(
-      Command.PushClip(region, BorderRadius.zero),         // confine to the canvas region
-      Command.FillRect(region, Solid(Color(9, 9, 9))),     // clear it to the window background
+      Command.FillRect(region, Solid(Color(9, 9, 9))),     // clear the canvas region to the bg
       Command.PushClip(region, BorderRadius.zero),         // the canvas's own paint bracket
       Command.PushTranslate(0, 0),
       Command.FillRect(region, Solid(Color(1, 2, 3))),     // the app's drawing, in local coords
       Command.PopTranslate,
-      Command.PopClip,
       Command.PopClip,
     ))
     // Nothing the static box would have drawn (its background fill) appears.
@@ -91,3 +89,27 @@ class RepaintSpec extends AnyFunSuite:
       case Command.FillRect(_, Solid(Color(50, 60, 70, _))) => true
       case _                                                => false
     })
+
+  test("repaintBoundary replays an ancestor clip so a scrolled canvas stays confined"):
+    // root -> scroll (viewport) -> canvas, with the canvas scrolled partly above the viewport.
+    val root   = new RenderRoot(Size(200, 100))
+    val scroll = new RenderScroll()
+    val canvas = new RenderCanvas
+    root.insertChild(scroll, null)
+    scroll.insertChild(canvas, null)
+    root.clearRepaintFlags()
+    canvas.height  = Some(300) // taller than the 100px viewport, so there is scroll range
+    canvas.painter = (c, s) => c.fillRect(Rect(0, 0, s.width, s.height), Solid(Color(1, 2, 3)))
+    root.layout(Constraints.tight(root.windowSize))
+    // Scroll so the canvas's top is above the viewport (negative absolute y).
+    scroll.scrollBy(30)
+    root.layout(Constraints.tight(root.windowSize))
+    val rec = new RecordingCanvas
+    Compositor.repaintBoundary(rec, canvas, Color(9, 9, 9))
+    // The first command is the scroll viewport clip — without it the canvas would paint
+    // over the chrome above the viewport instead of being clipped away.
+    val viewport = Rect.at(scroll.absoluteOffset, scroll.size)
+    assert(rec.commands.head == Command.PushClip(viewport, BorderRadius.zero))
+    assert(rec.commands.last == Command.PopClip)
+    // The canvas painted at its scrolled (negative) origin, inside that clip.
+    assert(canvas.absoluteOffset.y < 0)
