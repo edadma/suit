@@ -52,6 +52,13 @@ trait Canvas:
     * for the same string and style, so paint lands exactly where layout placed it. */
   def drawText(origin: Offset, text: String, style: TextStyle): Unit
 
+  /** The size a single line of `text` would occupy if drawn with [[drawText]] in `style` — the
+    * width is the pen advance, the height the line height. It consults the same [[TextMeasurer]]
+    * the layout pass uses, so a [[RenderCanvas]] painter can centre or right-align text exactly
+    * where [[drawText]] will place it (the two agree by construction). Every backend shares the
+    * installed measurer, so this is provided once here rather than implemented per backend. */
+  def measureText(text: String, style: TextStyle): Size = TextMeasurer.installed.measure(text, style)
+
   /** Begin a group whose drawing is composited at `alpha` (0–1) when the matching
     * [[popOpacity]] runs. A box with `opacity < 1` brackets itself and its children this
     * way, so the whole subtree fades as one — translucency applies to the composite, not

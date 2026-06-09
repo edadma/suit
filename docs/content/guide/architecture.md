@@ -87,6 +87,7 @@ trait Canvas:
   def fillCircle(center: Offset, radius: Double, color: Color): Unit
   def line(a: Offset, b: Offset, width: Double, color: Color): Unit
   def drawText(origin: Offset, text: String, style: TextStyle): Unit
+  def measureText(text: String, style: TextStyle): Size           // size of a line, undrawn
 ```
 
 On Native, `CairoCanvas` draws through [Cairo](https://www.cairographics.org/) — a real 2D
@@ -95,7 +96,9 @@ vector engine, so every fill, stroke, and glyph is anti-aliased by its coverage 
 finished frame. In tests, `RecordingCanvas` captures the same calls so paint output can be
 asserted on. The same trait split lets `TextMeasurer` size text off-device (a deterministic
 fake in tests, a Cairo-backed measurer at runtime), which keeps the whole layout pass
-JVM-testable.
+JVM-testable. `measureText` exposes that measurer through the canvas, so a live-surface
+painter (a `useFrame`-driven `canvas`) can centre or right-align its own text exactly where
+`drawText` will place it — the two consult the same measurer, so they agree by construction.
 
 ## Why JVM-testable matters
 

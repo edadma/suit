@@ -197,6 +197,18 @@ canvas(width = 400, height = 300) { (c, size) =>
 }
 ```
 
+The `Canvas` both draws and **measures** text: `c.drawText(origin, text, style)` places a line
+with its top-left at `origin`, and `c.measureText(text, style)` returns the line's `Size` without
+drawing — using the same measurer, so the two agree. That lets a painter centre its own labels:
+
+```scala
+canvas(height = 120) { (c, size) =>
+  val style = TextStyle(48, Color.white, FontWeight.Bold)
+  val m     = c.measureText("PAUSED", style)
+  c.drawText(Offset((size.width - m.width) / 2, (size.height - m.height) / 2), "PAUSED", style)
+}
+```
+
 To **animate**, drive it with [`useFrame`](#useframe): keep the changing state in a `useRef`,
 advance it in the callback, and read it back in `draw`.
 
