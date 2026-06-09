@@ -35,8 +35,21 @@ object Suit:
       System.err.println(s"suit: SDL_Init failed: ${error}")
       return
 
-    val window   = createWindow(title, width, height)
+    // Window and renderer creation can fail — e.g. when there is no usable display (a process not
+    // attached to the desktop GUI session). Detect it and exit with the SDL error, rather than
+    // falling through into the event loop and spinning forever with no window.
+    val window = createWindow(title, width, height)
+    if window.isNull then
+      System.err.println(s"suit: failed to create window: ${error}")
+      quit()
+      return
+
     val renderer = window.createRenderer()
+    if renderer.isNull then
+      System.err.println(s"suit: failed to create renderer: ${error}")
+      window.destroy()
+      quit()
+      return
     renderer.setVSync(true)
 
     // HiDPI: the window's logical size (the coordinate space the UI lives in) and its actual
