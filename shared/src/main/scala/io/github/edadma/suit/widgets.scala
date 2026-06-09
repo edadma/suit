@@ -482,14 +482,18 @@ object widgets:
     }
 
   /** A badge: a small rounded pill that labels or counts. It paints the theme's accent
-    * with readable ink and rounds to a stadium, sized to its (slightly smaller) label. */
+    * with readable ink and rounds to a stadium, sized to its (slightly smaller) label.
+    *
+    * The top padding runs a hair tighter than the bottom: symmetric padding centres the
+    * cap height, but a descender ('g', 'p', 'y') then crowds the bottom edge and the label
+    * reads as sitting low. Biasing the text up by a pixel optically centres it in the pill. */
   val Badge: Component[String] =
     component[String] { label =>
       val theme = useTheme()
       box(
         bg      = theme.accent,
         radius  = 999,
-        padding = EdgeInsets.symmetric(horizontal = 8, vertical = 2),
+        padding = EdgeInsets(top = 1, right = 9, bottom = 3, left = 9),
       )(
         text(label, size = theme.textSize * 0.8, color = theme.onPrimary),
       )
@@ -1071,13 +1075,18 @@ object widgets:
         }
       val contentW = colWidths.sum
 
+      // The cells fill their column widths but are only one line tall; centring the whole row
+      // within the (taller) row band vertically centres the text the way a table cell does —
+      // the band box lays its single child at its top-left, so a bare row would sit at the top.
       def cells(values: Int => String, bold: Boolean): VNode =
-        row(crossAxisAlignment = CrossAxisAlignment.Center)(
-          p.columns.indices.map { ci =>
-            box(width = colWidths(ci), padding = EdgeInsets.symmetric(horizontal = cellPad, vertical = 0), clip = true)(
-              text(values(ci), color = theme.surfaceText, weight = if bold then FontWeight.SemiBold else FontWeight.Normal),
-            )
-          }*,
+        align(Alignment.centerLeft)(
+          row(crossAxisAlignment = CrossAxisAlignment.Center)(
+            p.columns.indices.map { ci =>
+              box(width = colWidths(ci), padding = EdgeInsets.symmetric(horizontal = cellPad, vertical = 0), clip = true)(
+                text(values(ci), color = theme.surfaceText, weight = if bold then FontWeight.SemiBold else FontWeight.Normal),
+              )
+            }*,
+          ),
         )
 
       val header: VNode =

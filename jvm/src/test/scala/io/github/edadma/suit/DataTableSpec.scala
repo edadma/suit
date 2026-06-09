@@ -78,3 +78,19 @@ class DataTableSpec extends AnyFunSuite with BeforeAndAfterEach:
     val m   = mount(Vector("id", "name", "value"), sampleRows(3), i => sel = i)
     val built = rowBoxes(m.root)
     assert(built.size == 3)
+
+  test("cell text is vertically centred within its row band, not top-aligned"):
+    val m     = mount(Vector("id", "name", "value"), sampleRows(3), _ => ())
+    val texts = allObjects(m.root).collect { case t: RenderText => t }
+    val idText = texts.find(_.text == "id").get
+    // The enclosing row band is the nearest ancestor box of the row height (28); the cell boxes
+    // carry only a width, so they are skipped.
+    def bandOf(o: RenderObject): RenderBox =
+      var n: RenderObject | Null = o
+      while n != null && !(n.isInstanceOf[RenderBox] && n.asInstanceOf[RenderBox].height.contains(28.0)) do
+        n = n.asInstanceOf[RenderObject].parent
+      n.asInstanceOf[RenderBox]
+    val band    = bandOf(idText)
+    val textMid = idText.absoluteOffset.y + idText.size.height / 2
+    val bandMid = band.absoluteOffset.y + band.size.height / 2
+    assert(math.abs(textMid - bandMid) < 1.0) // centred, not sitting at the band's top
