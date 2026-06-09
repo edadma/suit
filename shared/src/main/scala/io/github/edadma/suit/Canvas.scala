@@ -28,6 +28,14 @@ trait Canvas:
   def fillCircle(center: Offset, radius: Double, paint: Paint): Unit
   def line(a: Offset, b: Offset, width: Double, paint: Paint): Unit
 
+  /** Stroke `path` with `paint` at `width`, joining segments with `join` and finishing open ends
+    * with `cap`. The backend strokes it as one path, so vertices join cleanly — unlike stroking
+    * each edge with a separate [[line]] call, which leaves gaps or overlaps at the corners. */
+  def strokePath(path: Path, paint: Paint, width: Double, join: LineJoin = LineJoin.Miter, cap: LineCap = LineCap.Butt): Unit
+
+  /** Fill the region enclosed by `path` with `paint`. */
+  def fillPath(path: Path, paint: Paint): Unit
+
   /** Draw the SVG `image` scaled to fill `rect`. The Cairo backend renders it as vectors
     * straight into its context — crisp at any size, and honouring the clip and opacity group
     * currently in force — while the recording backend captures the call. An image the backend

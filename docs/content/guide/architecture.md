@@ -86,9 +86,17 @@ trait Canvas:
   def strokeRect(rect: Rect, color: Color, width: Double): Unit
   def fillCircle(center: Offset, radius: Double, color: Color): Unit
   def line(a: Offset, b: Offset, width: Double, color: Color): Unit
+  def strokePath(path: Path, paint: Paint, width: Double, ...): Unit  // vector outline
+  def fillPath(path: Path, paint: Paint): Unit
   def drawText(origin: Offset, text: String, style: TextStyle): Unit
   def measureText(text: String, style: TextStyle): Size           // size of a line, undrawn
 ```
+
+A `Path` is a plain value — a list of move/line/arc/close segments built with `Path.builder()` (or
+`Path.polyline(points)` for an outline) — so it records and asserts on `RecordingCanvas` like any
+other call. The Cairo backend replays it into the engine's own path, so a stroked shape gets real
+line joins; this is the same move/line/arc model HTML canvas and PDF share, and exactly what Cairo
+already exposes underneath.
 
 On Native, `CairoCanvas` draws through [Cairo](https://www.cairographics.org/) — a real 2D
 vector engine, so every fill, stroke, and glyph is anti-aliased by its coverage rasteriser.

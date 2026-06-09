@@ -155,6 +155,43 @@ final class CairoCanvas(cr: Context, fonts: Fonts, shadowScaleX: Double = 1.0, s
     cr.stroke()
     disposeSource(p)
 
+  // Replay a suit Path into Cairo's own path so a stroke/fill is one path with real joins.
+  private def replay(path: Path): Unit =
+    cr.newPath()
+    path.segments.foreach {
+      case PathSeg.MoveTo(x, y) => cr.moveTo(x, y)
+      case PathSeg.LineTo(x, y) => cr.lineTo(x, y)
+      case PathSeg.Arc(cx, cy, r, s, e, neg) =>
+        if neg then cr.arcNegative(cx, cy, r, s, e) else cr.arc(cx, cy, r, s, e)
+      case PathSeg.Close => cr.closePath()
+    }
+
+  // suit's LineJoin/LineCap share their simple names with libcairo's, so map across fully qualified.
+  private def cairoJoin(j: LineJoin): io.github.edadma.libcairo.LineJoin = j match
+    case LineJoin.Miter => io.github.edadma.libcairo.LineJoin.MITER
+    case LineJoin.Round => io.github.edadma.libcairo.LineJoin.ROUND
+    case LineJoin.Bevel => io.github.edadma.libcairo.LineJoin.BEVEL
+
+  private def cairoCap(c: LineCap): io.github.edadma.libcairo.LineCap = c match
+    case LineCap.Butt   => io.github.edadma.libcairo.LineCap.BUTT
+    case LineCap.Round  => io.github.edadma.libcairo.LineCap.ROUND
+    case LineCap.Square => io.github.edadma.libcairo.LineCap.SQUARE
+
+  def strokePath(path: Path, paint: Paint, width: Double, join: LineJoin, cap: LineCap): Unit =
+    replay(path)
+    cr.setLineWidth(width)
+    cr.setLineJoin(cairoJoin(join))
+    cr.setLineCap(cairoCap(cap))
+    val p = source(paint, path.bounds)
+    cr.stroke()
+    disposeSource(p)
+
+  def fillPath(path: Path, paint: Paint): Unit =
+    replay(path)
+    val p = source(paint, path.bounds)
+    cr.fill()
+    disposeSource(p)
+
   // librsvg renders straight into this same Cairo context, so an SVG composites with the active
   // clip and opacity group like any other drawing — no pixel round-trip. Only a Cairo-backed
   // image carries a real librsvg handle; any other SvgImage (a headless test stub) is a no-op.

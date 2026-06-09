@@ -209,6 +209,17 @@ canvas(height = 120) { (c, size) =>
 }
 ```
 
+For vector outlines, build a `Path` (move/line/arc/close, or `Path.polyline` for a point list) and
+`strokePath`/`fillPath` it — one stroked path, so corners join cleanly, unlike stroking each edge
+with a separate `line`:
+
+```scala
+canvas(width = 120, height = 120) { (c, _) =>
+  val ship = Path.polyline(Seq(Offset(60, 20), Offset(80, 90), Offset(60, 75), Offset(40, 90)))
+  c.strokePath(ship, Color.white, 2.0, LineJoin.Round)
+}
+```
+
 To **animate**, drive it with [`useFrame`](#useframe): keep the changing state in a `useRef`,
 advance it in the callback, and read it back in `draw`.
 
