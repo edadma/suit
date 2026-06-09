@@ -111,6 +111,44 @@ Give the field a definite width — put it in a `Stretch` column or a fixed-widt
 fills the row; like the other controlled widgets it does not impose a width of its own.
 [= /note =]
 
+## TextArea
+
+```scala
+val TextArea: Component2[String, String => Unit]
+```
+
+A **multi-line** text editor — the `TextField` counterpart for text that spans many lines. It
+is **controlled** the same way (it renders `value` and reports edits through `onChange`), but
+the caret moves in two dimensions:
+
+- **Enter** splits the line; **Backspace** / **Delete** remove (joining lines at a boundary).
+- **Left** / **Right** / **Up** / **Down** move the caret — vertical motion keeps the column
+  where a shorter line allows; hold **Shift** to extend a selection across line breaks.
+- **Home** / **End** jump to the line's start / end (**Ctrl+Home** / **Ctrl+End** to the
+  document's); **Ctrl+A** selects all.
+- A **click** places the caret on the line and column it lands on; a **drag** selects.
+
+All of the caret arithmetic lives in the pure, JVM-tested `EditBuffer` model; the widget is the
+wiring that holds one in state and paints it. The editor **sizes to its content height** (one
+line's height per line) rather than scrolling itself, so put it in a `scrollView` for a
+fixed-height editor that scrolls — the click-to-caret math reads the pointer in the editor's own
+coordinates, so it stays correct however far the enclosing viewport is scrolled.
+
+```scala
+val (sql, setSql, _) = useState("SELECT *\nFROM users;")
+box(height = 150, clip = true)(
+  scrollView(Axis.Vertical)(
+    col(crossAxisAlignment = CrossAxisAlignment.Stretch)(
+      TextArea(sql, setSql),
+    ),
+  ),
+)
+```
+
+[= note =]
+Like `TextField`, give it a definite width (a `Stretch` column or a sized `box`) to fill a pane.
+[= /note =]
+
 ## Switch
 
 ```scala
@@ -394,6 +432,65 @@ Both `Menu` and `Tooltip` need the overlay layer that `Suit.run` provides; outsi
 trigger still shows. A headless test wires an overlay through `OverlayContext` — see `MenuSpec` /
 `TooltipSpec`.
 [= /note =]
+
+## Data table
+
+```scala
+def dataTable(
+    columns:   Seq[String],
+    rows:      IndexedSeq[IndexedSeq[String]],
+    selected:  Int                  = -1,
+    onSelect:  (Int => Unit) | Null = null,
+    rowHeight: Double               = 28.0,
+): VNode
+```
+
+A data grid: a header row of `columns` over a body of string `rows` (each row a sequence of cell
+strings indexed to match the columns). Columns **auto-size** to their content, the body **scrolls
+with the wheel and is virtualized** — only the rows under the viewport are ever built (see
+[Virtual list](#virtual-list)) — so a large result set stays cheap. `selected` marks a row in the
+accent and `onSelect` reports the clicked row's index; alternate rows are zebra-striped. Wide
+tables scroll horizontally.
+
+```scala
+val (sel, setSel, _) = useState(-1)
+box(flex = 1)(                                   // a bounded height — the grid's scrolling viewport
+  dataTable(
+    columns  = Vector("id", "name", "email"),
+    rows     = users.map(u => Vector(u.id.toString, u.name, u.email)),
+    selected = sel,
+    onSelect = setSel,
+  ),
+)
+```
+
+[= note =]
+`dataTable` (and `virtualList`) **must be given a bounded height** — a flex slot, a fixed height,
+or a sized box — because that height is the viewport it windows against. In a loose (content-sized)
+parent it has no viewport to measure.
+[= /note =]
+
+## Virtual list
+
+```scala
+def virtualList(itemCount: Int, itemExtent: Double, overscan: Int = 3)(
+    builder: Int => VNode,
+): VNode
+```
+
+A vertically **virtualized** list: only the items under the viewport (plus a little overscan) are
+ever built, so a list of many thousands of fixed-height rows costs the handful on screen rather
+than all of them. `builder(i)` produces item `i` on demand and `itemExtent` is each item's fixed
+height, which is what makes the windowing exact. The wheel scrolls it. Like `dataTable` it fills
+the space its parent gives and **must be given a bounded height** — that height is the viewport.
+
+```scala
+box(flex = 1)(
+  virtualList(itemCount = 10000, itemExtent = 24) { i =>
+    box(padding = EdgeInsets.symmetric(horizontal = 8, vertical = 0))(text(s"Row $i"))
+  },
+)
+```
 
 ## Theme
 

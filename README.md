@@ -51,6 +51,16 @@ flex property wins. The whole engine is pure Scala with **no SDL dependency**, s
 the render tree, and geometry are unit-tested headlessly on the JVM against a recording
 canvas.
 
+## Widgets
+
+A small library of controls — all theme-driven and animated, composed from the DSL
+primitives: buttons, checkboxes, switches, radio groups, sliders, tabs, progress bars,
+badges, dividers, alerts, cards, tooltips, menus, and modal dialogs. Text entry comes in a
+single-line `TextField` and a multi-line `TextArea`, and large data sets are served by a
+**virtualized data grid** — `dataTable` over a `virtualList` that only builds the rows under
+the viewport, so a thousand-row result stays smooth. See the
+[widget reference](https://suit.edadma.dev/reference/widgets/).
+
 ## A counter
 
 ```scala
