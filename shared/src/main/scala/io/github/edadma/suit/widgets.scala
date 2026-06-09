@@ -313,6 +313,145 @@ object widgets:
       )
     }
 
+  /** A multi-line text editor: a focusable, bordered box that edits a string spanning
+    * many lines. Like [[TextField]] it is **controlled** — it renders the `value` it is
+    * given and reports edits through `onChange` — but the caret moves in two dimensions:
+    * Enter splits a line, Up/Down move between lines (keeping the column where a shorter
+    * line allows), Home/End jump to the line's ends, and Shift extends a selection across
+    * line breaks. Backspace/Delete remove, Ctrl+A selects all, a click places the caret and
+    * a drag selects. All the caret arithmetic lives in the pure [[EditBuffer]]; this widget
+    * is the wiring that holds one in state and paints it.
+    *
+    * It sizes to its content height (one line's height per line of text) rather than
+    * scrolling itself, so put it in a [[dsl.scrollView]] for a fixed-height editor that
+    * scrolls — the click-to-caret math reads the pointer in the editor's own coordinates, so
+    * it stays correct however far the enclosing viewport is scrolled. Give it a tight width
+    * (a `Stretch` column, or a `box` width) to fill a pane. The caret blinks while focused
+    * and snaps solid for a full interval after any edit or move. */
+  val TextArea: Component2[String, String => Unit] =
+    component[String, String => Unit] { (value, onChange) =>
+      val theme                    = useTheme()
+      val (caret, setCaret, _)     = useState(0)
+      val (anchor, setAnchor, _)   = useState(0)
+      val (focused, setFocused, _) = useState(false)
+
+      // The caret blinks while focused; bumping the epoch restarts the interval's phase so a
+      // solid caret shows for a full interval after each edit or move (see [[TextField]]).
+      val (blinkOn, setBlinkOn, updateBlinkOn) = useState(true)
+      val (blinkEpoch, _, bumpBlink)           = useState(0)
+      def restartBlink(): Unit                 = { setBlinkOn(true); bumpBlink(_ + 1) }
+      useInterval(() => updateBlinkOn(b => !b), 530, enabled = focused, restartKeys = Array(blinkEpoch))
+
+      val buf   = EditBuffer(value, caret, anchor)
+      val lines = buf.lines
+
+      val style = TextStyle(size = theme.textSize, color = theme.surfaceText)
+      val padX  = 8.0
+      val padY  = 6.0
+      // A uniform line height from a non-empty sample, so blank lines keep the rhythm and an
+      // empty editor still has a full-height caret.
+      val lineH      = TextMeasurer.installed.measure("Xy", style).height
+      val contentH   = math.max(lineH, lines.length * lineH)
+
+      def prefixW(line: Int, col: Int): Double =
+        val s = lines(line)
+        TextMeasurer.installed.measure(s.substring(0, math.max(0, math.min(col, s.length))), style).width
+      def lineW(line: Int): Double = TextMeasurer.installed.measure(lines(line), style).width
+
+      // Resolve a pointer in the editor's content space (pointer minus padding) to a caret
+      // index: the row from the y, then the nearest character boundary on that row from the x.
+      def colAtX(line: Int, x: Double): Int =
+        val s     = lines(line)
+        var best  = 0
+        var bestD = math.abs(x - 0.0)
+        var i     = 1
+        while i <= s.length do
+          val d = math.abs(prefixW(line, i) - x)
+          if d < bestD then { bestD = d; best = i }
+          i += 1
+        best
+      def indexAt(localX: Double, localY: Double): Int =
+        val ln  = math.max(0, math.min((((localY - padY) / lineH).toInt), lines.length - 1))
+        buf.indexOf(ln, colAtX(ln, localX - padX))
+
+      // Drive the model: apply a pure op, report a text change if any, and move the caret —
+      // the single path every key and pointer edit funnels through.
+      def edit(op: EditBuffer => EditBuffer): Unit =
+        val nb = op(buf)
+        if nb.text != value then onChange(nb.text)
+        setCaret(nb.caret)
+        setAnchor(nb.anchor)
+        restartBlink()
+
+      def onKey(e: KeyEvent): Unit =
+        e.scancode match
+          case Key.Backspace       => edit(_.backspace)
+          case Key.Delete          => edit(_.delete)
+          case Key.Enter           => edit(_.newline)
+          case Key.Left            => edit(_.left(e.shift))
+          case Key.Right           => edit(_.right(e.shift))
+          case Key.Up              => edit(_.up(e.shift))
+          case Key.Down            => edit(_.down(e.shift))
+          case Key.Home if e.ctrl  => edit(_.docStart(e.shift))
+          case Key.End if e.ctrl   => edit(_.docEnd(e.shift))
+          case Key.Home            => edit(_.lineHome(e.shift))
+          case Key.End             => edit(_.lineEnd(e.shift))
+          case Key.A if e.ctrl     => edit(_.selectAll)
+          case _                   => ()
+
+      // The character grid: one fixed-height row per line so every line's top sits at
+      // `line * lineH`, which the caret and selection geometry below rely on exactly.
+      val textLayer: VNode =
+        col(mainAxisSize = MainAxisSize.Min)(
+          lines.map(l => sizedBox(height = lineH)(text(l, color = theme.surfaceText, size = theme.textSize)))*,
+        )
+
+      // The selection highlight: one band per spanned line, from the selection's start column
+      // on its first line (0 on later lines) to its end column on its last line (the line's
+      // full width on earlier lines, with a sliver for an empty line so it stays visible).
+      val selLayer: Seq[VNode] =
+        if !buf.hasSelection then Seq.empty
+        else
+          val (loLine, loCol) = buf.lineColOf(buf.selLo)
+          val (hiLine, hiCol) = buf.lineColOf(buf.selHi)
+          (loLine to hiLine).map { ln =>
+            val startX = if ln == loLine then prefixW(ln, loCol) else 0.0
+            val endX   = if ln == hiLine then prefixW(ln, hiCol) else math.max(lineW(ln), 4.0)
+            positioned(startX, ln * lineH)(
+              box(width = math.max(0.0, endX - startX), height = lineH, bg = theme.accent.withAlpha(80))(),
+            )
+          }.toSeq
+
+      val caretLayer: Seq[VNode] =
+        if focused && blinkOn then
+          val (line, c0) = buf.lineColOf(caret)
+          Seq(positioned(prefixW(line, c0), line * lineH)(box(width = 2, height = lineH, bg = theme.surfaceText)()))
+        else Seq.empty
+
+      box(
+        bg          = theme.surface,
+        border      = if focused then theme.accent else theme.border,
+        borderWidth = if focused then 2 else 1,
+        radius      = theme.radius,
+        padding     = EdgeInsets.symmetric(horizontal = padX, vertical = padY),
+        clip        = true,
+        focusable   = true,
+        acceptsText = true,
+        onMouseDown = e => edit(_.collapseTo(indexAt(e.local.x, e.local.y))),
+        onMouseMove = e => if e.button != 0 then edit(b => b.moveTo(indexAt(e.local.x, e.local.y), extend = true)),
+        onTextInput = e => edit(_.insert(e.text)),
+        onKeyDown   = onKey,
+        onFocus     = () => { setFocused(true); restartBlink() },
+        onBlur      = () => setFocused(false),
+      )(
+        sizedBox(height = contentH)(
+          stack(Alignment.topLeft)(
+            Seq.concat(selLayer, Seq(textLayer), caretLayer)*,
+          ),
+        ),
+      )
+    }
+
   /** A surface panel: a themed, rounded, shadowed container that groups related content.
     * It is pure chrome — no state, no interaction — so it is a [[container]] over its
     * children, padding them by the theme's spacing and painting the theme's surface colour,
@@ -845,3 +984,154 @@ object widgets:
       placement: Placement = Placement(),
   )(trigger: VNode*): VNode =
     TooltipImpl((label, delayMs, exitMs, placement))(trigger*)
+
+  // --- virtualized list ------------------------------------------------------
+
+  private case class VirtualListProps(itemCount: Int, itemExtent: Double, overscan: Int, builder: Int => VNode)
+
+  // Until the first layout populates the size ref, the list has no measured viewport. It
+  // renders against this fallback height so there is content on the first frame; the ref-read
+  // re-render then corrects it to the real viewport — the same measure-one-frame-late dance the
+  // anchored overlays use.
+  private val VirtualFallbackHeight = 600.0
+
+  private val VirtualListImpl: Component[VirtualListProps] =
+    component[VirtualListProps] { p =>
+      val (scroll, setScroll, _) = useState(0.0)
+      val (_, _, bumpTick)       = useState(0)
+      val sizeRef                = useRef[RenderObject | Null](null)
+
+      // One re-render after mount so the slice is recomputed against the now-laid-out viewport
+      // height (the ref is null on the first render, before any layout has run).
+      useEffect(() => { bumpTick(t => t + 1); noCleanup }, Array())
+
+      val viewportH = sizeRef.current match
+        case r: RenderObject if r.size.height > 0 => r.size.height
+        case _                                    => VirtualFallbackHeight
+
+      val range = VirtualWindow.visibleRange(scroll, viewportH, p.itemExtent, p.itemCount, p.overscan)
+      val maxS  = VirtualWindow.maxScroll(viewportH, p.itemExtent, p.itemCount)
+      val s     = math.max(0.0, math.min(scroll, maxS))
+
+      val items: Seq[VNode] =
+        (range.first until range.last).map(i => sizedBox(height = p.itemExtent)(p.builder(i)))
+
+      box(
+        clip    = true,
+        ref     = sizeRef,
+        onWheel = e => setScroll(math.max(0.0, math.min(s - e.deltaY * RenderScroll.WheelStep, maxS))),
+      )(
+        positioned(0, range.offsetY)(
+          col(mainAxisSize = MainAxisSize.Min)(items*),
+        ),
+      )
+    }
+
+  /** A vertically virtualized list: only the items under the viewport (plus a little overscan)
+    * are ever built, so a list of many thousands of fixed-height rows costs the handful on
+    * screen rather than all of them. `builder(i)` produces item `i` on demand; `itemExtent` is
+    * each item's (fixed) height, which is what makes the windowing exact (see [[VirtualWindow]]).
+    * The wheel scrolls it. It fills the space its parent gives it and **must be given a bounded
+    * height** (a flex slot, a fixed height, or a sized box) — that height is the viewport it
+    * windows against. */
+  def virtualList(itemCount: Int, itemExtent: Double, overscan: Int = 3)(builder: Int => VNode): VNode =
+    VirtualListImpl(VirtualListProps(itemCount, itemExtent, overscan, builder))
+
+  // --- data table ------------------------------------------------------------
+
+  private case class DataTableProps(
+      columns:   Seq[String],
+      rows:      IndexedSeq[IndexedSeq[String]],
+      selected:  Int,
+      onSelect:  (Int => Unit) | Null,
+      rowHeight: Double,
+  )
+
+  private val DataTableImpl: Component[DataTableProps] =
+    component[DataTableProps] { p =>
+      val theme = useTheme()
+      val style = TextStyle(size = theme.textSize, color = theme.surfaceText)
+
+      // Size each column to its widest cell among the header and a sample of the rows (scanning
+      // every row of a large result would be wasteful and the first screenful is representative),
+      // clamped so no column collapses or runs away. The table's content width is their sum.
+      val cellPad   = 10.0
+      val minColW   = 56.0
+      val maxColW   = 360.0
+      val sampleN   = math.min(p.rows.length, 200)
+      val colWidths: Vector[Double] =
+        p.columns.indices.toVector.map { ci =>
+          var w = TextMeasurer.installed.measure(p.columns(ci), style).width
+          var r = 0
+          while r < sampleN do
+            val row = p.rows(r)
+            if ci < row.length then w = math.max(w, TextMeasurer.installed.measure(row(ci), style).width)
+            r += 1
+          math.max(minColW, math.min(maxColW, w + 2 * cellPad))
+        }
+      val contentW = colWidths.sum
+
+      def cells(values: Int => String, bold: Boolean): VNode =
+        row(crossAxisAlignment = CrossAxisAlignment.Center)(
+          p.columns.indices.map { ci =>
+            box(width = colWidths(ci), padding = EdgeInsets.symmetric(horizontal = cellPad, vertical = 0), clip = true)(
+              text(values(ci), color = theme.surfaceText, weight = if bold then FontWeight.SemiBold else FontWeight.Normal),
+            )
+          }*,
+        )
+
+      val header: VNode =
+        box(width = contentW, height = p.rowHeight, bg = theme.surface)(
+          cells(ci => p.columns(ci), bold = true),
+        )
+
+      // Subtle zebra striping: tint alternate rows a hair toward the ink so dense data is easier
+      // to track across, with the selected row marked in the accent.
+      val altBg = Color.lerp(theme.surface, theme.surfaceText, 0.05)
+      val body: VNode =
+        virtualList(p.rows.length, p.rowHeight) { i =>
+          val rowData = p.rows(i)
+          val isSel   = i == p.selected
+          // A `Paint | Null` (not `Color | Null`): passing a nullable colour to the `Paint | Null`
+          // slot would route `null` through the Color→Paint conversion and yield `Solid(null)`,
+          // which faults when painted. Building the Solid here keeps `null` meaning "no fill".
+          val bg: Paint | Null =
+            if isSel then Solid(theme.accent.withAlpha(70))
+            else if i % 2 == 1 then Solid(altBg)
+            else null
+          box(
+            width   = contentW,
+            height  = p.rowHeight,
+            bg      = bg,
+            onClick = if p.onSelect != null then (_ => p.onSelect.asInstanceOf[Int => Unit](i)) else null,
+          )(
+            cells(ci => if ci < rowData.length then rowData(ci) else "", bold = false),
+          )
+        }
+
+      scrollView(Axis.Horizontal)(
+        sizedBox(width = contentW)(
+          col(crossAxisAlignment = CrossAxisAlignment.Stretch, mainAxisSize = MainAxisSize.Max)(
+            header,
+            box(height = 1, bg = theme.border)(),
+            box(flex = 1)(body),
+          ),
+        ),
+      )
+    }
+
+  /** A data grid: a header row of `columns` over a virtualized body of string `rows` (each row
+    * a sequence of cell strings, indexed to match the columns). Columns auto-size to their
+    * content; the body scrolls with the wheel and only builds the rows on screen (see
+    * [[virtualList]]), so a large result set stays cheap. `selected` marks a row in the accent
+    * and `onSelect` fires the clicked row's index. It **must be given a bounded height** — put it
+    * in a flex slot or a sized box — since that height is the scrolling viewport. Wide tables
+    * scroll horizontally. */
+  def dataTable(
+      columns:   Seq[String],
+      rows:      IndexedSeq[IndexedSeq[String]],
+      selected:  Int                  = -1,
+      onSelect:  (Int => Unit) | Null = null,
+      rowHeight: Double               = 28.0,
+  ): VNode =
+    DataTableImpl(DataTableProps(columns, rows, selected, onSelect, rowHeight))
