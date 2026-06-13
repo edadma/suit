@@ -381,6 +381,68 @@ menu.
 Pass a `placement` to prefer a different side or add a gap (see [Placement](#placement) below);
 the menu still flips and slides to stay on-screen.
 
+## Select
+
+```scala
+def Select(
+    options:     Seq[(String, String)],   // value -> label
+    selected:    String,
+    onChange:    String => Unit,
+    placeholder: String = "Select…",
+    width:       Double = 200,
+    exitMs:      Int    = 150,
+): VNode
+```
+
+A dropdown select: a field-styled trigger showing the current choice, which opens a menu of
+`options` (each a `value -> label` pair) on click or from the keyboard (Space / Enter; Escape
+closes). It is **controlled** — the caller owns `selected` (the chosen value) and is told the new
+value through `onChange`. When `selected` matches no option, the `placeholder` shows, muted, as a
+prompt.
+
+```scala
+val (colour, setColour, _) = useState("")
+
+Select(
+  Seq("red" -> "Red", "green" -> "Green", "blue" -> "Blue"),
+  colour,
+  setColour,
+  placeholder = "Pick a colour",
+)
+```
+
+It rides the same anchored-overlay mechanism as `Menu`: the dropdown portals into the overlay
+layer just below the trigger (flipping above near the bottom edge), dismisses on an outside click
+or Escape, and traps focus while open. `width` fixes both the trigger and the dropdown.
+
+## Context menu
+
+```scala
+def contextMenu(
+    width:     Double    = 200,
+    placement: Placement = Placement(),
+)(trigger: VNode)(items: (() => Unit) => Seq[VNode]): VNode
+```
+
+A right-click context menu around a `trigger`. A right-press anywhere on the trigger opens a menu
+**at the cursor** (not beside the trigger); a left-click passes through untouched. The `items` are
+built from a `close` callback, so a selected item does its work and then closes the menu:
+
+```scala
+contextMenu()(
+  box(padding = EdgeInsets.all(24))(text("right-click me")),
+) { close =>
+  Seq(
+    MenuItem("Cut",   () => { cut();   close() }),
+    MenuItem("Copy",  () => { copy();  close() }),
+    MenuItem("Paste", () => { paste(); close() }),
+  )
+}
+```
+
+Like `Menu` it portals into the overlay layer, dismisses on an outside click or Escape, and traps
+focus while open. See `ContextMenuSpec` for the headless harness.
+
 ## Placement
 
 ```scala
@@ -451,6 +513,13 @@ with the wheel and is virtualized** — only the rows under the viewport are eve
 [Virtual list](#virtual-list)) — so a large result set stays cheap. `selected` marks a row in the
 accent and `onSelect` reports the clicked row's index; alternate rows are zebra-striped. Wide
 tables scroll horizontally.
+
+Columns are **sortable and resizable** with no extra wiring: clicking a header sorts the rows by
+that column (a caret shows the direction; clicking again reverses it), and dragging the thin handle
+on a header's right edge resizes the column. The sort is a lexicographic string compare, so a
+numeric column should be zero-padded or otherwise pre-formatted to sort as expected. `selected` and
+`onSelect` are always in terms of the **original** row index, so the caller's selection stays put
+no matter how the view is sorted.
 
 ```scala
 val (sel, setSel, _) = useState(-1)
@@ -525,6 +594,31 @@ box(flex = 1)(
   splitter(initial = 0.25, min = 0.15, max = 0.5)(
     sidebarContent, // the first (left) pane
     mainContent,    // the second (right) pane fills the rest
+  ),
+)
+```
+
+## Scroll area
+
+```scala
+def scrollArea(axis: Axis = Axis.Vertical, thickness: Double = 8.0)(children: VNode*): VNode
+```
+
+A scrolling viewport with a **visible, draggable scrollbar** — the themed counterpart to the bare
+[`scrollView`](/reference/dsl/#scrollview) DSL primitive, which is wheel-only. The bar rides the
+trailing edge (the right edge for a vertical area, the bottom for a horizontal one), appears only
+when the content overflows, and can be dragged to scroll as well as turned by the wheel; its
+colours come from the active theme.
+
+Like `scrollView` it **must be given a bounded size** along the scroll axis — that extent is the
+viewport it scrolls within — and takes a single content node (wrap several in a `col`/`row`).
+
+```scala
+sizedBox(height = 240)(
+  scrollArea()(
+    col(mainAxisSize = MainAxisSize.Min)(
+      rows.map(r => box(padding = EdgeInsets.all(8))(text(r)))*,
+    ),
   ),
 )
 ```

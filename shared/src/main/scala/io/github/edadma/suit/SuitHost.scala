@@ -128,6 +128,10 @@ final class SuitHostConfig extends HostConfig:
         s.axis = value match
           case a: Axis => a
           case _       => Axis.Vertical
+      case (s: RenderScroll, "scrollbar")          => s.scrollbar = value == true
+      case (s: RenderScroll, "scrollbarThumb")     => s.scrollbarThumb = asColorOpt(value).orNull
+      case (s: RenderScroll, "scrollbarTrack")     => s.scrollbarTrack = asColorOpt(value).orNull
+      case (s: RenderScroll, "scrollbarThickness") => s.scrollbarThickness = asDouble(value)
 
       case (f: RenderFlex, "mainAxisAlignment") =>
         f.mainAxisAlignment = value match

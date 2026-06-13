@@ -327,7 +327,13 @@ it. A `repaint()` before the widget mounts, or after it unmounts, is a harmless 
 ## scrollView
 
 ```scala
-def scrollView(axis: Axis = Axis.Vertical)(children: VNode*): VNode
+def scrollView(
+    axis:               Axis         = Axis.Vertical,
+    scrollbar:          Boolean      = false,
+    scrollbarThumb:     Color | Null = null,
+    scrollbarTrack:     Color | Null = null,
+    scrollbarThickness: Double       = Double.NaN,
+)(children: VNode*): VNode
 ```
 
 A scrolling viewport over its content. The viewport fills the space its parent gives it; the
@@ -335,6 +341,11 @@ content takes its natural extent along the scroll axis and is **clipped** to the
 anything past the edges is hidden rather than overflowing. The wheel scrolls it with no extra
 wiring — the scroll position lives on the viewport and persists across re-renders. Give it a
 single content node (wrap several in a `col` / `row`).
+
+It is **wheel-only by default** — no visible bar. Pass `scrollbar = true` with thumb/track colours
+to paint a draggable bar along the trailing edge (it shows only when the content overflows). Most
+callers reach for the themed [`scrollArea`](/reference/widgets/#scroll-area) widget instead, which
+wires these from the active theme.
 
 ```scala
 scrollView(Axis.Vertical)(

@@ -351,9 +351,25 @@ object dsl:
     * along the scroll axis and is clipped to the viewport, so anything past the edges is
     * hidden rather than overflowing. The wheel scrolls it with no extra wiring — scroll
     * position lives on the viewport and persists across re-renders. Give it a single
-    * content node (wrap several in a `col`/`row`). */
-  def scrollView(axis: Axis = Axis.Vertical)(children: VNode*): VNode =
-    el("scroll", Map("axis" -> PropValue(axis)), children)
+    * content node (wrap several in a `col`/`row`).
+    *
+    * It is wheel-only by default — no visible bar. Pass `scrollbar = true` (with `scrollbarThumb`/
+    * `scrollbarTrack` colours and a `scrollbarThickness`) to paint a draggable bar along the
+    * trailing edge; the `scrollArea` widget wraps this with theme colours so most callers reach
+    * for that instead. The bar shows only when the content overflows. */
+  def scrollView(
+      axis:               Axis         = Axis.Vertical,
+      scrollbar:          Boolean      = false,
+      scrollbarThumb:     Color | Null = null,
+      scrollbarTrack:     Color | Null = null,
+      scrollbarThickness: Double       = Double.NaN,
+  )(children: VNode*): VNode =
+    var props = Map[String, Prop]("axis" -> PropValue(axis))
+    if scrollbar then props = props.updated("scrollbar", PropValue(true))
+    if scrollbarThumb != null then props = props.updated("scrollbarThumb", PropValue(scrollbarThumb))
+    if scrollbarTrack != null then props = props.updated("scrollbarTrack", PropValue(scrollbarTrack))
+    props = sized(props, "scrollbarThickness", scrollbarThickness)
+    el("scroll", props, children)
 
   /** Places its child at the absolute pixel offset `(dx, dy)` within the space it is given,
     * laying the child out at its natural size (it may overflow). Fills that space, so dropped

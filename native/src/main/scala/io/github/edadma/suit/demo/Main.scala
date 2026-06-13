@@ -229,6 +229,8 @@ val App = view {
   val (dialog, setDialog, _)   = useState(false)
   val (menu, setMenu, _)       = useState(false)
   val menuRef                  = useRef[RenderObject | Null](null)
+  val (colour, setColour, _)   = useState("")
+  val (pickedRow, setPickedRow, _) = useState(-1)
 
   // The active theme is one of the built-ins, chosen by the header switch. Everything below
   // — controls, body background, card chrome — paints from it, so the flip restyles the
@@ -433,6 +435,90 @@ val App = view {
                           ),
                           box(bg = theme.surface, padding = EdgeInsets.all(12))(
                             text("Content — drag the divider to the left of this pane.", color = muted, maxLines = 0),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // A dropdown select: the field shows the current choice and opens a themed menu of
+                // options below it (the same anchored-overlay path as the menu), reporting the
+                // chosen value through onChange. The label echoes the controlled value.
+                card(
+                  col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
+                    text("Select — a dropdown of options", color = muted),
+                    row(crossAxisAlignment = CrossAxisAlignment.Center, spacing = 16)(
+                      Select(
+                        Seq("red" -> "Red", "green" -> "Green", "blue" -> "Blue", "violet" -> "Violet"),
+                        colour,
+                        setColour,
+                        placeholder = "Pick a colour",
+                        width       = 180,
+                      ),
+                      text(if colour.isEmpty then "nothing picked" else s"picked: $colour", color = muted),
+                    ),
+                  ),
+                ),
+                // A right-click context menu: a right-press anywhere on the panel opens a menu at
+                // the cursor (a left-click passes through). Each item closes the menu when chosen.
+                card(
+                  col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
+                    text("Context menu — right-click the area below", color = muted),
+                    contextMenu(width = 160)(
+                      box(
+                        bg          = theme.background,
+                        radius      = 8,
+                        border      = theme.border,
+                        borderWidth = 1,
+                        padding     = EdgeInsets.all(24),
+                      )(
+                        center(text("right-click me", color = muted)),
+                      ),
+                    ) { close =>
+                      Seq(
+                        MenuItem("Cut", () => close()),
+                        MenuItem("Copy", () => close()),
+                        MenuItem("Paste", () => close()),
+                      )
+                    },
+                  ),
+                ),
+                // A data grid: click a header to sort by that column (click again to reverse), and
+                // drag the thin handle on a header's right edge to resize the column. Selection and
+                // onSelect are in original-row terms, so the highlight stays on the same row across
+                // sorts. Given a bounded height, the body scrolls and only builds the visible rows.
+                card(
+                  col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
+                    text("Data table — click a header to sort, drag an edge to resize", color = muted),
+                    sizedBox(height = 170)(
+                      box(radius = 12, clip = true, border = theme.border, borderWidth = 1)(
+                        dataTable(
+                          Seq("id", "name", "role"),
+                          Vector(
+                            Vector("3", "Carol", "Admin"),
+                            Vector("1", "Alice", "User"),
+                            Vector("2", "Bob", "User"),
+                            Vector("5", "Eve", "Guest"),
+                            Vector("4", "Dan", "Admin"),
+                          ),
+                          selected = pickedRow,
+                          onSelect = setPickedRow,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // A scroll area with a visible, draggable scrollbar — the themed counterpart to the
+                // bare scroll view. The bar rides the right edge and appears only because the rows
+                // overflow the bounded height; drag it or use the wheel.
+                card(
+                  col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
+                    text("Scroll area — a visible, draggable scrollbar", color = muted),
+                    sizedBox(height = 140)(
+                      box(radius = 12, clip = true, border = theme.border, borderWidth = 1)(
+                        scrollArea()(
+                          col(crossAxisAlignment = CrossAxisAlignment.Stretch, mainAxisSize = MainAxisSize.Min, spacing = 4)(
+                            (1 to 24).map(i => box(padding = EdgeInsets.symmetric(horizontal = 12, vertical = 8))(text(s"row $i", color = muted)))*,
                           ),
                         ),
                       ),

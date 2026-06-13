@@ -341,6 +341,14 @@ final class RenderScroll(var axis: Axis = Axis.Vertical) extends RenderObject:
   private var contentMain: Double  = 0.0
   private var viewportMain: Double = 0.0
 
+  /** Whether a visible scrollbar is painted over the viewport. Off by default — the plain
+    * `scrollView` is wheel-only; the `scrollArea` widget switches it on and supplies themed
+    * colours through the props below. */
+  var scrollbar: Boolean           = false
+  var scrollbarThumb: Color | Null = null
+  var scrollbarTrack: Color | Null = null
+  var scrollbarThickness: Double   = 8.0
+
   override def clipShape: Option[(Rect, BorderRadius)] =
     Some((Rect.at(absoluteOffset, size), BorderRadius.zero))
 
@@ -357,6 +365,67 @@ final class RenderScroll(var axis: Axis = Axis.Vertical) extends RenderObject:
     val s = e.asInstanceOf[ScrollEvent]
     val d = if isVertical then s.deltaY else s.deltaX
     scrollBy(-d * RenderScroll.WheelStep)
+
+  // Dragging the scrollbar thumb. A press is claimed only when it lands on the thumb (so a
+  // press anywhere else in the viewport flows to the content untouched); the capture the pointer
+  // router takes on that press then routes the drag's moves here even once the cursor leaves the
+  // thin thumb. The cursor's travel maps to scroll travel by the content/track ratio.
+  private var thumbDragging   = false
+  private var dragStartCoord  = 0.0
+  private var dragStartScroll = 0.0
+
+  handlers("mousedown") = e =>
+    val ev = e.asInstanceOf[PointerEvent]
+    scrollbarThumbRect match
+      case r: Rect if r.contains(ev.position.x, ev.position.y) =>
+        thumbDragging   = true
+        dragStartCoord  = if isVertical then ev.position.y else ev.position.x
+        dragStartScroll = scrollOffset
+      case _ => ()
+
+  handlers("mousemove") = e =>
+    if thumbDragging then
+      thumbMetrics match
+        case Some((len, _)) =>
+          val ev     = e.asInstanceOf[PointerEvent]
+          val view   = if isVertical then size.height else size.width
+          val travel = view - len
+          val coord  = if isVertical then ev.position.y else ev.position.x
+          val next =
+            if travel > 0 then
+              math.max(0.0, math.min(dragStartScroll + (coord - dragStartCoord) * (maxScroll / travel), maxScroll))
+            else scrollOffset
+          if next != scrollOffset then
+            scrollOffset = next
+            placeChild()
+            markDirty()
+        case None => ()
+
+  handlers("mouseup") = _ => thumbDragging = false
+
+  // The thumb's length and start offset along the axis for the laid-out viewport: sized to the
+  // visible fraction of the content (never below a grabbable minimum) and positioned in proportion
+  // to the scroll offset. None when there is nothing to scroll.
+  private def thumbMetrics: Option[(Double, Double)] =
+    val view = if isVertical then size.height else size.width
+    if maxScroll <= 0 || view <= 0 then None
+    else
+      val content = view + maxScroll
+      val len     = math.max(RenderScroll.MinThumbLength, math.min(view, view * view / content))
+      val travel  = view - len
+      Some((len, (scrollOffset / maxScroll) * travel))
+
+  /** The thumb's rectangle in absolute coordinates, or null when the bar is off or the content
+    * fits — both painted as the thumb and hit-tested for a drag press. */
+  def scrollbarThumbRect: Rect | Null =
+    if !scrollbar then null
+    else
+      thumbMetrics match
+        case Some((len, start)) =>
+          val o = absoluteOffset
+          if isVertical then Rect(o.x + size.width - scrollbarThickness, o.y + start, scrollbarThickness, len)
+          else Rect(o.x + start, o.y + size.height - scrollbarThickness, len, scrollbarThickness)
+        case None => null
 
   /** Scroll by `delta` pixels along the axis (positive moves toward the content's end),
     * clamped to `[0, maxScroll]`. Repositions the content and requests a frame when the
@@ -402,11 +471,42 @@ final class RenderScroll(var axis: Axis = Axis.Vertical) extends RenderObject:
   override def paint(canvas: Canvas, origin: Offset): Unit =
     canvas.pushClip(Rect.at(origin, size), BorderRadius.zero)
     paintChildren(canvas, origin)
+    if scrollbar then paintScrollbar(canvas, origin)
     canvas.popClip()
+
+  // The bar rides along the trailing edge — the right edge for a vertical view, the bottom for a
+  // horizontal one — over the content (which is already clipped to the viewport). It paints only
+  // when there is something to scroll, so a viewport whose content fits shows no bar.
+  private def paintScrollbar(canvas: Canvas, origin: Offset): Unit =
+    thumbMetrics match
+      case None => ()
+      case Some((len, start)) =>
+        val t      = scrollbarThickness
+        val radius = BorderRadius.all(t / 2)
+        val (trackRect, thumbRect) =
+          if isVertical then
+            (
+              Rect(origin.x + size.width - t, origin.y, t, size.height),
+              Rect(origin.x + size.width - t, origin.y + start, t, len),
+            )
+          else
+            (
+              Rect(origin.x, origin.y + size.height - t, size.width, t),
+              Rect(origin.x + start, origin.y + size.height - t, len, t),
+            )
+        scrollbarTrack match
+          case c: Color => canvas.fillRoundedRect(trackRect, radius, Solid(c))
+          case null     => ()
+        scrollbarThumb match
+          case c: Color => canvas.fillRoundedRect(thumbRect, radius, Solid(c))
+          case null     => ()
 
 object RenderScroll:
   /** Pixels scrolled per wheel notch. */
   val WheelStep: Double = 40.0
+
+  /** The shortest the thumb is allowed to get, so it stays grabbable over very long content. */
+  val MinThumbLength: Double = 24.0
 
 /** The overlay layer — a full-window host for portaled content (dialogs, menus, tooltips)
   * that must paint above the application and be hit before it. It sits as the last child of

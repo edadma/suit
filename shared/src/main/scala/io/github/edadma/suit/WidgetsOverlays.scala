@@ -129,6 +129,9 @@ private[suit] trait WidgetsOverlays extends WidgetsSupport:
   // card is kept invisible until it has a size so it never flashes at the initial guess. A
   // dismissible popover (a menu) gets a full-window click-catcher behind it and traps focus; a
   // passive one (a tooltip) is click-through and never steals focus.
+  // `point`, when non-null, anchors the card at a free screen point (a zero-size rectangle there)
+  // instead of against the trigger ref — what a context menu, which opens at the cursor rather
+  // than beside a widget, passes. The ref path is unchanged for every other caller.
   private def popover(
       anchor:    Ref[RenderObject | Null],
       mounted:   Boolean,
@@ -136,7 +139,8 @@ private[suit] trait WidgetsOverlays extends WidgetsSupport:
       onDismiss: (() => Unit) | Null,
       trapFocus: Boolean,
       card:      VNode,
-      placement: Placement = Placement(),
+      placement: Placement      = Placement(),
+      point:     Offset | Null  = null,
   )(using Hooks): VNode =
     val env            = useOverlay()
     val cardRef        = useRef[RenderObject | Null](null)
@@ -176,11 +180,14 @@ private[suit] trait WidgetsOverlays extends WidgetsSupport:
     env.overlay match
       case o: RenderObject if mounted =>
         val win = o.size
-        val (ax, ay, aw, ah) = anchor.current match
-          case r: RenderObject =>
-            val off = r.absoluteOffset
-            (off.x, off.y, r.size.width, r.size.height)
-          case null => (0.0, 0.0, 0.0, 0.0)
+        val (ax, ay, aw, ah) = point match
+          case p: Offset => (p.x, p.y, 0.0, 0.0)
+          case null =>
+            anchor.current match
+              case r: RenderObject =>
+                val off = r.absoluteOffset
+                (off.x, off.y, r.size.width, r.size.height)
+              case null => (0.0, 0.0, 0.0, 0.0)
 
         // Place the card on the preferred side of the trigger, flipping to the opposite side
         // when it would run off-screen and there is room the other way; along the cross axis it
@@ -311,6 +318,164 @@ private[suit] trait WidgetsOverlays extends WidgetsSupport:
       placement: Placement = Placement(),
   )(items: VNode*): VNode =
     MenuImpl((open, onClose, anchor, exitMs, width, placement))(items*)
+
+  // A muted ink for secondary text (placeholder, chevron): the surface text blended part-way
+  // toward the surface so it reads as quieter without hard-coding a grey.
+  private def overlayMuted(theme: Theme): Color = Color.lerp(theme.surfaceText, theme.surface, 0.45)
+
+  // The card chrome the dropdown overlays (Select, context menu) share with the Menu: a bordered,
+  // shadowed surface of stretched items at a fixed width, so the items fill the card rather than
+  // sizing raggedly to their own text.
+  private def overlayCard(theme: Theme, width: Double, items: Seq[VNode]): VNode =
+    box(
+      bg          = theme.surface,
+      border      = theme.border,
+      borderWidth = 1,
+      radius      = theme.radius,
+      shadow      = Shadow(),
+      clip        = true,
+      padding     = EdgeInsets.all(theme.spacing * 0.5),
+    )(
+      sizedBox(width = width)(
+        col(crossAxisAlignment = CrossAxisAlignment.Stretch, mainAxisSize = MainAxisSize.Min, spacing = 2)(items*),
+      ),
+    )
+
+  private case class SelectProps(
+      options:     Seq[(String, String)],
+      selected:    String,
+      onChange:    String => Unit,
+      placeholder: String,
+      width:       Double,
+      exitMs:      Int,
+  )
+
+  private val SelectImpl: Component[SelectProps] =
+    component[SelectProps] { p =>
+      val theme              = useTheme()
+      val (open, setOpen, _) = useState(false)
+      val anchor             = useRef[RenderObject | Null](null)
+      val presence           = usePresence(open, p.exitMs)
+      val amt                = useTransition(if presence.phase == PresencePhase.Open then 1.0 else 0.0, p.exitMs)
+      val muted              = overlayMuted(theme)
+
+      // The currently-selected option's label, or the placeholder when the value matches none of
+      // the options (the unselected state) — shown muted so it reads as a prompt, not a value.
+      val current       = p.options.find(_._1 == p.selected)
+      val selectedLabel = current.map(_._2).getOrElse(p.placeholder)
+
+      // A field-styled trigger: looks like a text input, borders in the accent while open, and
+      // toggles the dropdown on click or Space/Enter (Escape closes). The chevron marks it as a
+      // dropdown — a text glyph, since SVG loading is native-only and this widget is shared code.
+      val trigger =
+        box(
+          bg          = theme.surface,
+          border      = if open then theme.accent else theme.border,
+          borderWidth = 1,
+          radius      = theme.radius,
+          padding     = EdgeInsets.symmetric(horizontal = 10, vertical = 8),
+          width       = p.width,
+          focusable   = true,
+          ref         = anchor,
+          onClick     = _ => setOpen(!open),
+          onKeyDown = e =>
+            e.scancode match
+              case Key.Space | Key.Enter => setOpen(!open)
+              case Key.Escape            => setOpen(false)
+              case _                     => (),
+        )(
+          row(crossAxisAlignment = CrossAxisAlignment.Center)(
+            text(selectedLabel, color = if current.isEmpty then muted else theme.surfaceText),
+            spacer(),
+            text("▾", color = muted),
+          ),
+        )
+
+      val items = p.options.map { case (v, l) => MenuItem(l, () => { p.onChange(v); setOpen(false) }) }
+      val card  = overlayCard(theme, p.width, items)
+
+      VFragment(
+        Vector(
+          trigger,
+          popover(anchor, presence.mounted, amt, onDismiss = () => setOpen(false), trapFocus = true,
+            card = card, placement = Placement(gap = 4)),
+        ),
+      )
+    }
+
+  /** A dropdown select: a field-styled trigger showing the current choice, which opens a menu of
+    * `options` (each a `value -> label` pair) on click or keyboard. It is **controlled** — the
+    * caller owns `selected` (the chosen value) and is told the new value through `onChange`. When
+    * `selected` matches no option the `placeholder` shows, muted, as a prompt. The dropdown
+    * portals into the overlay layer just below the trigger (flipping above near the bottom edge),
+    * dismisses on an outside click or Escape, and traps focus while open — the same anchored-
+    * overlay mechanism as [[Menu]]. `width` fixes both the trigger and the dropdown. */
+  def Select(
+      options:     Seq[(String, String)],
+      selected:    String,
+      onChange:    String => Unit,
+      placeholder: String = "Select…",
+      width:       Double = 200,
+      exitMs:      Int    = 150,
+  ): VNode =
+    SelectImpl(SelectProps(options, selected, onChange, placeholder, width, exitMs))
+
+  private case class ContextMenuProps(
+      width:     Double,
+      placement: Placement,
+      trigger:   VNode,
+      items:     (() => Unit) => Seq[VNode],
+  )
+
+  private val ContextMenuImpl: Component[ContextMenuProps] =
+    component[ContextMenuProps] { p =>
+      val theme              = useTheme()
+      val (open, setOpen, _) = useState(false)
+      val (pt, setPt, _)     = useState(Offset.zero)
+      val anchor             = useRef[RenderObject | Null](null) // unused: the popover anchors at `pt`
+      val presence           = usePresence(open, 150)
+      val amt                = useTransition(if presence.phase == PresencePhase.Open then 1.0 else 0.0, 150)
+
+      // The items are built against a `close` callback so a selected item can dismiss the menu —
+      // the menu owns its own open state (a left-click never opens it), so the caller has no
+      // open flag to flip; `close` is how it reaches in.
+      val card = overlayCard(theme, p.width, p.items(() => setOpen(false)))
+
+      // The trigger sits in normal flow; a right-press (button 3) records the cursor point and
+      // opens the menu there. Other buttons pass through untouched.
+      val wrapped = box(
+        onMouseDown = e => if e.button == 3 then { setPt(e.position); setOpen(true) },
+      )(p.trigger)
+
+      VFragment(
+        Vector(
+          wrapped,
+          popover(anchor, presence.mounted, amt, onDismiss = () => setOpen(false), trapFocus = true,
+            card = card, placement = p.placement, point = if open then pt else null),
+        ),
+      )
+    }
+
+  /** A right-click context menu around a `trigger`. A right-press anywhere on the trigger opens a
+    * menu **at the cursor** (not beside the trigger); a left-click passes through untouched. The
+    * menu portals into the overlay layer, dismisses on an outside click or Escape, and traps focus
+    * while open. The `items` are built from a `close` callback so a selected item can close the
+    * menu — fill them with [[MenuItem]]s whose `onSelect` does its work then calls `close`:
+    *
+    * ```scala
+    * contextMenu()(text("right-click me")) { close =>
+    *   Seq(
+    *     MenuItem("Cut",  () => { cut();  close() }),
+    *     MenuItem("Copy", () => { copy(); close() }),
+    *   )
+    * }
+    * ```
+    */
+  def contextMenu(
+      width:     Double    = 200,
+      placement: Placement = Placement(),
+  )(trigger: VNode)(items: (() => Unit) => Seq[VNode]): VNode =
+    ContextMenuImpl(ContextMenuProps(width, placement, trigger, items))
 
   // The tooltip implementation. Props: the label, the hover delay before it shows, and the
   // exit-fade duration. The trigger comes as the children.

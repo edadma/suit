@@ -73,15 +73,29 @@ private[suit] trait WidgetsData extends WidgetsSupport:
     component[DataTableProps] { p =>
       val theme = useTheme()
       val style = TextStyle(size = theme.textSize, color = theme.surfaceText)
+      val muted = Color.lerp(theme.surfaceText, theme.surface, 0.45)
+
+      // Which column the rows are sorted by (-1 for none) and in which direction, plus any
+      // per-column width the user has dragged a column to. All three are owned here: the table is
+      // uncontrolled for sort and width, so a caller drops it in and gets sortable, resizable
+      // columns with no extra wiring.
+      val (sortCol, setSortCol, _)     = useState(-1)
+      val (asc, setAsc, _)             = useState(true)
+      val (overrides, setOverrides, _) = useState(Map.empty[Int, Double])
+      val (hoverCol, setHoverCol, _)   = useState(-1)
+      val (dragCol, setDragCol, _)     = useState(-1)
+      // The active resize drag: (column, the cursor x at press, the column's width at press). The
+      // ref survives re-renders so a move computes its delta against the press, not the last frame.
+      val dragStart = useRef[(Int, Double, Double)]((-1, 0.0, 0.0))
 
       // Size each column to its widest cell among the header and a sample of the rows (scanning
       // every row of a large result would be wasteful and the first screenful is representative),
-      // clamped so no column collapses or runs away. The table's content width is their sum.
+      // clamped so no column collapses or runs away. A user-dragged width overrides the auto one.
       val cellPad   = 10.0
       val minColW   = 56.0
       val maxColW   = 360.0
       val sampleN   = math.min(p.rows.length, 200)
-      val colWidths: Vector[Double] =
+      val autoWidths: Vector[Double] =
         p.columns.indices.toVector.map { ci =>
           var w = TextMeasurer.installed.measure(p.columns(ci), style).width
           var r = 0
@@ -91,7 +105,19 @@ private[suit] trait WidgetsData extends WidgetsSupport:
             r += 1
           math.max(minColW, math.min(maxColW, w + 2 * cellPad))
         }
-      val contentW = colWidths.sum
+      def colW(ci: Int): Double = overrides.getOrElse(ci, autoWidths(ci))
+      val colWidths             = p.columns.indices.toVector.map(colW)
+      val contentW              = colWidths.sum
+
+      // The display order: the original row indices permuted by the active sort column (a stable
+      // lexicographic string compare — numeric columns sort as text, which a numeric table should
+      // pre-format or carry a comparator for later), or identity when nothing is sorted. Selection
+      // and `onSelect` stay in *original*-row terms, so the caller's index is stable across sorts.
+      val order: IndexedSeq[Int] =
+        if sortCol < 0 || sortCol >= p.columns.length then p.rows.indices
+        else
+          val sorted = p.rows.indices.sortBy(i => if sortCol < p.rows(i).length then p.rows(i)(sortCol) else "")
+          if asc then sorted else sorted.reverse
 
       // The cells fill their column widths but are only one line tall; centring the whole row
       // within the (taller) row band vertically centres the text the way a table cell does —
@@ -107,30 +133,83 @@ private[suit] trait WidgetsData extends WidgetsSupport:
           ),
         )
 
+      def headerClick(ci: Int): Unit =
+        if sortCol == ci then setAsc(!asc)
+        else { setSortCol(ci); setAsc(true) }
+
+      // A thin grab handle straddling a column's right edge: a wide invisible hit area with a
+      // hairline down its centre that brightens to the accent on hover or drag. Its own (no-op)
+      // click keeps a press on the handle from bubbling up to the header cell's sort toggle, and
+      // pointer capture keeps the drag alive once the cursor leaves the hairline.
+      def resizeHandle(ci: Int): VNode =
+        val hot = dragCol == ci || hoverCol == ci
+        box(
+          width        = 8,
+          height       = p.rowHeight,
+          focusable    = true,
+          onMouseEnter = _ => setHoverCol(ci),
+          onMouseLeave = _ => setHoverCol(-1),
+          onMouseDown  = e => { setDragCol(ci); dragStart.current = (ci, e.position.x, colW(ci)) },
+          onMouseMove = e =>
+            if e.button != 0 then
+              val (dci, sx, sw) = dragStart.current
+              if dci == ci then setOverrides(overrides.updated(ci, math.max(minColW, sw + (e.position.x - sx)))),
+          onMouseUp = _ => setDragCol(-1),
+          onClick   = _ => (),
+        )(
+          center(box(width = if hot then 2 else 1, height = p.rowHeight, bg = if hot then theme.accent else theme.border)()),
+        )
+
+      // A clickable header cell: the column label (with a sort-direction caret when this is the
+      // active sort column) over a resize handle pinned to the right edge. Clicking the cell sorts
+      // by it; the handle on the edge resizes it.
+      def headerCell(ci: Int): VNode =
+        val activeSort = ci == sortCol
+        val caret      = if !activeSort then "" else if asc then "▲" else "▼"
+        box(width = colWidths(ci), height = p.rowHeight, onClick = _ => headerClick(ci))(
+          stack(Alignment.topLeft)(
+            align(Alignment.centerLeft)(
+              row(crossAxisAlignment = CrossAxisAlignment.Center)(
+                box(flex = 1, padding = EdgeInsets.symmetric(horizontal = cellPad, vertical = 0), clip = true)(
+                  text(p.columns(ci), color = theme.surfaceText, weight = FontWeight.SemiBold),
+                ),
+                if activeSort then
+                  box(padding = EdgeInsets.symmetric(horizontal = 4, vertical = 0))(
+                    text(caret, color = muted, size = theme.textSize * 0.7),
+                  )
+                else sizedBox()(),
+              ),
+            ),
+            align(Alignment.centerRight)(resizeHandle(ci)),
+          ),
+        )
+
       val header: VNode =
         box(width = contentW, height = p.rowHeight, bg = theme.surface)(
-          cells(ci => p.columns(ci), bold = true),
+          row(crossAxisAlignment = CrossAxisAlignment.Center)(p.columns.indices.map(headerCell)*),
         )
 
       // Subtle zebra striping: tint alternate rows a hair toward the ink so dense data is easier
-      // to track across, with the selected row marked in the accent.
+      // to track across, with the selected row marked in the accent. The striping follows the
+      // displayed position; the selection follows the original row index through `order`.
       val altBg = Color.lerp(theme.surface, theme.surfaceText, 0.05)
       val body: VNode =
-        virtualList(p.rows.length, p.rowHeight) { i =>
-          val rowData = p.rows(i)
-          val isSel   = i == p.selected
+        virtualList(order.length, p.rowHeight) { d =>
+          val orig    = order(d)
+          val rowData = p.rows(orig)
+          val isSel   = orig == p.selected
           // A `Paint | Null` (not `Color | Null`): passing a nullable colour to the `Paint | Null`
           // slot would route `null` through the Color→Paint conversion and yield `Solid(null)`,
           // which faults when painted. Building the Solid here keeps `null` meaning "no fill".
           val bg: Paint | Null =
             if isSel then Solid(theme.accent.withAlpha(70))
-            else if i % 2 == 1 then Solid(altBg)
+            else if d % 2 == 1 then Solid(altBg)
             else null
           box(
             width   = contentW,
             height  = p.rowHeight,
             bg      = bg,
-            onClick = if p.onSelect != null then (_ => p.onSelect.asInstanceOf[Int => Unit](i)) else null,
+            onClick = if p.onSelect != null then (_ => p.onSelect.asInstanceOf[Int => Unit](orig)) else null,
           )(
             cells(ci => if ci < rowData.length then rowData(ci) else "", bold = false),
           )
@@ -153,7 +232,15 @@ private[suit] trait WidgetsData extends WidgetsSupport:
     * [[virtualList]]), so a large result set stays cheap. `selected` marks a row in the accent
     * and `onSelect` fires the clicked row's index. It **must be given a bounded height** — put it
     * in a flex slot or a sized box — since that height is the scrolling viewport. Wide tables
-    * scroll horizontally. */
+    * scroll horizontally.
+    *
+    * Columns are **sortable and resizable** out of the box, with no extra wiring: clicking a
+    * header sorts the rows by that column (a caret shows the direction; clicking again reverses
+    * it), and dragging the thin handle on a header's right edge resizes the column. The sort is a
+    * lexicographic string compare, so a numeric column should be zero-padded or otherwise
+    * pre-formatted to sort as expected. `selected` and `onSelect` are always in terms of the
+    * **original** row index, so the caller's selection is stable no matter how the view is
+    * sorted. */
   def dataTable(
       columns:   Seq[String],
       rows:      IndexedSeq[IndexedSeq[String]],
@@ -294,3 +381,30 @@ private[suit] trait WidgetsData extends WidgetsSupport:
       onResize: (Double => Unit) | Null = null,
   )(first: VNode, second: VNode): VNode =
     SplitterImpl(SplitterProps(axis, initial, min, max, gutter, onResize, first, second))
+
+  // --- scroll area (themed visible scrollbar) --------------------------------
+
+  private val ScrollAreaImpl: ContainerP[(Axis, Double)] =
+    container[(Axis, Double)] { (props, children) =>
+      val (axis, thickness) = props
+      val theme             = useTheme()
+      // The thumb reads as a translucent slug of the ink; the track is a fainter wash of the same,
+      // so the bar sits over either light or dark content without a hard-coded grey.
+      scrollView(
+        axis               = axis,
+        scrollbar          = true,
+        scrollbarThumb     = theme.surfaceText.withAlpha(90),
+        scrollbarTrack     = theme.surfaceText.withAlpha(20),
+        scrollbarThickness = thickness,
+      )(children*)
+    }
+
+  /** A scrolling viewport with a **visible, draggable scrollbar** — the themed counterpart to the
+    * bare [[dsl.scrollView]] (which is wheel-only). The bar rides the trailing edge (the right
+    * edge for a vertical area, the bottom for a horizontal one), appears only when the content
+    * overflows, and can be dragged to scroll as well as turned by the wheel; its colours come from
+    * the active theme. Like `scrollView` it **must be given a bounded size** along the scroll axis
+    * — that extent is the viewport it scrolls within. Give it a single content node (wrap several
+    * in a `col`/`row`). */
+  def scrollArea(axis: Axis = Axis.Vertical, thickness: Double = 8.0)(children: VNode*): VNode =
+    ScrollAreaImpl((axis, thickness))(children*)

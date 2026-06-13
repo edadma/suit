@@ -20,10 +20,33 @@ class DataTableSpec extends AnyFunSuite with BeforeAndAfterEach:
 
   private def allObjects(o: RenderObject): List[RenderObject] = o :: o.children.toList.flatMap(allObjects)
 
-  /** The rows the grid actually built: boxes carrying a `click` handler (the header carries
-    * none), in tree (top-to-bottom) order. */
+  /** The rows the grid actually built, in tree (top-to-bottom) order. Both the body rows and the
+    * header cells/resize handles now carry a `click` handler (the header sorts, the handle's is a
+    * no-op that stops a resize press from sorting), so the body rows are picked out as the widest
+    * clickable boxes — they span the full content width, the header cells are per-column. */
   private def rowBoxes(root: RenderObject): List[RenderBox] =
-    allObjects(root).collect { case b: RenderBox if b.handlers.contains("click") => b }
+    val clickable = allObjects(root).collect { case b: RenderBox if b.handlers.contains("click") => b }
+    val maxW      = clickable.flatMap(_.width).maxOption.getOrElse(0.0)
+    clickable.filter(_.width.contains(maxW))
+
+  /** The clickable header cell whose label is `name` (the nearest clickable box above that text). */
+  private def headerCell(root: RenderObject, name: String): RenderBox =
+    val t = allObjects(root).collect { case t: RenderText if t.text == name => t }.head
+    var n: RenderObject | Null = t
+    while n != null && !(n.isInstanceOf[RenderBox] && n.asInstanceOf[RenderBox].handlers.contains("click")) do
+      n = n.asInstanceOf[RenderObject].parent
+    n.asInstanceOf[RenderBox]
+
+  /** The resize handles (the 8px-wide grab boxes), in column order. */
+  private def resizeHandles(root: RenderObject): List[RenderBox] =
+    allObjects(root).collect {
+      case b: RenderBox if b.width.contains(8.0) && b.handlers.contains("mousedown") => b
+    }
+
+  private def rowTexts(b: RenderBox): List[String] = allObjects(b).collect { case t: RenderText => t.text }
+
+  private def click(b: RenderBox): Unit =
+    b.handlers("click").apply(PointerEvent(Offset.zero, Offset.zero, b.size))
 
   private case class Mounted(root: RenderRoot):
     def settle(): Unit =
@@ -94,3 +117,40 @@ class DataTableSpec extends AnyFunSuite with BeforeAndAfterEach:
     val textMid = idText.absoluteOffset.y + idText.size.height / 2
     val bandMid = band.absoluteOffset.y + band.size.height / 2
     assert(math.abs(textMid - bandMid) < 1.0) // centred, not sitting at the band's top
+
+  test("clicking a column header sorts the rows ascending, then descending"):
+    // Rows out of order on the id column; clicking its header should sort them.
+    val rows = Vector(Vector("3", "c"), Vector("1", "a"), Vector("2", "b"))
+    val m    = mount(Vector("id", "name"), rows, _ => ())
+    assert(rowTexts(rowBoxes(m.root).head).contains("3")) // unsorted: first row is id 3
+    click(headerCell(m.root, "id"))
+    m.settle()
+    assert(rowTexts(rowBoxes(m.root).head).contains("1")) // ascending: id 1 first
+    click(headerCell(m.root, "id"))
+    m.settle()
+    assert(rowTexts(rowBoxes(m.root).head).contains("3")) // descending: id 3 first
+
+  test("an unsorted table keeps the rows in their given order"):
+    val rows = Vector(Vector("3", "c"), Vector("1", "a"), Vector("2", "b"))
+    val m    = mount(Vector("id", "name"), rows, _ => ())
+    assert(rowTexts(rowBoxes(m.root).head).contains("3"))
+
+  test("selection and onSelect use the original row index regardless of sort"):
+    var sel  = -1
+    val rows = Vector(Vector("3", "c"), Vector("1", "a"), Vector("2", "b"))
+    val m    = mount(Vector("id", "name"), rows, i => sel = i)
+    click(headerCell(m.root, "id")) // sort ascending: displayed row 0 is original index 1 (id "1")
+    m.settle()
+    click(rowBoxes(m.root).head)
+    assert(sel == 1) // the original index, not the displayed position 0
+
+  test("dragging a column's resize handle widens that column"):
+    val m      = mount(Vector("id", "name", "value"), sampleRows(5), _ => ())
+    val before = headerCell(m.root, "id").width.get
+    val h      = resizeHandles(m.root).head // column 0's handle
+    h.handlers("mousedown").apply(PointerEvent(Offset(100, 0), Offset.zero, h.size, 1))
+    h.handlers("mousemove").apply(PointerEvent(Offset(140, 0), Offset.zero, h.size, 1))
+    m.settle()
+    val after = headerCell(m.root, "id").width.get
+    assert(after > before)
+    assert(math.abs(after - (before + 40)) < 0.001)
