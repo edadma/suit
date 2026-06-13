@@ -3,7 +3,7 @@ package io.github.edadma.suit
 import scala.collection.mutable
 import io.github.edadma.vdom.{Host, Scheduler}
 import io.github.edadma.sdl3.{Color => SdlColor, *}
-import io.github.edadma.libcairo.{Format, imageSurfaceCreate}
+import io.github.edadma.libcairo.{Context, Format, Surface, imageSurfaceCreate}
 import io.github.edadma.freetype.*
 
 // The runtime. It owns the SDL window and the Cairo drawing surface, installs the vdom
@@ -35,14 +35,29 @@ object Suit:
       System.err.println(s"suit: SDL_Init failed: ${error}")
       return
 
+    // Open the window no larger than the display can actually show. The requested size is
+    // clamped to the primary display's usable bounds — the desktop minus the menu bar and dock —
+    // with a little headroom for the title bar, so the whole window lands on-screen even on a
+    // laptop panel smaller than the requested size (otherwise the bottom and right edges, and any
+    // content there, spill off where the user can't reach them). The window is resizable; the
+    // frame loop reflows the tree to whatever size the window settles at, here or on a later drag.
+    val (initW, initH, place) =
+      displayUsableBounds(getPrimaryDisplay) match
+        case Some((ux, uy, uw, uh)) =>
+          (math.min(width, uw), math.max(1, math.min(height, uh - 40)), Some((ux, uy)))
+        case None => (width, height, None)
+
     // Window and renderer creation can fail — e.g. when there is no usable display (a process not
     // attached to the desktop GUI session). Detect it and exit with the SDL error, rather than
     // falling through into the event loop and spinning forever with no window.
-    val window = createWindow(title, width, height)
+    val window = createWindow(title, initW, initH, WINDOW_RESIZABLE)
     if window.isNull then
       System.err.println(s"suit: failed to create window: ${error}")
       quit()
       return
+    // Place a clamped window at the top-left of the usable area, so its title bar clears the menu
+    // bar and the content runs down into the visible desktop rather than under the dock.
+    place.foreach((x, y) => window.setPosition(x, y))
 
     val renderer = window.createRenderer()
     if renderer.isNull then
@@ -51,30 +66,6 @@ object Suit:
       quit()
       return
     renderer.setVSync(true)
-
-    // HiDPI: the window's logical size (the coordinate space the UI lives in) and its actual
-    // pixel size differ on a high-density display. The backbuffer is sized to the real pixels
-    // and the Cairo context is scaled by the ratio, so the tree — laid out and hit-tested in
-    // logical units throughout — rasterises at the display's true resolution. On a 1× display
-    // the ratio is 1 and everything below is unchanged.
-    val (pixelW, pixelH) = window.sizeInPixels
-    val device           = DeviceSurface.from(width, height, pixelW, pixelH)
-
-    // Publish the display density so application code that allocates its own pixel buffer (a
-    // `surface(...)` widget's backing surface) can size it to the real resolution and stay sharp.
-    DevicePixelRatio.scaleX = device.scaleX
-    DevicePixelRatio.scaleY = device.scaleY
-
-    // Cairo draws into this ARGB32 image surface; the runtime uploads it to the streaming
-    // texture each dirty frame. ARGB32's little-endian byte layout is identical to SDL's
-    // ARGB8888, so the upload is a straight copy with no conversion. The texture is sized to
-    // match the surface (device pixels) and blitted to the window every iteration, so an expose
-    // always shows a complete frame. The base transform scales logical coordinates up to pixels;
-    // it is set once and never reset (no code clears the matrix), so it underlies every frame.
-    val surface = imageSurfaceCreate(Format.ARGB32, device.width, device.height)
-    val cr      = surface.create
-    cr.scale(device.scaleX, device.scaleY)
-    val texture = renderer.createTexture(PIXELFORMAT_ARGB8888, TEXTUREACCESS_STREAMING, device.width, device.height)
 
     // Load the font through FreeType. With no `fontPath`, the variable Inter font embedded in
     // the binary is loaded straight from memory; otherwise the given file is read. Inter is a
@@ -97,9 +88,44 @@ object Suit:
     // so a string measures and paints identically.
     val measurer = new CairoTextMeasurer(fonts)
     TextMeasurer.installed = measurer
-    val canvas = new CairoCanvas(cr, fonts, device.scaleX, device.scaleY)
 
-    val root = new RenderRoot(Size(width.toDouble, height.toDouble))
+    // The backbuffer: the Cairo image surface the frame is drawn into, its scaled context, the SDL
+    // streaming texture the surface uploads to, and the canvas the tree paints through. ARGB32's
+    // little-endian byte layout matches SDL's ARGB8888, so the upload is a straight copy with no
+    // conversion. Everything here is sized to the window's *pixel* dimensions and the context is
+    // scaled by the pixel-to-logical ratio, so the tree — laid out and hit-tested in logical units
+    // throughout — rasterises at the display's true resolution (a 1× display leaves the scale at 1
+    // and the surface equal to the window). The pieces are grouped because they are rebuilt as a
+    // unit whenever the window's pixel size changes (see the resize handler in the loop).
+    final class Backbuffer(
+        val surface: Surface,
+        val cr:      Context,
+        val texture: Texture,
+        val canvas:  CairoCanvas,
+        val device:  DeviceSurface,
+    )
+
+    def makeBackbuffer(): Backbuffer =
+      val (logicalW, logicalH) = window.size
+      val (pixelW, pixelH)     = window.sizeInPixels
+      val dev                  = DeviceSurface.from(logicalW, logicalH, pixelW, pixelH)
+      // Publish the display density so application code that allocates its own pixel buffer (a
+      // `surface(...)` widget's backing surface) can size it to the real resolution and stay sharp.
+      DevicePixelRatio.scaleX = dev.scaleX
+      DevicePixelRatio.scaleY = dev.scaleY
+      val surf = imageSurfaceCreate(Format.ARGB32, dev.width, dev.height)
+      val ctx  = surf.create
+      // The base transform scales logical coordinates up to pixels; it is set once on the fresh
+      // context and never reset, so it underlies every frame drawn through this backbuffer.
+      ctx.scale(dev.scaleX, dev.scaleY)
+      val tex = renderer.createTexture(PIXELFORMAT_ARGB8888, TEXTUREACCESS_STREAMING, dev.width, dev.height)
+      new Backbuffer(surf, ctx, tex, new CairoCanvas(ctx, fonts, dev.scaleX, dev.scaleY), dev)
+
+    var bb = makeBackbuffer()
+
+    // The tree is laid out at the window's logical size, which the resize handler keeps current.
+    val (rootW, rootH) = window.size
+    val root           = new RenderRoot(Size(rootW.toDouble, rootH.toDouble))
 
     // Install the host binding and the scheduler seams before the first render. vdom
     // enqueues render and effect thunks onto these queues; the loop drains both.
@@ -165,13 +191,13 @@ object Suit:
     def repaint(): Unit =
       root.layout(Constraints.tight(root.windowSize))
       if root.needsRepaint then
-        cr.setSourceRGBA(clearColor.r / 255.0, clearColor.g / 255.0, clearColor.b / 255.0, 1.0)
-        cr.paint()
-        root.paint(canvas, Offset.zero)
+        bb.cr.setSourceRGBA(clearColor.r / 255.0, clearColor.g / 255.0, clearColor.b / 255.0, 1.0)
+        bb.cr.paint()
+        root.paint(bb.canvas, Offset.zero)
         root.clearRepaintFlags()
-      else Compositor.partialFrame(canvas, root.dirtyBoundaries, overlay, clearColor)
-      surface.flush()
-      texture.update(surface.getData, surface.getStride)
+      else Compositor.partialFrame(bb.canvas, root.dirtyBoundaries, overlay, clearColor)
+      bb.surface.flush()
+      bb.texture.update(bb.surface.getData, bb.surface.getStride)
 
     createRoot(root).render(OverlayContext.provide(OverlayEnv(overlay, focusManager), app))
     root.insertChild(overlay, null)
@@ -209,6 +235,27 @@ object Suit:
             else keyRouter.down(e.keyScancode, e.keyRepeat, shift, ctrl)
           case KEY_UP    => keyRouter.up(e.keyScancode)
           case TEXT_INPUT => textRouter.input(e.text)
+          // The window changed size (a user drag, or the OS fitting it to the display). Re-read
+          // the logical and pixel sizes, and when either moved, point the tree at the new logical
+          // size and rebuild the backbuffer to the new pixel size — then force a full repaint, the
+          // fresh surface having no prior pixels. The layout reflows on the next frame, so the
+          // panes (and anything riding their edges, like a button or a scrollbar) follow the
+          // window. Both RESIZED and PIXEL_SIZE_CHANGED can fire for one resize; the guard makes
+          // the second a no-op.
+          case WINDOW_RESIZED | WINDOW_PIXEL_SIZE_CHANGED =>
+            val (logicalW, logicalH) = window.size
+            val (pixelW, pixelH)     = window.sizeInPixels
+            val resized =
+              logicalW.toDouble != root.windowSize.width || logicalH.toDouble != root.windowSize.height ||
+                pixelW != bb.device.width || pixelH != bb.device.height
+            if resized then
+              root.windowSize = Size(logicalW.toDouble, logicalH.toDouble)
+              bb.cr.destroy()
+              bb.surface.destroy()
+              bb.texture.destroy()
+              bb = makeBackbuffer()
+              root.needsRepaint = true
+              root.dirty        = true
           case _          => ()
         event = pollEvent()
 
@@ -232,13 +279,13 @@ object Suit:
       if root.dirty then
         root.dirty = false
         repaint()
-      renderer.copy(texture)
+      renderer.copy(bb.texture)
       renderer.present()
 
     measurer.close()
-    cr.destroy()
-    surface.destroy()
-    texture.destroy()
+    bb.cr.destroy()
+    bb.surface.destroy()
+    bb.texture.destroy()
     renderer.destroy()
     window.destroy()
     fonts.close()
