@@ -23,6 +23,15 @@ final class CairoBitmap(val surface: Surface, val width: Int, val height: Int) e
   /** Release the underlying Cairo surface. */
   def destroy(): Unit = surface.destroy()
 
+object CairoBitmap:
+  /** Wrap an existing Cairo image surface as a paintable image, without copying. The caller keeps
+    * ownership of the surface and may go on drawing into it; pair it with a `surface(...)` widget
+    * and a [[SurfaceHandle]] to re-blit after each redraw. The image takes the surface's own pixel
+    * dimensions, so the widget blits it one-to-one — size the surface in device pixels (see
+    * [[DevicePixelRatio]]) for a sharp result on a HiDPI display. */
+  def wrap(surface: Surface): CairoBitmap =
+    new CairoBitmap(surface, surface.getWidth, surface.getHeight)
+
 /** Loads raster images into [[RasterImage]]s on the native backend, decoding JPEG through
   * turbojpeg. Each loader throws `io.github.edadma.turbojpeg.TurboJpegException` if the data isn't a
   * decodable JPEG. (PNG is handled elsewhere by Cairo directly.) */

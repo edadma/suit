@@ -265,6 +265,65 @@ demand (the text-field caret bumps a counter in `restartKeys` so it stays solid 
 after each keystroke). Unlike `useFrame` it does not request a repaint; the usual `cb` flips a
 `useState`, which re-renders on its own.
 
+## surface
+
+```scala
+def surface(
+    image:  RasterImage,
+    handle: SurfaceHandle | Null = null,
+    width:  Double = Double.NaN,
+    height: Double = Double.NaN,
+    ref:    Ref[RenderObject | Null] | Null = null,
+    focusable: Boolean = false,
+    // pointer / wheel / key handlers — see the Input guide
+): VNode
+```
+
+The **retained** counterpart to [`canvas`](#canvas). Where a canvas hands you suit's `Canvas`
+afresh every frame, a surface lets you keep your **own** drawing surface — draw into it whenever
+and however you like, with the *full underlying graphics API* (raw Cairo on the native backend, not
+suit's `Canvas` subset) — and have suit blit it to the screen. This is the escape hatch for drawing
+suit's `Canvas` doesn't cover, e.g. Cairo's complete text and font machinery.
+
+You supply a `RasterImage` that wraps the surface (`CairoBitmap.wrap(surface)` on Native) and a
+`SurfaceHandle`. Draw into the surface on your own schedule, then call `handle.repaint()` to
+composite the new pixels. Unlike a canvas it **re-blits only when poked**, not every frame, so a
+static richly-drawn panel costs one copy per change rather than a re-rasterise at frame rate — and
+because it is a repaint boundary, that copy repaints just its region and leaves the rest of the
+window untouched.
+
+It sizes to `width` / `height` when given, otherwise to the surface's pixel size, and is a leaf
+that still takes pointer, wheel, and key handlers (and `focusable`), so an interactive panel works.
+
+```scala
+val sx   = DevicePixelRatio.scaleX                      // device pixels per logical unit
+val surf = imageSurfaceCreate(Format.ARGB32, (400 * sx).toInt, (300 * sx).toInt)
+val img  = CairoBitmap.wrap(surf)                       // present the surface as a RasterImage
+val h    = useRef(new SurfaceHandle).current            // stable across renders
+
+def redraw(): Unit =
+  val cr = surf.create
+  cr.scale(sx, sx)                                       // draw in logical units
+  cr.selectFontFace("Georgia", FontSlant.Normal, FontWeight.Bold)
+  cr.setFontSize(18)
+  cr.moveTo(20, 40)
+  cr.showText("Anything Cairo can draw")                 // the full raw Cairo text API
+  cr.destroy()
+  surf.flush(); surf.markDirty()                         // publish the pixels…
+  h.repaint()                                            // …and ask suit to blit them
+
+surface(img, h, width = 400, height = 300)
+```
+
+**HiDPI.** A surface is a fixed grid of pixels. Read `DevicePixelRatio.scaleX` / `scaleY` (installed
+by the runtime; `1.0` on a 1× display, `2.0` on a Retina display), make the surface in **device
+pixels** (`logical × scale`), and pass **logical** `width` / `height` to the widget; the blit then
+lands the surface's pixels one-to-one on the display. (Scaling the Cairo context by the same ratio,
+as above, lets your drawing code stay in logical units.)
+
+You own the surface, so you free it (`surface.destroy()`) when the panel goes away — suit only reads
+it. A `repaint()` before the widget mounts, or after it unmounts, is a harmless no-op.
+
 ## scrollView
 
 ```scala

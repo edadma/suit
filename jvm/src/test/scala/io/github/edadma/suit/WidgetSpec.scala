@@ -332,3 +332,66 @@ class WidgetSpec extends AnyFunSuite:
     m.pointer.move(Offset(2, 2))
     m.settle()
     assert(item.background != rest)
+
+  // --- Splitter ------------------------------------------------------------
+
+  // The splitter's two panes are the flex children either side of the fixed gutter: the one
+  // three-child flex whose outer children both flex. Returns (first, gutter, second).
+  private def panes(root: RenderObject): (RenderObject, RenderObject, RenderObject) =
+    val f = allObjects(root).collectFirst {
+      case f: RenderFlex if f.children.length == 3 && f.children(0).flex > 0 && f.children(2).flex > 0 => f
+    }.get
+    (f.children(0), f.children(1), f.children(2))
+
+  test("a horizontal splitter divides the area at the initial fraction"):
+    val m         = mount(splitter(initial = 0.5)(box()(), box()()), Size(200, 100))
+    val (a, g, b) = panes(m.root)
+    assert(g.size.width == 6.0)                                              // the gutter
+    assert(math.abs(a.size.width - b.size.width) < 1.0)                      // equal halves
+    assert(math.abs((a.size.width + g.size.width + b.size.width) - 200.0) < 0.5)
+
+  test("dragging the gutter right widens the first pane"):
+    val m  = mount(splitter(initial = 0.5)(box()(), box()()), Size(200, 100))
+    val w0 = panes(m.root)._1.size.width
+    m.pointer.down(Offset(100, 50), 1) // press on the gutter (~x 97..103)
+    m.pointer.move(Offset(150, 50))    // drag right → frac ≈ 0.75 (capture keeps it on the gutter)
+    m.pointer.up(Offset(150, 50), 1)
+    m.settle()
+    val (a1, _, b1) = panes(m.root)
+    assert(a1.size.width > w0)
+    assert(a1.size.width > b1.size.width)
+
+  test("the gutter cannot be dragged past the max fraction"):
+    val m = mount(splitter(initial = 0.5, max = 0.7)(box()(), box()()), Size(200, 100))
+    m.pointer.down(Offset(100, 50), 1)
+    m.pointer.move(Offset(195, 50)) // far right — frac would be ~0.97 without the clamp
+    m.pointer.up(Offset(195, 50), 1)
+    m.settle()
+    val (a, g, b) = panes(m.root)
+    val total     = a.size.width + g.size.width + b.size.width
+    assert(a.size.width / total <= 0.72) // held near 0.7
+    assert(b.size.width > 0)             // the second pane never collapses
+
+  test("a drag reports the new fraction through onResize"):
+    var reported = -1.0
+    val m        = mount(splitter(initial = 0.5, onResize = f => reported = f)(box()(), box()()), Size(200, 100))
+    m.pointer.down(Offset(100, 50), 1)
+    m.pointer.move(Offset(140, 50)) // frac ≈ 0.7
+    m.pointer.up(Offset(140, 50), 1)
+    m.settle()
+    assert(reported > 0.6 && reported < 0.8)
+
+  test("a vertical splitter stacks the panes in a column with a horizontal gutter"):
+    val m         = mount(splitter(axis = Axis.Vertical, initial = 0.5)(box()(), box()()), Size(100, 200))
+    val (a, g, b) = panes(m.root)
+    assert(g.size.height == 6.0)
+    assert(math.abs(a.size.height - b.size.height) < 1.0)
+    assert(math.abs((a.size.height + g.size.height + b.size.height) - 200.0) < 0.5)
+
+  test("the focused gutter resizes with the arrow keys"):
+    val m  = mount(splitter(initial = 0.5)(box()(), box()()), Size(200, 100))
+    val w0 = panes(m.root)._1.size.width
+    m.focus.focus(focusableBox(m.root)) // the gutter is the only focusable box
+    m.keys.down(Key.Right, false)
+    m.settle()
+    assert(panes(m.root)._1.size.width > w0)

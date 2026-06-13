@@ -60,6 +60,11 @@ object Suit:
     val (pixelW, pixelH) = window.sizeInPixels
     val device           = DeviceSurface.from(width, height, pixelW, pixelH)
 
+    // Publish the display density so application code that allocates its own pixel buffer (a
+    // `surface(...)` widget's backing surface) can size it to the real resolution and stay sharp.
+    DevicePixelRatio.scaleX = device.scaleX
+    DevicePixelRatio.scaleY = device.scaleY
+
     // Cairo draws into this ARGB32 image surface; the runtime uploads it to the streaming
     // texture each dirty frame. ARGB32's little-endian byte layout is identical to SDL's
     // ARGB8888, so the upload is a straight copy with no conversion. The texture is sized to

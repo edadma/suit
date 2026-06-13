@@ -224,6 +224,70 @@ object dsl:
     val eref: ElementRef | Null = if ref != null then BoxRef(ref) else null
     el("canvas", props, Nil, eref)
 
+  /** A wrapper around an application-owned image surface — the retained counterpart to [[canvas]].
+    * Where a canvas hands you suit's [[Canvas]] each frame, a surface lets you keep your *own*
+    * drawing surface, draw into it whenever and however you like (with the full underlying graphics
+    * API, e.g. raw Cairo on the native backend), and have suit blit it to the screen. Pass a
+    * [[RasterImage]] that wraps the surface (`CairoBitmap.wrap(surface)` on Native) and a
+    * [[SurfaceHandle]]; after each redraw call `handle.repaint()` to composite the new pixels.
+    *
+    * It re-blits only when poked, not every frame, so a static richly-drawn panel is cheap. It
+    * sizes to `width`/`height` when given, otherwise to the surface's pixel size, and is a leaf
+    * that takes pointer/key handlers so an interactive panel works. For a sharp result on a HiDPI
+    * display, make the surface in device pixels (see [[DevicePixelRatio]]) and pass logical
+    * `width`/`height`.
+    *
+    * ```scala
+    * val sx   = DevicePixelRatio.scaleX
+    * val surf = imageSurfaceCreate(Format.ARGB32, (400 * sx).toInt, (300 * sx).toInt)
+    * val img  = CairoBitmap.wrap(surf)
+    * val h    = useRef(new SurfaceHandle).current
+    *
+    * def redraw(): Unit =
+    *   val cr = surf.create
+    *   cr.scale(sx, sx)         // draw in logical units
+    *   // ... full raw Cairo ...
+    *   cr.destroy()
+    *   surf.flush(); surf.markDirty()
+    *   h.repaint()
+    *
+    * surface(img, h, width = 400, height = 300)
+    * ```
+    */
+  def surface(
+      image:        RasterImage,
+      handle:       SurfaceHandle | Null            = null,
+      width:        Double                          = Double.NaN,
+      height:       Double                          = Double.NaN,
+      ref:          Ref[RenderObject | Null] | Null = null,
+      onClick:      (PointerEvent => Unit) | Null   = null,
+      onMouseDown:  (PointerEvent => Unit) | Null   = null,
+      onMouseUp:    (PointerEvent => Unit) | Null   = null,
+      onMouseMove:  (PointerEvent => Unit) | Null   = null,
+      onMouseEnter: (PointerEvent => Unit) | Null   = null,
+      onMouseLeave: (PointerEvent => Unit) | Null   = null,
+      onWheel:      (ScrollEvent => Unit)     | Null = null,
+      onKeyDown:    (KeyEvent => Unit)        | Null = null,
+      onKeyUp:      (KeyEvent => Unit)        | Null = null,
+      focusable:    Boolean                          = false,
+  ): VNode =
+    var props = Map[String, Prop]("image" -> PropValue(image))
+    if handle != null then props = props.updated("handle", PropValue(handle))
+    props = sized(props, "width", width)
+    props = sized(props, "height", height)
+    if focusable then props = props.updated("focusable", PropValue(true))
+    props = typed[PointerEvent](props, "click", onClick)
+    props = typed[PointerEvent](props, "mousedown", onMouseDown)
+    props = typed[PointerEvent](props, "mouseup", onMouseUp)
+    props = typed[PointerEvent](props, "mousemove", onMouseMove)
+    props = typed[PointerEvent](props, "mouseenter", onMouseEnter)
+    props = typed[PointerEvent](props, "mouseleave", onMouseLeave)
+    props = typed[ScrollEvent](props, "wheel", onWheel)
+    props = typed[KeyEvent](props, "keydown", onKeyDown)
+    props = typed[KeyEvent](props, "keyup", onKeyUp)
+    val eref: ElementRef | Null = if ref != null then BoxRef(ref) else null
+    el("surface", props, Nil, eref)
+
   /** A horizontal stack. Children are laid left to right; flexible children share the
     * leftover width. See [[MainAxisAlignment]] / [[CrossAxisAlignment]] / [[MainAxisSize]]. */
   def row(

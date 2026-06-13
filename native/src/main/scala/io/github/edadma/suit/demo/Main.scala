@@ -3,6 +3,8 @@ package io.github.edadma.suit.demo
 import io.github.edadma.suit.*
 import io.github.edadma.suit.dsl.*
 import io.github.edadma.suit.widgets.*
+import io.github.edadma.libcairo.{Format, FontSlant, Surface, imageSurfaceCreate, patternCreateLinear}
+import io.github.edadma.libcairo.FontWeight as CairoFontWeight
 
 // A showcase of the styling system, the input model, and motion. The whole UI is wrapped
 // in a `ThemeProvider` carrying the active theme, so the built-in widgets (Button, Checkbox,
@@ -120,6 +122,98 @@ private val OrbitCanvas: Component[Unit] =
         c.fillCircle(Offset(cx + math.cos(a) * r, cy + math.sin(a) * r), rad, theme.primary.withAlpha((255 * fade).toInt))
         i += 1
     }
+  }
+
+// The logical size of the application-owned surface below. The backing Cairo surface is made this
+// large times the display's device-pixel scale, so it blits one-to-one and stays sharp at 2×.
+private val surfaceW = 400.0
+private val surfaceH = 120.0
+
+/** Everything the surface panel keeps between frames: the Cairo surface it owns, the same surface
+  * presented to suit as a [[RasterImage]], the handle that asks suit to re-blit, and the device
+  * scale the surface was sized at (so drawing can stay in logical units). */
+private final class SurfaceState(
+    val surf:   Surface,
+    val image:  RasterImage,
+    val handle: SurfaceHandle,
+    val sx:     Double,
+    val sy:     Double,
+)
+
+/** Repaint the application-owned surface with **raw Cairo** — a linear gradient and two lines of
+  * text in a serif face centred with Cairo's own text extents. None of this goes through suit's
+  * `Canvas`; it is the full underlying engine, the reason a `surface` exists alongside a `canvas`.
+  * `gen` (bumped by the Redraw button) just varies the caption, to show that a redraw re-blits only
+  * when asked. */
+private def paintSurface(st: SurfaceState, theme: Theme, gen: Int): Unit =
+  val cr = st.surf.create
+  cr.scale(st.sx, st.sy) // draw in logical units; the scale makes it land on device pixels
+
+  val g = patternCreateLinear(0, 0, surfaceW, surfaceH)
+  g.addColorStopRGB(0, theme.primary.r / 255.0, theme.primary.g / 255.0, theme.primary.b / 255.0)
+  g.addColorStopRGB(1, theme.surface.r / 255.0, theme.surface.g / 255.0, theme.surface.b / 255.0)
+  cr.rectangle(0, 0, surfaceW, surfaceH)
+  cr.setSource(g)
+  cr.fill()
+  g.destroy()
+
+  val ink = if theme.isDark then 1.0 else 0.1
+  cr.setSourceRGB(ink, ink, ink + 0.02)
+  cr.selectFontFace("Georgia", FontSlant.ITALIC, CairoFontWeight.BOLD)
+  cr.setFontSize(34)
+  val title = "Raw Cairo"
+  val te    = cr.textExtents(title)
+  cr.moveTo((surfaceW - te.width) / 2 - te.xBearing, surfaceH / 2 - 4)
+  cr.showText(title)
+
+  cr.selectFontFace("Georgia", FontSlant.NORMAL, CairoFontWeight.NORMAL)
+  cr.setFontSize(13)
+  val sub  = s"drawn straight into an app-owned surface · redraw #$gen"
+  val te2  = cr.textExtents(sub)
+  cr.moveTo((surfaceW - te2.width) / 2 - te2.xBearing, surfaceH / 2 + 22)
+  cr.showText(sub)
+
+  cr.destroy()
+  st.surf.flush()   // publish the pixels the C side wrote…
+  st.surf.markDirty() // …and tell Cairo the buffer changed so the next blit re-samples it
+
+/** The retained-surface counterpart to [[OrbitCanvas]]. The app creates its **own** Cairo surface
+  * once (sized in device pixels, see [[DevicePixelRatio]]), draws into it with the full raw Cairo
+  * API, and hands it to a `surface` widget; a [[SurfaceHandle]] re-blits it on demand. It redraws
+  * when the theme flips (so it recolours with the app) and when the Redraw button bumps a counter —
+  * each redraw repaints just this panel, not the window. */
+private val SurfacePanel: Component[Unit] =
+  view {
+    val theme            = useTheme()
+    val (gen, setGen, _) = useState(0)
+
+    // Build the surface once, after the runtime has published the display scale. useMemo with no
+    // deps runs on mount and never again, so the buffer is allocated a single time, not per render.
+    val st = useMemo(
+      () => {
+        val sx   = DevicePixelRatio.scaleX
+        val sy   = DevicePixelRatio.scaleY
+        val surf = imageSurfaceCreate(Format.ARGB32, math.ceil(surfaceW * sx).toInt, math.ceil(surfaceH * sy).toInt)
+        new SurfaceState(surf, CairoBitmap.wrap(surf), new SurfaceHandle, sx, sy)
+      },
+      Array(),
+    )
+
+    // Redraw whenever the generation or the theme changes, then ask suit to composite the new
+    // pixels. Releasing the surface on unmount keeps the app honest about owning it.
+    useEffect(() => { paintSurface(st, theme, gen); st.handle.repaint(); () => () }, Array(gen, theme.isDark))
+    useEffect(() => () => st.surf.destroy(), Array())
+
+    col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
+      row(mainAxisAlignment = MainAxisAlignment.Center)(
+        box(radius = 12, clip = true)(
+          surface(st.image, st.handle, width = surfaceW, height = surfaceH),
+        ),
+      ),
+      row(mainAxisAlignment = MainAxisAlignment.Center)(
+        Button("Redraw", () => setGen(gen + 1)),
+      ),
+    )
   }
 
 val App = view {
@@ -313,6 +407,36 @@ val App = view {
                   col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
                     text("Canvas — custom drawing, animated with useFrame", color = muted),
                     box(radius = 12, clip = true)(OrbitCanvas()),
+                  ),
+                ),
+                // An application-owned surface: the app draws into its own Cairo surface with the
+                // full raw engine (here a gradient and serif text centred by Cairo's text extents —
+                // things suit's Canvas does not expose) and hands it over to be blitted. Redraw
+                // re-paints the surface and pokes its handle, so just this panel re-composites.
+                card(
+                  col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
+                    text("Surface — an app-owned Cairo surface, drawn with raw Cairo", color = muted),
+                    SurfacePanel(),
+                  ),
+                ),
+                // A splitter: two panes divided by a draggable gutter. Drag the divider (or focus
+                // it and use the arrow keys) to resize; each pane is clipped to its share. Given a
+                // bounded height here, it fills the card width and divides it.
+                card(
+                  col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
+                    text("Splitter — drag the gutter to resize the panes", color = muted),
+                    sizedBox(height = 150)(
+                      box(radius = 12, clip = true, border = theme.border, borderWidth = 1)(
+                        splitter(initial = 0.35, min = 0.15, max = 0.7)(
+                          box(bg = theme.background, padding = EdgeInsets.all(12))(
+                            text("Sidebar", color = muted),
+                          ),
+                          box(bg = theme.surface, padding = EdgeInsets.all(12))(
+                            text("Content — drag the divider to the left of this pane.", color = muted, maxLines = 0),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
                 // An enter/exit reveal: the button toggles a panel that animates in and out.

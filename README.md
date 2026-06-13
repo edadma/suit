@@ -55,11 +55,18 @@ canvas.
 
 A small library of controls — all theme-driven and animated, composed from the DSL
 primitives: buttons, checkboxes, switches, radio groups, sliders, tabs, progress bars,
-badges, dividers, alerts, cards, tooltips, menus, and modal dialogs. Text entry comes in a
+badges, dividers, alerts, cards, tooltips, menus, modal dialogs, and a resizable `splitter`.
+Text entry comes in a
 single-line `TextField` and a multi-line `TextArea`, and large data sets are served by a
 **virtualized data grid** — `dataTable` over a `virtualList` that only builds the rows under
 the viewport, so a thousand-row result stays smooth. See the
 [widget reference](https://suit.edadma.dev/reference/widgets/).
+
+For custom drawing there are two escape hatches: `canvas` hands your routine suit's `Canvas`
+each frame (a chart, a game, a sketch pad), and `surface` wraps an **application-owned image
+surface** you draw into yourself with the full underlying graphics API (raw Cairo on Native) and
+re-blit on demand via a `SurfaceHandle` — the retained route for content suit's `Canvas` doesn't
+cover. See the [DSL reference](https://suit.edadma.dev/reference/dsl/).
 
 ## A counter
 

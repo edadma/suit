@@ -492,6 +492,43 @@ box(flex = 1)(
 )
 ```
 
+## Splitter
+
+```scala
+def splitter(
+    axis:     Axis             = Axis.Horizontal,
+    initial:  Double           = 0.5,
+    min:      Double           = 0.1,
+    max:      Double           = 0.9,
+    gutter:   Double           = 6.0,
+    onResize: (Double => Unit) | Null = null,
+)(first: VNode, second: VNode): VNode
+```
+
+A resizable split of two panes with a draggable **gutter** between them — the layout a
+sidebar-plus-content or an editor-plus-preview window is built from. `axis` chooses the
+arrangement: `Axis.Horizontal` (the default) sets the panes side by side with a vertical gutter;
+`Axis.Vertical` stacks them with a horizontal one.
+
+It is **uncontrolled** — it owns the split position, starting at `initial` (the first pane's
+fraction of the area, `0..1`) and clamped between `min` and `max` so neither pane can be dragged
+shut. Drag the gutter to resize, or focus it and use the arrow keys (Left/Right, or Up/Down on a
+vertical split); pass `onResize` to observe the fraction (e.g. to persist it). The panes resize
+through the flex layout, so the split holds its proportion when the window resizes, and each pane is
+clipped to its share, so content that outgrows it is cut rather than spilling across the gutter.
+
+Give the splitter a **bounded size** (a flex slot, a fixed height, or a sized box): it fills the
+area it is given and divides that.
+
+```scala
+box(flex = 1)(
+  splitter(initial = 0.25, min = 0.15, max = 0.5)(
+    sidebarContent, // the first (left) pane
+    mainContent,    // the second (right) pane fills the rest
+  ),
+)
+```
+
 ## Theme
 
 ```scala

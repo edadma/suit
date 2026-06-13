@@ -34,6 +34,7 @@ final class SuitHostConfig extends HostConfig:
     case "text"     => new RenderText("")
     case "svg"      => new RenderSvg(null)
     case "image"    => new RenderImage(null)
+    case "surface"  => new RenderSurface(null)
     case "canvas"   => new RenderCanvas
     case _          => new RenderBox
 
@@ -175,6 +176,23 @@ final class SuitHostConfig extends HostConfig:
           case _              => null
       case (s: RenderImage, "width")  => s.width = asDoubleOpt(value)
       case (s: RenderImage, "height") => s.height = asDoubleOpt(value)
+
+      case (s: RenderSurface, "image") =>
+        s.image = value match
+          case i: RasterImage => i
+          case _              => null
+      case (s: RenderSurface, "width")  => s.width = asDoubleOpt(value)
+      case (s: RenderSurface, "height") => s.height = asDoubleOpt(value)
+      // The repaint handle binds bidirectionally: the render object remembers it, and it points
+      // back at the render object so `repaint()` can reach it. Rebinding (or removal) detaches the
+      // previous handle first, so a stale handle never re-blits a surface it no longer drives.
+      case (s: RenderSurface, "handle") =>
+        s.handle match
+          case h: SurfaceHandle => h.target = null
+          case null             => ()
+        s.handle = value match
+          case h: SurfaceHandle => h.target = s; h
+          case _                => null
 
       // The draw routine arrives as a two-argument function; on removal it falls back to a
       // no-op so a canvas whose painter is dropped renders blank rather than holding a stale one.

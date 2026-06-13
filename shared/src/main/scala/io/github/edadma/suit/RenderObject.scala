@@ -772,6 +772,59 @@ final class RenderImage(var image: RasterImage | Null) extends RenderObject:
       case img: RasterImage => canvas.drawImage(img, Rect.at(origin, size))
       case null             => ()
 
+/** A handle that lets application code ask a [[dsl.surface]] widget to re-blit after it has
+  * drawn new pixels into the image surface it supplied. Create one, pass it to the widget, and
+  * call [[repaint]] after each redraw. Before the widget mounts (and after it unmounts) the call
+  * is a harmless no-op, so a handle held across a widget's lifetime never dangles. */
+final class SurfaceHandle:
+  private[suit] var target: RenderSurface | Null = null
+
+  /** Request that the surface's current pixels be copied to the screen on the next frame. It
+    * marks only the widget's own repaint boundary dirty — so just that region is re-rasterised and
+    * the static UI around it is left untouched — and requests a frame. */
+  def repaint(): Unit =
+    target match
+      case s: RenderSurface => s.markDirty()
+      case null             => ()
+
+/** A leaf that wraps an application-owned image surface and blits it to the screen — the
+  * companion to [[RenderCanvas]] for code that would rather drive a real drawing surface itself,
+  * with the full underlying graphics API, than issue suit's [[Canvas]] primitives. The
+  * application creates the surface, draws into it on its own schedule, and calls
+  * [[SurfaceHandle.repaint]] to have the new pixels composited.
+  *
+  * Unlike [[RenderCanvas]] it is **not** a live surface: it re-blits only when its handle is
+  * poked, not every frame, so a static richly-drawn panel costs one copy per change rather than a
+  * re-rasterise at frame rate. It is a repaint boundary, so that copy repaints just its region and
+  * leaves the rest of the window untouched.
+  *
+  * It sizes to its explicit `width`/`height` when given, otherwise to the surface's own pixel
+  * size, each clamped to the constraints. For a sharp result on a HiDPI display, size the surface
+  * in device pixels (see [[DevicePixelRatio]]) and pass logical `width`/`height`: the blit then
+  * lands the surface's pixels one-to-one on the display. */
+final class RenderSurface(var image: RasterImage | Null) extends RenderObject:
+  /** A surface is a repaint boundary so a redraw re-blits just its region, not the whole scene.
+    * It is not a *live* surface, though — it does not re-rasterise every frame; only an explicit
+    * [[SurfaceHandle.repaint]] (or a full-scene repaint) draws it again. */
+  override def isRepaintBoundary: Boolean = true
+
+  var width:  Option[Double]       = None
+  var height: Option[Double]       = None
+  var handle: SurfaceHandle | Null = null
+
+  def layout(constraints: Constraints): Unit =
+    val natural = image match
+      case img: RasterImage => Size(img.width.toDouble, img.height.toDouble)
+      case null             => Size.zero
+    val w = width.getOrElse(natural.width)
+    val h = height.getOrElse(natural.height)
+    size = constraints.constrain(Size(w, h))
+
+  override def paint(canvas: Canvas, origin: Offset): Unit =
+    image match
+      case img: RasterImage => canvas.drawImage(img, Rect.at(origin, size))
+      case null             => ()
+
 /** A direct drawing surface — the toolkit's analogue of an HTML `<canvas>`. It hands the
   * application the very [[Canvas]] suit's own widgets paint through, so a custom drawing (a
   * chart, a game, a physics simulation) issues the same primitives the rest of the UI does and
