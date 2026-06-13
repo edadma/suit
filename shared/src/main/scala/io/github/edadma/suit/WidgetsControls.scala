@@ -279,18 +279,20 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
   /** A multi-line text editor: a focusable, bordered box that edits a string spanning
     * many lines. Like [[TextField]] it is **controlled** — it renders the `value` it is
     * given and reports edits through `onChange` — but the caret moves in two dimensions:
-    * Enter splits a line, Up/Down move between lines (keeping the column where a shorter
-    * line allows), Home/End jump to the line's ends, and Shift extends a selection across
+    * Enter splits a line, Up/Down move between rows (keeping the column where a shorter
+    * row allows), Home/End jump to the row's ends, and Shift extends a selection across
     * line breaks. Backspace/Delete remove, Ctrl+A selects all, a click places the caret and
-    * a drag selects. All the caret arithmetic lives in the pure [[EditBuffer]]; this widget
-    * is the wiring that holds one in state and paints it.
+    * a drag selects. The character arithmetic lives in the pure [[EditBuffer]]; this widget
+    * adds the visual layer — wrapping and the row geometry — and wires it to the routers.
     *
-    * It sizes to its content height (one line's height per line of text) rather than
-    * scrolling itself, so put it in a [[dsl.scrollView]] for a fixed-height editor that
-    * scrolls — the click-to-caret math reads the pointer in the editor's own coordinates, so
-    * it stays correct however far the enclosing viewport is scrolled. Give it a tight width
-    * (a `Stretch` column, or a `box` width) to fill a pane. The caret blinks while focused
-    * and snaps solid for a full interval after any edit or move. */
+    * Long lines **soft-wrap** to the editor's width, so a logical line can span several visual
+    * rows; the caret, click-to-place, selection, and Up/Down/Home/End all work in those visual
+    * rows. It sizes to its (wrapped) content height rather than scrolling itself, so put it in a
+    * [[dsl.scrollView]] for a fixed-height editor that scrolls — the click-to-caret math reads the
+    * pointer in the editor's own coordinates, so it stays correct however far the enclosing
+    * viewport is scrolled. Give it a **bounded width** (a `Stretch` column, or a `box` width) to
+    * wrap into. The caret blinks while focused and snaps solid for a full interval after any edit
+    * or move. */
   val TextArea: Component2[String, String => Unit] =
     component[String, String => Unit] { (value, onChange) =>
       val theme                    = useTheme()
@@ -308,34 +310,73 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
       val buf   = EditBuffer(value, caret, anchor)
       val lines = buf.lines
 
-      val style = TextStyle(size = theme.textSize, color = theme.surfaceText)
-      val padX  = 8.0
-      val padY  = 6.0
+      val style    = TextStyle(size = theme.textSize, color = theme.surfaceText)
+      val measurer = TextMeasurer.installed
+      val padX     = 8.0
+      val padY     = 6.0
       // A uniform line height from a non-empty sample, so blank lines keep the rhythm and an
       // empty editor still has a full-height caret.
-      val lineH      = TextMeasurer.installed.measure("Xy", style).height
-      val contentH   = math.max(lineH, lines.length * lineH)
+      val lineH = measurer.measure("Xy", style).height
+
+      // The editor soft-wraps, so a logical line may occupy several **visual rows**. The wrap width
+      // is the editor's laid-out content width, read from a ref one frame after layout (the same
+      // measure-one-frame-late dance the lists and overlays use); until it is known the text lays
+      // out unwrapped on the first frame, then re-wraps. A bounded width is part of the widget's
+      // contract, so this resolves immediately in practice.
+      val sizeRef          = useRef[RenderObject | Null](null)
+      val (_, _, bumpTick) = useState(0)
+      useEffect(() => { bumpTick(t => t + 1); noCleanup }, Array())
+      val availW = sizeRef.current match
+        case r: RenderObject if r.size.width > 0 => math.max(1.0, r.size.width - 2 * padX)
+        case _                                   => Double.PositiveInfinity
 
       def prefixW(line: Int, col: Int): Double =
         val s = lines(line)
-        TextMeasurer.installed.measure(s.substring(0, math.max(0, math.min(col, s.length))), style).width
-      def lineW(line: Int): Double = TextMeasurer.installed.measure(lines(line), style).width
+        measurer.measure(s.substring(0, math.max(0, math.min(col, s.length))), style).width
 
-      // Resolve a pointer in the editor's content space (pointer minus padding) to a caret
-      // index: the row from the y, then the nearest character boundary on that row from the x.
-      def colAtX(line: Int, x: Double): Int =
-        val s     = lines(line)
-        var best  = 0
-        var bestD = math.abs(x - 0.0)
-        var i     = 1
-        while i <= s.length do
-          val d = math.abs(prefixW(line, i) - x)
-          if d < bestD then { bestD = d; best = i }
-          i += 1
+      // The visual layout: each logical line wrapped into `(startCol, endCol)` segments, then
+      // flattened into a single top-to-bottom list of visual rows. Every row's top sits at
+      // `globalRow * lineH`, which the caret, selection, and click geometry below rely on exactly.
+      val rowsByLine: Vector[Vector[(Int, Int)]] =
+        lines.indices.toVector.map { line =>
+          val s      = lines(line)
+          val starts = RenderText.wrapColumns(s, style, availW, measurer)
+          starts.indices.toVector.map { j =>
+            (starts(j), if j + 1 < starts.length then starts(j + 1) else s.length)
+          }
+        }
+      val firstRowOfLine: Vector[Int]          = rowsByLine.scanLeft(0)(_ + _.length).init
+      val flatRows: Vector[(Int, Int, Int)]    =
+        rowsByLine.zipWithIndex.flatMap { case (segs, line) => segs.map((a, b) => (line, a, b)) }
+      val totalRows = flatRows.length
+      val contentH  = math.max(lineH, totalRows * lineH)
+
+      // The visual row (global index) and the x within that row for a caret offset: find which
+      // segment of the offset's logical line holds the column, then measure from the segment start.
+      def caretRowX(off: Int): (Int, Double) =
+        val (line, col) = buf.lineColOf(off)
+        val segs        = rowsByLine(line)
+        var j           = 0
+        while j + 1 < segs.length && segs(j + 1)._1 <= col do j += 1
+        (firstRowOfLine(line) + j, prefixW(line, col) - prefixW(line, segs(j)._1))
+
+      // The nearest character boundary within a visual row to a target x (measured from the row's
+      // start, since every row paints at content x = 0).
+      def colInRowAtX(line: Int, start: Int, end: Int, targetX: Double): Int =
+        val base  = prefixW(line, start)
+        var best  = start
+        var bestD = math.abs(targetX)
+        var c     = start + 1
+        while c <= end do
+          val d = math.abs((prefixW(line, c) - base) - targetX)
+          if d < bestD then { bestD = d; best = c }
+          c += 1
         best
+
       def indexAt(localX: Double, localY: Double): Int =
-        val ln  = math.max(0, math.min((((localY - padY) / lineH).toInt), lines.length - 1))
-        buf.indexOf(ln, colAtX(ln, localX - padX))
+        val gr                 = math.max(0, math.min(((localY - padY) / lineH).toInt, totalRows - 1))
+        val (line, start, end) = flatRows(gr)
+        buf.indexOf(line, colInRowAtX(line, start, end, localX - padX))
 
       // Drive the model: apply a pure op, report a text change if any, and move the caret —
       // the single path every key and pointer edit funnels through.
@@ -346,6 +387,28 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
         setAnchor(nb.anchor)
         restartBlink()
 
+      // Vertical motion and Home/End follow **visual** rows, not logical lines, so the caret moves
+      // by what the eye sees through a wrapped line. The target column on the destination row keeps
+      // the caret's current x; Home/End jump to the visual row's ends.
+      def moveVert(delta: Int, extend: Boolean): Unit =
+        val (gr, xr) = caretRowX(caret)
+        val tr       = gr + delta
+        if tr < 0 then edit(_.moveTo(0, extend))
+        else if tr >= totalRows then edit(_.moveTo(buf.length, extend))
+        else
+          val (line, start, end) = flatRows(tr)
+          edit(_.moveTo(buf.indexOf(line, colInRowAtX(line, start, end, xr)), extend))
+
+      def visualHome(extend: Boolean): Unit =
+        val (gr, _)        = caretRowX(caret)
+        val (line, start, _) = flatRows(gr)
+        edit(_.moveTo(buf.indexOf(line, start), extend))
+
+      def visualEnd(extend: Boolean): Unit =
+        val (gr, _)      = caretRowX(caret)
+        val (line, _, end) = flatRows(gr)
+        edit(_.moveTo(buf.indexOf(line, end), extend))
+
       def onKey(e: KeyEvent): Unit =
         e.scancode match
           case Key.Backspace       => edit(_.backspace)
@@ -353,42 +416,51 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
           case Key.Enter           => edit(_.newline)
           case Key.Left            => edit(_.left(e.shift))
           case Key.Right           => edit(_.right(e.shift))
-          case Key.Up              => edit(_.up(e.shift))
-          case Key.Down            => edit(_.down(e.shift))
+          case Key.Up              => moveVert(-1, e.shift)
+          case Key.Down            => moveVert(1, e.shift)
           case Key.Home if e.ctrl  => edit(_.docStart(e.shift))
           case Key.End if e.ctrl   => edit(_.docEnd(e.shift))
-          case Key.Home            => edit(_.lineHome(e.shift))
-          case Key.End             => edit(_.lineEnd(e.shift))
+          case Key.Home            => visualHome(e.shift)
+          case Key.End             => visualEnd(e.shift)
           case Key.A if e.ctrl     => edit(_.selectAll)
           case _                   => ()
 
-      // The character grid: one fixed-height row per line so every line's top sits at
-      // `line * lineH`, which the caret and selection geometry below rely on exactly.
+      // One fixed-height row per visual row, each painting its line's segment substring.
       val textLayer: VNode =
         col(mainAxisSize = MainAxisSize.Min)(
-          lines.map(l => sizedBox(height = lineH)(text(l, color = theme.surfaceText, size = theme.textSize)))*,
+          flatRows.map { (line, start, end) =>
+            sizedBox(height = lineH)(text(lines(line).substring(start, end), color = theme.surfaceText, size = theme.textSize))
+          }*,
         )
 
-      // The selection highlight: one band per spanned line, from the selection's start column
-      // on its first line (0 on later lines) to its end column on its last line (the line's
-      // full width on earlier lines, with a sliver for an empty line so it stays visible).
+      // The selection highlight: one band per visual row the selection touches, clipped to that
+      // row's columns. A row whose selection runs off its end (the break continues onto the next
+      // row or line) gets a small sliver past the text so the break reads as selected.
       val selLayer: Seq[VNode] =
         if !buf.hasSelection then Seq.empty
         else
-          val (loLine, loCol) = buf.lineColOf(buf.selLo)
-          val (hiLine, hiCol) = buf.lineColOf(buf.selHi)
-          (loLine to hiLine).map { ln =>
-            val startX = if ln == loLine then prefixW(ln, loCol) else 0.0
-            val endX   = if ln == hiLine then prefixW(ln, hiCol) else math.max(lineW(ln), 4.0)
-            positioned(startX, ln * lineH)(
-              box(width = math.max(0.0, endX - startX), height = lineH, bg = theme.accent.withAlpha(80))(),
-            )
+          flatRows.zipWithIndex.flatMap { case ((line, start, end), r) =>
+            val lso   = buf.lineStart(line)
+            val rowLo = lso + start
+            val rowHi = lso + end
+            if buf.selHi <= rowLo || buf.selLo >= rowHi then Seq.empty
+            else
+              val sCol      = math.max(start, math.min(end, buf.selLo - lso))
+              val continues = buf.selHi > rowHi
+              val eCol      = if continues then end else math.max(start, math.min(end, buf.selHi - lso))
+              val base      = prefixW(line, start)
+              val x0        = prefixW(line, sCol) - base
+              val x1raw     = prefixW(line, eCol) - base
+              val x1        = if continues then math.max(x1raw, x0 + 4.0) else x1raw
+              Seq(positioned(x0, r * lineH)(
+                box(width = math.max(0.0, x1 - x0), height = lineH, bg = theme.accent.withAlpha(80))(),
+              ))
           }.toSeq
 
       val caretLayer: Seq[VNode] =
         if focused && blinkOn then
-          val (line, c0) = buf.lineColOf(caret)
-          Seq(positioned(prefixW(line, c0), line * lineH)(box(width = 2, height = lineH, bg = theme.surfaceText)()))
+          val (gr, xr) = caretRowX(caret)
+          Seq(positioned(xr, gr * lineH)(box(width = 2, height = lineH, bg = theme.surfaceText)()))
         else Seq.empty
 
       box(
@@ -400,6 +472,7 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
         clip        = true,
         focusable   = true,
         acceptsText = true,
+        ref         = sizeRef,
         onMouseDown = e => edit(_.collapseTo(indexAt(e.local.x, e.local.y))),
         onMouseMove = e => if e.button != 0 then edit(b => b.moveTo(indexAt(e.local.x, e.local.y), extend = true)),
         onTextInput = e => edit(_.insert(e.text)),

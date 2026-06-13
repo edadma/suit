@@ -359,12 +359,14 @@ object dsl:
     * for that instead. The bar shows only when the content overflows. */
   def scrollView(
       axis:               Axis         = Axis.Vertical,
+      both:               Boolean      = false,
       scrollbar:          Boolean      = false,
       scrollbarThumb:     Color | Null = null,
       scrollbarTrack:     Color | Null = null,
       scrollbarThickness: Double       = Double.NaN,
   )(children: VNode*): VNode =
     var props = Map[String, Prop]("axis" -> PropValue(axis))
+    if both then props = props.updated("biaxial", PropValue(true))
     if scrollbar then props = props.updated("scrollbar", PropValue(true))
     if scrollbarThumb != null then props = props.updated("scrollbarThumb", PropValue(scrollbarThumb))
     if scrollbarTrack != null then props = props.updated("scrollbarTrack", PropValue(scrollbarTrack))

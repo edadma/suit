@@ -334,16 +334,24 @@ final class RenderStack(var alignment: Alignment = Alignment.topLeft) extends Re
   * so dropping a [[RenderScroll]] under the pointer router is all that wheel scrolling
   * needs — no application wiring. */
 final class RenderScroll(var axis: Axis = Axis.Vertical) extends RenderObject:
-  /** How far the content is scrolled along the axis, in pixels from the start. Always
-    * within `[0, maxScroll]`; [[scrollBy]] and `layout` keep it clamped. */
-  var scrollOffset: Double = 0.0
+  /** How far the content is scrolled on each axis, in pixels from the start. Each is kept within
+    * `[0, maxScroll{X,Y}]` by [[scrollByX]]/[[scrollByY]] and `layout`. A single-axis viewport
+    * leaves the unused offset at zero. */
+  var offsetX: Double = 0.0
+  var offsetY: Double = 0.0
 
-  private var contentMain: Double  = 0.0
-  private var viewportMain: Double = 0.0
+  /** Scroll on both axes at once — the content may overflow horizontally and vertically together,
+    * each scrolled independently with its own bar. Off by default, when only `axis` scrolls. The
+    * global [[Axis]] stays two-valued: a both-ways viewport is a property here, not a third
+    * direction (so flex and the splitter, which are inherently single-axis, never see it). */
+  var biaxial: Boolean = false
+
+  private var contentW: Double = 0.0
+  private var contentH: Double = 0.0
 
   /** Whether a visible scrollbar is painted over the viewport. Off by default — the plain
     * `scrollView` is wheel-only; the `scrollArea` widget switches it on and supplies themed
-    * colours through the props below. */
+    * colours through the props below. A biaxial viewport paints one bar per overflowing axis. */
   var scrollbar: Boolean           = false
   var scrollbarThumb: Color | Null = null
   var scrollbarTrack: Color | Null = null
@@ -353,105 +361,145 @@ final class RenderScroll(var axis: Axis = Axis.Vertical) extends RenderObject:
     Some((Rect.at(absoluteOffset, size), BorderRadius.zero))
 
   private def isVertical: Boolean = axis == Axis.Vertical
+  private def canScrollX: Boolean = biaxial || axis == Axis.Horizontal
+  private def canScrollY: Boolean = biaxial || axis == Axis.Vertical
 
-  /** The furthest the content can scroll: the amount by which it overflows the viewport,
-    * or zero when it fits. */
-  def maxScroll: Double = math.max(0.0, contentMain - viewportMain)
+  /** The furthest the content can scroll on each axis: the amount by which it overflows the
+    * viewport, or zero when it fits. */
+  def maxScrollX: Double = math.max(0.0, contentW - size.width)
+  def maxScrollY: Double = math.max(0.0, contentH - size.height)
+
+  // The single-axis surface the original API exposed, kept intact for callers and tests that work
+  // one direction at a time: `scrollOffset`/`maxScroll`/`scrollBy` all act on whichever axis is
+  // active (the `axis` direction), so a plain vertical or horizontal viewport behaves exactly as
+  // before while the per-axis fields above carry the biaxial case.
+  def scrollOffset: Double = if isVertical then offsetY else offsetX
+  def scrollOffset_=(v: Double): Unit = if isVertical then offsetY = v else offsetX = v
+  def maxScroll: Double = if isVertical then maxScrollY else maxScrollX
 
   // A wheel notch moves the view by this many pixels — a fixed step rather than the raw
   // wheel delta (which SDL reports as a small ±1-per-notch float), so one notch scrolls a
-  // readable amount regardless of the platform's wheel granularity.
+  // readable amount regardless of the platform's wheel granularity. Each axis takes its own
+  // delta, so a biaxial viewport scrolls vertically and horizontally from the one wheel.
   handlers("wheel") = e =>
     val s = e.asInstanceOf[ScrollEvent]
-    val d = if isVertical then s.deltaY else s.deltaX
-    scrollBy(-d * RenderScroll.WheelStep)
+    if canScrollY then scrollByY(-s.deltaY * RenderScroll.WheelStep)
+    if canScrollX then scrollByX(-s.deltaX * RenderScroll.WheelStep)
 
-  // Dragging the scrollbar thumb. A press is claimed only when it lands on the thumb (so a
-  // press anywhere else in the viewport flows to the content untouched); the capture the pointer
-  // router takes on that press then routes the drag's moves here even once the cursor leaves the
-  // thin thumb. The cursor's travel maps to scroll travel by the content/track ratio.
-  private var thumbDragging   = false
+  // Dragging a scrollbar thumb. A press is claimed only when it lands on a thumb (so a press
+  // anywhere else in the viewport flows to the content untouched); the capture the pointer router
+  // takes on that press then routes the drag's moves here even once the cursor leaves the thin
+  // thumb. The cursor's travel maps to scroll travel by the content/track ratio.
+  private var dragVertical    = false
+  private var dragHorizontal  = false
   private var dragStartCoord  = 0.0
   private var dragStartScroll = 0.0
 
   handlers("mousedown") = e =>
     val ev = e.asInstanceOf[PointerEvent]
-    scrollbarThumbRect match
-      case r: Rect if r.contains(ev.position.x, ev.position.y) =>
-        thumbDragging   = true
-        dragStartCoord  = if isVertical then ev.position.y else ev.position.x
-        dragStartScroll = scrollOffset
-      case _ => ()
+    if scrollbar then
+      thumbRectFor(vertical = true) match
+        case r: Rect if r.contains(ev.position.x, ev.position.y) =>
+          dragVertical    = true
+          dragStartCoord  = ev.position.y
+          dragStartScroll = offsetY
+        case _ =>
+          thumbRectFor(vertical = false) match
+            case r: Rect if r.contains(ev.position.x, ev.position.y) =>
+              dragHorizontal  = true
+              dragStartCoord  = ev.position.x
+              dragStartScroll = offsetX
+            case _ => ()
 
   handlers("mousemove") = e =>
-    if thumbDragging then
-      thumbMetrics match
-        case Some((len, _)) =>
-          val ev     = e.asInstanceOf[PointerEvent]
-          val view   = if isVertical then size.height else size.width
-          val travel = view - len
-          val coord  = if isVertical then ev.position.y else ev.position.x
-          val next =
-            if travel > 0 then
-              math.max(0.0, math.min(dragStartScroll + (coord - dragStartCoord) * (maxScroll / travel), maxScroll))
-            else scrollOffset
-          if next != scrollOffset then
-            scrollOffset = next
-            placeChild()
-            markDirty()
-        case None => ()
+    if dragVertical then dragTo(e.asInstanceOf[PointerEvent].position.y, vertical = true)
+    else if dragHorizontal then dragTo(e.asInstanceOf[PointerEvent].position.x, vertical = false)
 
-  handlers("mouseup") = _ => thumbDragging = false
+  handlers("mouseup") = _ => { dragVertical = false; dragHorizontal = false }
 
-  // The thumb's length and start offset along the axis for the laid-out viewport: sized to the
-  // visible fraction of the content (never below a grabbable minimum) and positioned in proportion
-  // to the scroll offset. None when there is nothing to scroll.
-  private def thumbMetrics: Option[(Double, Double)] =
-    val view = if isVertical then size.height else size.width
-    if maxScroll <= 0 || view <= 0 then None
+  // Map the dragged cursor coordinate to a scroll offset on the given axis and apply it.
+  private def dragTo(coord: Double, vertical: Boolean): Unit =
+    thumbMetricsFor(vertical) match
+      case Some((len, _)) =>
+        val view   = if vertical then size.height else size.width
+        val maxS   = if vertical then maxScrollY else maxScrollX
+        val travel = view - len
+        val next   = if travel > 0 then clamp(dragStartScroll + (coord - dragStartCoord) * (maxS / travel), maxS) else 0.0
+        if vertical then setOffsetY(next) else setOffsetX(next)
+      case None => ()
+
+  // The thumb's length and start offset for one axis: sized to the visible fraction of the
+  // content (never below a grabbable minimum) and positioned in proportion to the scroll offset.
+  // None when that axis has nothing to scroll.
+  private def thumbMetricsFor(vertical: Boolean): Option[(Double, Double)] =
+    val view = if vertical then size.height else size.width
+    val maxS = if vertical then maxScrollY else maxScrollX
+    val off  = if vertical then offsetY else offsetX
+    if maxS <= 0 || view <= 0 then None
     else
-      val content = view + maxScroll
+      val content = view + maxS
       val len     = math.max(RenderScroll.MinThumbLength, math.min(view, view * view / content))
       val travel  = view - len
-      Some((len, (scrollOffset / maxScroll) * travel))
+      Some((len, (off / maxS) * travel))
 
-  /** The thumb's rectangle in absolute coordinates, or null when the bar is off or the content
-    * fits — both painted as the thumb and hit-tested for a drag press. */
-  def scrollbarThumbRect: Rect | Null =
+  // One axis's thumb rectangle in absolute coordinates, or null when the bar is off or that axis
+  // fits. The vertical bar rides the right edge; the horizontal bar rides the bottom.
+  private def thumbRectFor(vertical: Boolean): Rect | Null =
     if !scrollbar then null
+    else if vertical && !canScrollY then null
+    else if !vertical && !canScrollX then null
     else
-      thumbMetrics match
+      thumbMetricsFor(vertical) match
         case Some((len, start)) =>
           val o = absoluteOffset
-          if isVertical then Rect(o.x + size.width - scrollbarThickness, o.y + start, scrollbarThickness, len)
+          if vertical then Rect(o.x + size.width - scrollbarThickness, o.y + start, scrollbarThickness, len)
           else Rect(o.x + start, o.y + size.height - scrollbarThickness, len, scrollbarThickness)
         case None => null
 
-  /** Scroll by `delta` pixels along the axis (positive moves toward the content's end),
-    * clamped to `[0, maxScroll]`. Repositions the content and requests a frame when the
-    * offset actually changes; returns whether it did. */
-  def scrollBy(delta: Double): Boolean =
-    val next = math.max(0.0, math.min(scrollOffset + delta, maxScroll))
-    if next != scrollOffset then
-      scrollOffset = next
-      placeChild()
-      markDirty()
-      true
-    else false
+  /** The active axis's thumb rectangle in absolute coordinates, or null when the bar is off or the
+    * content fits. (Biaxial viewports also expose the other axis's bar internally.) */
+  def scrollbarThumbRect: Rect | Null = thumbRectFor(isVertical)
 
-  // The content is positioned by negating the scroll offset, so the ordinary paint and
+  private def setOffsetX(v: Double): Boolean =
+    val n = clamp(v, maxScrollX)
+    if n != offsetX then { offsetX = n; placeChild(); markDirty(); true } else false
+
+  private def setOffsetY(v: Double): Boolean =
+    val n = clamp(v, maxScrollY)
+    if n != offsetY then { offsetY = n; placeChild(); markDirty(); true } else false
+
+  /** Scroll horizontally by `delta` px (positive toward the content's right), clamped to
+    * `[0, maxScrollX]`; returns whether the offset moved. */
+  def scrollByX(delta: Double): Boolean = setOffsetX(offsetX + delta)
+
+  /** Scroll vertically by `delta` px (positive toward the content's bottom), clamped to
+    * `[0, maxScrollY]`; returns whether the offset moved. */
+  def scrollByY(delta: Double): Boolean = setOffsetY(offsetY + delta)
+
+  /** Scroll the active (single) axis by `delta` px, clamped to its range; returns whether it
+    * moved. The original single-axis entry point, now a thin alias over the per-axis scrolls. */
+  def scrollBy(delta: Double): Boolean = if isVertical then scrollByY(delta) else scrollByX(delta)
+
+  private def clamp(v: Double, maxS: Double): Double = math.max(0.0, math.min(v, maxS))
+
+  // The content is positioned by negating each scroll offset, so the ordinary paint and
   // hit-test walks (both of which use a child's `offset`) translate with the scroll for
   // free — no special-casing in either pass.
   private def placeChild(): Unit =
     soleChild match
-      case ch: RenderObject => ch.offset = if isVertical then Offset(0, -scrollOffset) else Offset(-scrollOffset, 0)
+      case ch: RenderObject => ch.offset = Offset(-offsetX, -offsetY)
       case null             => ()
 
   def layout(constraints: Constraints): Unit =
-    // Free along the scroll axis (content may overflow), bounded across it to the viewport.
+    // Free along each scrollable axis (content may overflow there), bounded across a fixed axis
+    // to the viewport.
     val childConstraints =
-      if isVertical then Constraints(0, constraints.maxWidth, 0, Double.PositiveInfinity)
-      else Constraints(0, Double.PositiveInfinity, 0, constraints.maxHeight)
+      Constraints(
+        0,
+        if canScrollX then Double.PositiveInfinity else constraints.maxWidth,
+        0,
+        if canScrollY then Double.PositiveInfinity else constraints.maxHeight,
+      )
     val childSize = soleChild match
       case ch: RenderObject => ch.layout(childConstraints); ch.size
       case null             => Size.zero
@@ -462,29 +510,32 @@ final class RenderScroll(var axis: Axis = Axis.Vertical) extends RenderObject:
     val h = if constraints.maxHeight.isFinite then constraints.maxHeight else childSize.height
     size = constraints.constrain(Size(w, h))
 
-    contentMain = if isVertical then childSize.height else childSize.width
-    viewportMain = if isVertical then size.height else size.width
+    contentW = childSize.width
+    contentH = childSize.height
     // Content may have shrunk since the last scroll; re-clamp before placing it.
-    scrollOffset = math.max(0.0, math.min(scrollOffset, maxScroll))
+    offsetX = clamp(offsetX, maxScrollX)
+    offsetY = clamp(offsetY, maxScrollY)
     placeChild()
 
   override def paint(canvas: Canvas, origin: Offset): Unit =
     canvas.pushClip(Rect.at(origin, size), BorderRadius.zero)
     paintChildren(canvas, origin)
-    if scrollbar then paintScrollbar(canvas, origin)
+    if scrollbar then
+      if canScrollY then paintScrollbar(canvas, origin, vertical = true)
+      if canScrollX then paintScrollbar(canvas, origin, vertical = false)
     canvas.popClip()
 
-  // The bar rides along the trailing edge — the right edge for a vertical view, the bottom for a
-  // horizontal one — over the content (which is already clipped to the viewport). It paints only
-  // when there is something to scroll, so a viewport whose content fits shows no bar.
-  private def paintScrollbar(canvas: Canvas, origin: Offset): Unit =
-    thumbMetrics match
+  // A bar rides the trailing edge of its axis — the right edge for the vertical bar, the bottom for
+  // the horizontal one — over the content (already clipped to the viewport). It paints only when
+  // that axis has something to scroll, so an axis whose content fits shows no bar.
+  private def paintScrollbar(canvas: Canvas, origin: Offset, vertical: Boolean): Unit =
+    thumbMetricsFor(vertical) match
       case None => ()
       case Some((len, start)) =>
         val t      = scrollbarThickness
         val radius = BorderRadius.all(t / 2)
         val (trackRect, thumbRect) =
-          if isVertical then
+          if vertical then
             (
               Rect(origin.x + size.width - t, origin.y, t, size.height),
               Rect(origin.x + size.width - t, origin.y + start, t, len),
@@ -819,6 +870,53 @@ object RenderText:
         sb.append(ch)
         i += 1
       sb.toString
+
+  /** Greedy word-wrap of a single logical `line` (no `\n`s) to `maxW`, returned as the **start
+    * columns** of each visual row rather than as strings. Unlike [[wrap]], this preserves every
+    * character offset — the space at a break stays on the row that ends, so the segments
+    * `line.substring(starts(i), starts(i+1))` reconstruct the line exactly. That exactness is what
+    * lets a soft-wrapping editor map a caret column to a (row, x) and back. The result always
+    * begins with `0`; an empty line, or an unbounded/non-positive width, yields a single row
+    * `Vector(0)`. A word wider than the row is hard-broken by character, as in [[wrap]]. Pure
+    * (measurer-driven), so it is JVM-testable against a deterministic measurer. */
+  private[suit] def wrapColumns(line: String, style: TextStyle, maxW: Double, m: TextMeasurer): Vector[Int] =
+    if line.isEmpty || !maxW.isFinite || maxW <= 0.0 then Vector(0)
+    else
+      val starts   = Vector.newBuilder[Int]
+      starts += 0
+      val n        = line.length
+      var rowStart = 0
+      def fits(from: Int, to: Int): Boolean = m.measure(line.substring(from, to), style).width <= maxW
+
+      // Hard-break a word `[from0, we)` that cannot fit a fresh row into width-sized chunks,
+      // emitting a start at each break and leaving `rowStart` at the final chunk's start.
+      def hardBreak(from0: Int, we: Int): Unit =
+        var from = from0
+        var i    = from + 1
+        while i < we do
+          if !fits(from, i + 1) then
+            starts += i
+            rowStart = i
+            from = i
+          i += 1
+
+      var wi = 0
+      while wi < n do
+        if line.charAt(wi) == ' ' then wi += 1
+        else
+          var we = wi
+          while we < n && line.charAt(we) != ' ' do we += 1
+          // The word is `[wi, we)`. Keep it on the current row while the row still fits; otherwise
+          // break before it (its leading space stays on the row that ends), hard-breaking a word
+          // that cannot fit a row of its own.
+          if fits(rowStart, we) then ()
+          else if wi == rowStart then hardBreak(rowStart, we)
+          else
+            starts += wi
+            rowStart = wi
+            if !fits(wi, we) then hardBreak(wi, we)
+          wi = we
+      starts.result()
 
   /** The longest prefix of `line` such that `prefix + "…"` fits `maxW`, with `…` appended —
     * or just `…` if not even one character fits. */

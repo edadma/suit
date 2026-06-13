@@ -384,14 +384,15 @@ private[suit] trait WidgetsData extends WidgetsSupport:
 
   // --- scroll area (themed visible scrollbar) --------------------------------
 
-  private val ScrollAreaImpl: ContainerP[(Axis, Double)] =
-    container[(Axis, Double)] { (props, children) =>
-      val (axis, thickness) = props
-      val theme             = useTheme()
+  private val ScrollAreaImpl: ContainerP[(Axis, Boolean, Double)] =
+    container[(Axis, Boolean, Double)] { (props, children) =>
+      val (axis, both, thickness) = props
+      val theme                   = useTheme()
       // The thumb reads as a translucent slug of the ink; the track is a fainter wash of the same,
       // so the bar sits over either light or dark content without a hard-coded grey.
       scrollView(
         axis               = axis,
+        both               = both,
         scrollbar          = true,
         scrollbarThumb     = theme.surfaceText.withAlpha(90),
         scrollbarTrack     = theme.surfaceText.withAlpha(20),
@@ -405,6 +406,13 @@ private[suit] trait WidgetsData extends WidgetsSupport:
     * overflows, and can be dragged to scroll as well as turned by the wheel; its colours come from
     * the active theme. Like `scrollView` it **must be given a bounded size** along the scroll axis
     * — that extent is the viewport it scrolls within. Give it a single content node (wrap several
-    * in a `col`/`row`). */
-  def scrollArea(axis: Axis = Axis.Vertical, thickness: Double = 8.0)(children: VNode*): VNode =
-    ScrollAreaImpl((axis, thickness))(children*)
+    * in a `col`/`row`).
+    *
+    * Pass `both = true` for a viewport that scrolls on **both** axes at once — the content keeps
+    * its natural size in either direction and a bar appears on each axis that overflows. Useful
+    * for content with a fixed intrinsic size larger than the viewport (a document page, an image,
+    * a wide table) that should neither wrap nor shrink to fit. */
+  def scrollArea(axis: Axis = Axis.Vertical, both: Boolean = false, thickness: Double = 8.0)(
+      children: VNode*,
+  ): VNode =
+    ScrollAreaImpl((axis, both, thickness))(children*)

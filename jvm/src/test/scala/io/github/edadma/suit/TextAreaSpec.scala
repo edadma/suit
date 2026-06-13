@@ -113,3 +113,47 @@ class TextAreaSpec extends AnyFunSuite with BeforeAndAfterEach:
     val h = mount()
     assert(h.field.focusable)
     assert(h.field.acceptsText)
+
+  // --- soft wrapping ---------------------------------------------------------
+  // The editor mounts 240px wide; with padX=8 the content is 224px, so at 10px/char a row holds
+  // 22 characters. A single logical line longer than that wraps into several visual rows.
+
+  private def textRows(h: Harness): List[String] =
+    allObjects(h.field).collect { case t: RenderText => t.text }
+
+  test("a long logical line soft-wraps into multiple visual rows"):
+    val h = mount("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") // 30 a's: one word, hard-broken at 22
+    h.focus()
+    val rows = textRows(h)
+    assert(rows.length == 2)
+    assert(rows.mkString == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") // segments reconstruct the line
+
+  test("a short line stays on one visual row"):
+    val h = mount("short")
+    h.focus()
+    assert(textRows(h) == List("short"))
+
+  test("clicking on the wrapped second row places the caret on that row"):
+    // "aaaaaaaaaa bbbbbbbbbb cccccccccc": row 0 is "aaaaaaaaaa bbbbbbbbbb " (cols 0..22), row 1 is
+    // "cccccccccc" (cols 22..32). A click at the start of row 1 lands at column 22.
+    val h = mount("aaaaaaaaaa bbbbbbbbbb cccccccccc")
+    h.focus()
+    h.click(8, 30) // x→padX (col = row start), y in [22,38)→visual row 1
+    h.typeText("X")
+    assert(h.current() == "aaaaaaaaaa bbbbbbbbbb Xcccccccccc")
+
+  test("Down moves to the next visual row within a wrapped line, not to the line's end"):
+    val h = mount("aaaaaaaaaa bbbbbbbbbb cccccccccc")
+    h.focus()
+    h.key(Key.Home) // caret to start of the first visual row (column 0)
+    h.key(Key.Down) // → visual row 1 (column 22), not the logical line end (column 32)
+    h.typeText("X")
+    assert(h.current() == "aaaaaaaaaa bbbbbbbbbb Xcccccccccc")
+
+  test("End goes to the end of the visual row, not the whole logical line"):
+    val h = mount("aaaaaaaaaa bbbbbbbbbb cccccccccc")
+    h.focus()
+    h.key(Key.Home) // start of visual row 0
+    h.key(Key.End)  // end of visual row 0 = column 22 (start of row 1's content)
+    h.typeText("X")
+    assert(h.current() == "aaaaaaaaaa bbbbbbbbbb Xcccccccccc")

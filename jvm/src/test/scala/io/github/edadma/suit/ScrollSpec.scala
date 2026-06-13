@@ -123,7 +123,73 @@ class ScrollSpec extends AnyFunSuite:
     assert(r.y == 200 - 8)           // along the bottom
     assert(math.abs(r.width - 160.0) < 0.001) // 400/1000 of the 400px track
 
+  // --- biaxial (both-ways) scrolling ----------------------------------------
+
+  /** A both-ways scroll view: content larger than the viewport on each axis, scrolling on both. */
+  private def biScroller(viewport: Size, content: Size): RenderScroll =
+    val s   = new RenderScroll(Axis.Vertical)
+    s.biaxial = true
+    val box = new RenderBox
+    box.width = Some(content.width)
+    box.height = Some(content.height)
+    box.background = Solid(Color(0, 255, 0))
+    s.insertChild(box, null)
+    s.layout(Constraints.tight(viewport))
+    s
+
+  test("a biaxial view keeps its content's natural size on both axes and overflows each"):
+    val s = biScroller(Size(400, 400), Size(1000, 800))
+    // the content is not squeezed to the viewport on either axis; both overflow independently
+    assert(s.maxScrollX == 600) // 1000 - 400
+    assert(s.maxScrollY == 400) // 800 - 400
+
+  test("the wheel scrolls a biaxial view on both axes at once"):
+    val s = biScroller(Size(400, 400), Size(1000, 1000))
+    new PointerRouter(s).wheel(Offset(10, 10), -2, -3) // x and y deltas in one notch event
+    assert(s.offsetX == 2 * RenderScroll.WheelStep)
+    assert(s.offsetY == 3 * RenderScroll.WheelStep)
+
+  test("a biaxial view clips and offsets its content on both axes"):
+    val s = biScroller(Size(400, 400), Size(1000, 1000))
+    s.scrollByX(50)
+    s.scrollByY(30)
+    val canvas = new RecordingCanvas
+    s.paint(canvas, Offset.zero)
+    assert(canvas.commands.toList.head == Command.PushClip(Rect(0, 0, 400, 400), BorderRadius.zero))
+    assert(canvas.commands.toList.contains(Command.FillRect(Rect(-50, -30, 1000, 1000), Solid(Color(0, 255, 0)))))
+
+  test("a biaxial view with the bar on paints a thumb for each overflowing axis"):
+    val s = biScroller(Size(400, 400), Size(1000, 1000))
+    s.scrollbar = true
+    s.scrollbarThumb = Color(255, 255, 255)
+    s.scrollbarTrack = Color(0, 0, 0)
+    val canvas = new RecordingCanvas
+    s.paint(canvas, Offset.zero)
+    val bars = canvas.commands.toList.collect { case c: Command.FillRoundedRect => c }
+    // two axes overflow → a track + thumb on each → four rounded-rect fills
+    assert(bars.length == 4)
+    // one bar pinned to the right edge (vertical), one to the bottom edge (horizontal)
+    assert(bars.exists(b => b.rect.x == 400 - 8))
+    assert(bars.exists(b => b.rect.y == 400 - 8))
+
+  test("an axis that fits shows no bar even when the other overflows"):
+    val s = biScroller(Size(400, 400), Size(1000, 300)) // wide content, but it fits vertically
+    s.scrollbar = true
+    s.scrollbarThumb = Color(255, 255, 255)
+    val canvas = new RecordingCanvas
+    s.paint(canvas, Offset.zero)
+    val bars = canvas.commands.toList.collect { case c: Command.FillRoundedRect => c }
+    assert(bars.length == 1)          // only the horizontal bar
+    assert(bars.head.rect.y == 400 - 8) // along the bottom edge
+    assert(s.maxScrollY == 0)
+
   // --- host wiring ---------------------------------------------------------
+
+  test("the host config wires the biaxial flag"):
+    val h = new SuitHostConfig
+    val s = h.createElement("scroll", null).asInstanceOf[RenderScroll]
+    h.setProperty(s, "biaxial", true)
+    assert(s.biaxial)
 
   test("the host config maps the scroll tag and its axis"):
     val h    = new SuitHostConfig
