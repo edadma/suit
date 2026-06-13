@@ -216,17 +216,27 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
         if !extend then setAnchor(ni)
         restartBlink()
 
+      // A single-line field holds no newlines, so a pasted multi-line string flattens to spaces.
+      def paste(): Unit = replaceSel(Clipboard.installed.get().replace('\n', ' '))
+      def copy(): Unit  = if hasSel then Clipboard.installed.set(value.substring(selLo, selHi))
+      def cut(): Unit   = if hasSel then { copy(); replaceSel("") }
+
       def onKey(e: KeyEvent): Unit =
+        // The conventional shortcut modifier: Ctrl elsewhere, ⌘ on macOS.
+        val primary = e.ctrl || e.meta
         e.scancode match
           case Key.Backspace             => backspace()
           case Key.Delete                => del()
+          case Key.C if primary          => copy()
+          case Key.X if primary          => cut()
+          case Key.V if primary          => paste()
           case Key.Left if !e.shift && hasSel  => setCollapsed(selLo)
           case Key.Left                  => moveTo(c - 1, e.shift)
           case Key.Right if !e.shift && hasSel => setCollapsed(selHi)
           case Key.Right                 => moveTo(c + 1, e.shift)
           case Key.Home                  => moveTo(0, e.shift)
           case Key.End                   => moveTo(len, e.shift)
-          case Key.A if e.ctrl           => { setAnchor(0); setCaret(len); restartBlink() }
+          case Key.A if primary          => { setAnchor(0); setCaret(len); restartBlink() }
           case _                         => ()
 
       // The visual layers, back to front: a selection highlight, the text, the caret. Each
@@ -419,20 +429,30 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
         val (line, _, end) = flatRows(gr)
         edit(_.moveTo(buf.indexOf(line, end), extend))
 
+      // A multi-line editor keeps newlines on paste. Copy/cut act on the current selection.
+      def paste(): Unit = edit(_.insert(Clipboard.installed.get()))
+      def copy(): Unit  = if buf.hasSelection then Clipboard.installed.set(buf.text.substring(buf.selLo, buf.selHi))
+      def cut(): Unit   = if buf.hasSelection then { copy(); edit(_.insert("")) }
+
       def onKey(e: KeyEvent): Unit =
+        // The conventional shortcut modifier: Ctrl elsewhere, ⌘ on macOS.
+        val primary = e.ctrl || e.meta
         e.scancode match
           case Key.Backspace       => edit(_.backspace)
           case Key.Delete          => edit(_.delete)
           case Key.Enter           => edit(_.newline)
+          case Key.C if primary    => copy()
+          case Key.X if primary    => cut()
+          case Key.V if primary    => paste()
           case Key.Left            => edit(_.left(e.shift))
           case Key.Right           => edit(_.right(e.shift))
           case Key.Up              => moveVert(-1, e.shift)
           case Key.Down            => moveVert(1, e.shift)
-          case Key.Home if e.ctrl  => edit(_.docStart(e.shift))
-          case Key.End if e.ctrl   => edit(_.docEnd(e.shift))
+          case Key.Home if primary => edit(_.docStart(e.shift))
+          case Key.End if primary  => edit(_.docEnd(e.shift))
           case Key.Home            => visualHome(e.shift)
           case Key.End             => visualEnd(e.shift)
-          case Key.A if e.ctrl     => edit(_.selectAll)
+          case Key.A if primary    => edit(_.selectAll)
           case _                   => ()
 
       // One fixed-height row per visual row, each painting its line's segment substring.

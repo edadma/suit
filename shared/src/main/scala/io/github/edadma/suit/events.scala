@@ -40,8 +40,16 @@ final case class ScrollEvent(position: Offset, deltaX: Double, deltaY: Double)
   * runtime fills them from the event's modifier bitmask), which a text field needs to tell
   * a caret move from a selection extend. Text entry — the Unicode a key press produces
   * under the active layout — is a separate concern delivered as [[TextInputEvent]]s, not
-  * derived from scancodes here. */
-final case class KeyEvent(scancode: Int, repeat: Boolean = false, shift: Boolean = false, ctrl: Boolean = false)
+  * derived from scancodes here. `meta` is the platform command key (⌘ on macOS, the Windows/Super
+  * key elsewhere); widgets that want the conventional shortcut treat `ctrl || meta` as the one
+  * "primary" modifier, so copy/paste works with ⌘ on a Mac and Ctrl elsewhere. */
+final case class KeyEvent(
+    scancode: Int,
+    repeat:   Boolean = false,
+    shift:    Boolean = false,
+    ctrl:     Boolean = false,
+    meta:     Boolean = false,
+)
 
 /** A run of typed text delivered to the focused object. This is the layout-resolved
   * Unicode a key press produces (so a composed or shifted character arrives as the actual
@@ -54,7 +62,11 @@ final case class TextInputEvent(text: String)
   * implementation detail — so naming the handful suit's widgets react to keeps key
   * handling readable without leaking the backend. */
 object Key:
-  val A         = 4 // letters are USB-HID 4..29 (a..z); only the ones widgets react to are named
+  // Letters are USB-HID 4..29 (a..z); only the ones widgets react to are named.
+  val A         = 4
+  val C         = 6  // copy
+  val V         = 25 // paste
+  val X         = 27 // cut
   val Enter     = 40
   val Escape    = 41
   val Backspace = 42
@@ -175,8 +187,8 @@ final class KeyRouter(focus: FocusManager):
       case r: RenderObject => r.handlers.get(event).foreach(_.apply(e))
       case null            => ()
 
-  def down(scancode: Int, repeat: Boolean, shift: Boolean = false, ctrl: Boolean = false): Unit =
-    fire("keydown", KeyEvent(scancode, repeat, shift, ctrl))
+  def down(scancode: Int, repeat: Boolean, shift: Boolean = false, ctrl: Boolean = false, meta: Boolean = false): Unit =
+    fire("keydown", KeyEvent(scancode, repeat, shift, ctrl, meta))
   def up(scancode: Int): Unit = fire("keyup", KeyEvent(scancode))
 
 /** Routes typed text to the focused object, the text-entry sibling of [[KeyRouter]]. The

@@ -16,8 +16,8 @@ class TextFieldSpec extends AnyFunSuite with BeforeAndAfterEach:
 
   private val mono: TextMeasurer = (s, _) => Size(s.length * 10.0, 16.0)
 
-  override def beforeEach(): Unit = TextMeasurer.installed = mono
-  override def afterEach(): Unit  = TextMeasurer.installed = TextMeasurer.zero
+  override def beforeEach(): Unit = { TextMeasurer.installed = mono; Clipboard.installed = new Clipboard.InMemory }
+  override def afterEach(): Unit  = { TextMeasurer.installed = TextMeasurer.zero; Clipboard.installed = new Clipboard.InMemory }
 
   private def allObjects(o: RenderObject): List[RenderObject] = o :: o.children.toList.flatMap(allObjects)
   private def focusableBox(root: RenderObject): RenderBox =
@@ -134,6 +134,40 @@ class TextFieldSpec extends AnyFunSuite with BeforeAndAfterEach:
     h.key(Key.A, ctrl = true)
     h.key(Key.Backspace)
     assert(h.current() == "")
+
+  // --- clipboard -----------------------------------------------------------
+
+  test("ctrl+C copies the selection to the clipboard"):
+    val h = mount()
+    h.typeText("abc")
+    h.key(Key.A, ctrl = true) // select all
+    h.key(Key.C, ctrl = true)
+    assert(Clipboard.installed.get() == "abc")
+    assert(h.current() == "abc") // copy does not change the field
+
+  test("ctrl+V pastes the clipboard at the caret, replacing the selection"):
+    val h = mount()
+    Clipboard.installed.set("xyz")
+    h.typeText("ab")
+    h.key(Key.V, ctrl = true)
+    assert(h.current() == "abxyz")
+    h.key(Key.A, ctrl = true) // select all, then paste over it
+    h.key(Key.V, ctrl = true)
+    assert(h.current() == "xyz")
+
+  test("ctrl+X cuts the selection to the clipboard"):
+    val h = mount()
+    h.typeText("abcd")
+    h.key(Key.A, ctrl = true)
+    h.key(Key.X, ctrl = true)
+    assert(Clipboard.installed.get() == "abcd")
+    assert(h.current() == "")
+
+  test("pasting multi-line text into a single-line field flattens newlines to spaces"):
+    val h = mount()
+    Clipboard.installed.set("a\nb\nc")
+    h.key(Key.V, ctrl = true)
+    assert(h.current() == "a b c")
 
   // --- mouse ---------------------------------------------------------------
 

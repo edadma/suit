@@ -88,6 +88,9 @@ lazy val suit = crossProject(JVMPlatform, NativePlatform)
   // it keeps source-depending on the sibling riposte checkout's `vdomJVM` for the headless
   // reconciler/hooks substrate the layout tests mount on.
   .jvmConfigure(_.dependsOn(ProjectRef(file("../riposte"), "vdomJVM")))
+  // Source-depend on the sibling sdl3 checkout while the clipboard bindings are in flight, so suit
+  // builds against local sdl3 without a publish round-trip. Drop this once sdl3 0.2.7 is on Central.
+  .nativeConfigure(_.dependsOn(ProjectRef(file("../sdl3"), "core")))
   .jvmSettings(
     // Headless layout/render tests only — the JVM build ships nothing, so it is not published
     // (which also means it never needs vdom's JVM artifact on Central).
@@ -109,7 +112,7 @@ lazy val suit = crossProject(JVMPlatform, NativePlatform)
     // binding's `@link`.
     libraryDependencies ++= Seq(
       "io.github.edadma" %%% "vdom"      % "0.3.1",
-      "io.github.edadma" %%% "sdl3"      % "0.2.6",
+      "io.github.edadma" %%% "sdl3"      % "0.2.7",
       "io.github.edadma" %%% "libcairo"  % "0.0.7",
       "io.github.edadma" %%% "freetype"  % "0.0.6",
       "io.github.edadma" %%% "librsvg"   % "0.0.4",

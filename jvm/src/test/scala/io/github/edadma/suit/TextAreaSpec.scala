@@ -15,8 +15,8 @@ class TextAreaSpec extends AnyFunSuite with BeforeAndAfterEach:
 
   private val mono: TextMeasurer = (s, _) => Size(s.length * 10.0, 16.0)
 
-  override def beforeEach(): Unit = TextMeasurer.installed = mono
-  override def afterEach(): Unit  = TextMeasurer.installed = TextMeasurer.zero
+  override def beforeEach(): Unit = { TextMeasurer.installed = mono; Clipboard.installed = new Clipboard.InMemory }
+  override def afterEach(): Unit  = { TextMeasurer.installed = TextMeasurer.zero; Clipboard.installed = new Clipboard.InMemory }
 
   private def allObjects(o: RenderObject): List[RenderObject] = o :: o.children.toList.flatMap(allObjects)
   private def focusableBox(root: RenderObject): RenderBox =
@@ -105,6 +105,23 @@ class TextAreaSpec extends AnyFunSuite with BeforeAndAfterEach:
     val h = mount("line one\nline two")
     h.key(Key.A, ctrl = true)
     h.key(Key.Delete)
+    assert(h.current() == "")
+
+  test("Ctrl+C copies the selection, Ctrl+V pastes it — newlines preserved"):
+    val h = mount("line one\nline two")
+    h.key(Key.A, ctrl = true)
+    h.key(Key.C, ctrl = true)
+    assert(Clipboard.installed.get() == "line one\nline two")
+    assert(h.current() == "line one\nline two") // copy leaves the buffer unchanged
+    h.key(Key.End, ctrl = true)                 // caret to end of document
+    h.key(Key.V, ctrl = true)                   // paste appends, keeping the newline
+    assert(h.current() == "line one\nline twoline one\nline two")
+
+  test("Ctrl+X cuts the selection to the clipboard"):
+    val h = mount("alpha\nbeta")
+    h.key(Key.A, ctrl = true)
+    h.key(Key.X, ctrl = true)
+    assert(Clipboard.installed.get() == "alpha\nbeta")
     assert(h.current() == "")
 
   test("shift+Down extends a selection across the line break, replaced by typing"):

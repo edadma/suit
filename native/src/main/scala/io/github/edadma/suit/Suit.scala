@@ -89,6 +89,12 @@ object Suit:
     val measurer = new CairoTextMeasurer(fonts)
     TextMeasurer.installed = measurer
 
+    // Back the text widgets' copy/paste with the system clipboard (the headless default is
+    // in-memory). SDL hands back UTF-8 text; the wrapper copies and frees it.
+    Clipboard.installed = new Clipboard:
+      def get(): String           = getClipboardText
+      def set(text: String): Unit = setClipboardText(text)
+
     // The backbuffer: the Cairo image surface the frame is drawn into, its scaled context, the SDL
     // streaming texture the surface uploads to, and the canvas the tree paints through. ARGB32's
     // little-endian byte layout matches SDL's ARGB8888, so the upload is a straight copy with no
@@ -225,6 +231,7 @@ object Suit:
             val mod   = e.keyMod
             val shift = (mod & KMOD_SHIFT) != 0
             val ctrl  = (mod & KMOD_CTRL) != 0
+            val meta  = (mod & KMOD_GUI) != 0
             // Tab is the global focus-traversal key — it moves focus through the focusable
             // objects rather than reaching the focused widget, so it is intercepted here
             // (Shift+Tab walks backward). Every other key routes to whatever holds focus.
@@ -232,7 +239,7 @@ object Suit:
             // Escape closes a trapping modal from anywhere inside it; with no trap active it
             // is an ordinary key routed to whatever holds focus.
             else if e.keyScancode == Key.Escape && focusManager.escape() then ()
-            else keyRouter.down(e.keyScancode, e.keyRepeat, shift, ctrl)
+            else keyRouter.down(e.keyScancode, e.keyRepeat, shift, ctrl, meta)
           case KEY_UP    => keyRouter.up(e.keyScancode)
           case TEXT_INPUT => textRouter.input(e.text)
           // The window changed size (a user drag, or the OS fitting it to the display). Re-read
