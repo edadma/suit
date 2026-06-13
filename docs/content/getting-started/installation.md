@@ -3,14 +3,18 @@ title: "Installation"
 weight: 1
 ---
 
-suit targets Scala Native and renders through SDL3, so there are three things to have in
-place: the **Scala Native toolchain**, the **native SDL3 libraries**, and the **suit
-sources** themselves.
+suit targets Scala Native and renders through SDL3, so an application needs two things in
+place — the **Scala Native toolchain** and the **native libraries** (SDL3, Cairo, FreeType,
+librsvg, libjpeg-turbo) — and then the library itself from Maven Central:
+
+```scala
+libraryDependencies += "io.github.edadma" %%% "suit" % "0.0.10"
+```
 
 [= note =]
-suit is in active development and is **not yet published to Maven Central**. You build and
-run it from the repository checkout. The sections below describe that workflow; published
-artifacts and a one-line dependency will come once the API stabilises.
+suit is published to Maven Central but still pre-1.0 and evolving, so pin a version and
+expect the occasional breaking change between releases. Building suit **itself** — to
+contribute, or to track unreleased work — uses the source-checkout workflow described below.
 [= /note =]
 
 ## Requirements

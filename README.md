@@ -14,8 +14,9 @@ with a Flutter-style **constraint-layout** engine and a retained render tree. Wr
 components with `useState`, lay them out with `col` / `row` / `box` / `text`, and let state
 drive the screen. In short: *Flutter in Scala Native*.
 
-> **Status:** in active development, not yet published to Maven Central. Build and run from
-> the repository checkout (see [Documentation](#documentation)).
+> **Status:** published to Maven Central, but pre-1.0 and evolving — pin a version and expect
+> the occasional breaking change. Add `"io.github.edadma" %%% "suit" % "0.0.10"` to a Scala
+> Native project, or build from the checkout to contribute (see [Documentation](#documentation)).
 
 ## Documentation
 
