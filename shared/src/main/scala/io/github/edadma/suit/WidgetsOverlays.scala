@@ -447,11 +447,14 @@ private[suit] trait WidgetsOverlays extends WidgetsSupport:
         onMouseDown = e => if e.button == 3 then { setPt(e.position); setOpen(true) },
       )(p.trigger)
 
+      // The point stays pinned for as long as the menu is mounted — including the exit fade after
+      // a close — so the card animates out where it opened rather than snapping to the top-left
+      // (the anchor ref is a placeholder; only `point` ever positions this popover).
       VFragment(
         Vector(
           wrapped,
           popover(anchor, presence.mounted, amt, onDismiss = () => setOpen(false), trapFocus = true,
-            card = card, placement = p.placement, point = if open then pt else null),
+            card = card, placement = p.placement, point = if presence.mounted then pt else null),
         ),
       )
     }

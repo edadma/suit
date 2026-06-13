@@ -104,3 +104,21 @@ class ContextMenuSpec extends AnyFunSuite:
     assert(m.focus.escape())
     m.settle()
     assert(m.overlay.children.isEmpty)
+
+  test("the menu animates out at the click point, not snapped to the top-left corner"):
+    val m = mount(ctxApp(() => ()))
+    m.settle()
+    m.pointer.down(Offset(40, 20), 3)
+    m.settle()
+    // Begin closing but do not advance the clock, so the exit animation has not finished and the
+    // menu is still mounted, fading out — it must hold its open position, not jump to (0,0).
+    assert(m.focus.escape())
+    var i = 0
+    while i < 3 do
+      Scheduler.flushSync()
+      m.root.layout(Constraints.tight(m.root.windowSize))
+      i += 1
+    assert(m.overlay.children.nonEmpty) // still mounted through the exit fade
+    val placed = m.overlay.children.head.children.head.children.head
+    assert(placed.offset.x == 40.0)
+    assert(placed.offset.y == 20.0)
