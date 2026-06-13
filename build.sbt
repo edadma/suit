@@ -112,7 +112,7 @@ lazy val suit = crossProject(JVMPlatform, NativePlatform)
       "io.github.edadma" %%% "sdl3"      % "0.2.4",
       "io.github.edadma" %%% "libcairo"  % "0.0.7",
       "io.github.edadma" %%% "freetype"  % "0.0.6",
-      "io.github.edadma" %%% "librsvg"   % "0.0.3",
+      "io.github.edadma" %%% "librsvg"   % "0.0.4",
       "io.github.edadma" %%% "turbojpeg" % "0.0.1",
     ),
   )
