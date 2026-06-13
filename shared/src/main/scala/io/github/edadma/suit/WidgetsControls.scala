@@ -324,11 +324,21 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
       // out unwrapped on the first frame, then re-wraps. A bounded width is part of the widget's
       // contract, so this resolves immediately in practice.
       val sizeRef          = useRef[RenderObject | Null](null)
+      val lastWidth        = useRef(-1.0)
       val (_, _, bumpTick) = useState(0)
       useEffect(() => { bumpTick(t => t + 1); noCleanup }, Array())
       val availW = sizeRef.current match
         case r: RenderObject if r.size.width > 0 => math.max(1.0, r.size.width - 2 * padX)
         case _                                   => Double.PositiveInfinity
+
+      // Re-wrap when the editor's own width changes — including a splitter drag that resizes the
+      // pane without re-rendering this widget. A `resize` notification only re-renders (which re-
+      // reads the width above) when the width actually moved, so a height change from the re-wrap
+      // itself does not loop.
+      def onResize(sz: Size): Unit =
+        if math.abs(sz.width - lastWidth.current) > 0.5 then
+          lastWidth.current = sz.width
+          bumpTick(t => t + 1)
 
       def prefixW(line: Int, col: Int): Double =
         val s = lines(line)
@@ -473,6 +483,7 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
         focusable   = true,
         acceptsText = true,
         ref         = sizeRef,
+        onResize    = onResize,
         onMouseDown = e => edit(_.collapseTo(indexAt(e.local.x, e.local.y))),
         onMouseMove = e => if e.button != 0 then edit(b => b.moveTo(indexAt(e.local.x, e.local.y), extend = true)),
         onTextInput = e => edit(_.insert(e.text)),

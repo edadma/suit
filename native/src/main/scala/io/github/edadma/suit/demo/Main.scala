@@ -231,6 +231,12 @@ val App = view {
   val menuRef                  = useRef[RenderObject | Null](null)
   val (colour, setColour, _)   = useState("")
   val (pickedRow, setPickedRow, _) = useState(-1)
+  val (notes, setNotes, _)     = useState(
+    "This is a multi-line editor that soft-wraps long lines to its width, so a paragraph this " +
+      "long flows across as many visual rows as it needs instead of overflowing off the right edge. " +
+      "Type into it — the caret, click-to-place, selection, and the arrow keys all move by visual " +
+      "rows.\n\nPress Enter for a hard line break; the blank line above stays.",
+  )
 
   // The active theme is one of the built-ins, chosen by the header switch. Everything below
   // — controls, body background, card chrome — paints from it, so the flip restyles the
@@ -334,6 +340,34 @@ val App = view {
                       TextField(name, setName),
                     ),
                     text(if name.isEmpty then "type your name above" else s"hello, $name", color = muted),
+                  ),
+                ),
+                // A multi-line editor that soft-wraps, sitting in the left pane of a splitter. Drag
+                // the gutter: the editor re-wraps live to its new pane width (the box's resize
+                // notification re-renders it even though the drag never touches its subtree). The
+                // caret, click-to-place, selection, and arrow keys all move by the wrapped rows.
+                card(
+                  col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
+                    text("TextArea in a splitter — drag the gutter; the editor re-wraps to its pane", color = muted),
+                    sizedBox(height = 190)(
+                      box(radius = 12, clip = true, border = theme.border, borderWidth = 1)(
+                        splitter(initial = 0.55, min = 0.25, max = 0.85)(
+                          box(bg = theme.background, padding = EdgeInsets.all(8))(
+                            col(crossAxisAlignment = CrossAxisAlignment.Stretch)(
+                              TextArea(notes, setNotes),
+                            ),
+                          ),
+                          box(bg = theme.surface, padding = EdgeInsets.all(12))(
+                            text(
+                              "Drag the divider left and right. The editor on the left re-flows its " +
+                                "text to whatever width its pane becomes.",
+                              color    = muted,
+                              maxLines = 0,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
                 // Typography: multi-line text. The first paragraph wraps across as many

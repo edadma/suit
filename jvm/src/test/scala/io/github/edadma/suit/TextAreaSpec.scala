@@ -41,6 +41,16 @@ class TextAreaSpec extends AnyFunSuite with BeforeAndAfterEach:
       m.keys.down(scancode, repeat = false, shift = shift, ctrl = ctrl); m.settle()
     def click(x: Double, y: Double): Unit =
       m.pointer.down(Offset(x, y), 1); m.pointer.up(Offset(x, y), 1); m.settle()
+    // Re-lay the tree out at a new window width — what a splitter drag does to a pane (the runtime
+    // sets windowSize then relayouts). The editor's box resize fires, re-rendering it; a few rounds
+    // let the re-wrap settle.
+    def resizeWidth(w: Double): Unit =
+      m.root.windowSize = Size(w, 120)
+      var i = 0
+      while i < 4 do
+        m.root.layout(Constraints.tight(m.root.windowSize))
+        Scheduler.flushSync()
+        i += 1
 
   private def mount(initial: String = ""): Harness =
     Host.config = new SuitHostConfig
@@ -157,3 +167,11 @@ class TextAreaSpec extends AnyFunSuite with BeforeAndAfterEach:
     h.key(Key.End)  // end of visual row 0 = column 22 (start of row 1's content)
     h.typeText("X")
     assert(h.current() == "aaaaaaaaaa bbbbbbbbbb Xcccccccccc")
+
+  test("the editor re-wraps when its width changes, as on a splitter drag"):
+    val h    = mount("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") // 30 a's
+    h.focus()
+    val wide = textRows(h).length // 240px window → 224px content → ~22 chars/row → 2 rows
+    h.resizeWidth(120)            // ~104px content → ~10 chars/row → more rows
+    assert(textRows(h).length > wide)
+    assert(textRows(h).mkString == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") // still reconstructs the line

@@ -190,6 +190,11 @@ final class RenderBox extends RenderObject:
   var padding: EdgeInsets        = EdgeInsets.zero
   var clipContent: Boolean       = false
 
+  // The size this box was at its previous layout, so a `resize` handler fires only when the size
+  // actually changes — the push-based equivalent of a ResizeObserver, used by a widget whose
+  // content depends on its own width (a soft-wrapping editor re-wraps when its pane is resized).
+  private var lastSize: Size = Size.zero
+
   override def clipShape: Option[(Rect, BorderRadius)] =
     if clipContent then Some((Rect.at(absoluteOffset, size), borderRadius)) else None
 
@@ -207,6 +212,12 @@ final class RenderBox extends RenderObject:
         Size(padding.horizontal, padding.vertical)
     val natural = Size(width.getOrElse(content.width), height.getOrElse(content.height))
     size = outer.constrain(natural)
+
+    // Notify a `resize` listener when the laid-out size changes. The callback typically schedules
+    // a re-render (a `useState` setter), which vdom batches, so calling it here is safe.
+    if size != lastSize then
+      lastSize = size
+      handlers.get("resize").foreach(_.apply(size))
 
   override def paint(canvas: Canvas, origin: Offset): Unit =
     val rect    = Rect.at(origin, size)

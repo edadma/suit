@@ -59,7 +59,10 @@ object dsl:
     * `ref` binds the live [[RenderObject]] into a `useRef` box once it mounts, so a parent can
     * read its laid-out position and size (an overlay anchored to a trigger does this).
     * `ignorePointer` makes the box and its subtree click-through (see
-    * [[RenderObject.ignorePointer]]). */
+    * [[RenderObject.ignorePointer]]). `onResize` fires with the new [[Size]] whenever the box's
+    * laid-out size changes — a push-based ResizeObserver, for content that must react to its own
+    * width (a soft-wrapping editor re-wraps when its pane is resized, even by a splitter drag that
+    * never re-renders the box's own subtree). */
   def box(
       bg:            Paint | Null                  = null,
       border:        Paint | Null                  = null,
@@ -92,6 +95,7 @@ object dsl:
       onTextInput:  (TextInputEvent => Unit)  | Null = null,
       onFocus:      (() => Unit)              | Null = null,
       onBlur:       (() => Unit)              | Null = null,
+      onResize:     (Size => Unit)            | Null = null,
   )(children: VNode*): VNode =
     var props = Map.empty[String, Prop]
     if bg != null then props = props.updated("bg", PropValue(bg))
@@ -122,6 +126,7 @@ object dsl:
     props = typed[KeyEvent](props, "keydown", onKeyDown)
     props = typed[KeyEvent](props, "keyup", onKeyUp)
     props = typed[TextInputEvent](props, "textinput", onTextInput)
+    props = typed[Size](props, "resize", onResize)
     props = focus(props, "focus", onFocus)
     props = focus(props, "blur", onBlur)
     val eref: ElementRef | Null = if ref != null then BoxRef(ref) else null

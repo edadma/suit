@@ -59,6 +59,15 @@ class LayoutSpec extends AnyFunSuite:
     b.layout(Constraints.loose(Size(200, 200)))
     assert(b.size == Size(80, 40))
 
+  test("a box fires its resize handler only when its laid-out size changes"):
+    val b    = new RenderBox
+    var seen = List.empty[Size]
+    b.handlers("resize") = s => seen = seen :+ s.asInstanceOf[Size]
+    b.layout(Constraints.tight(Size(100, 50)))
+    b.layout(Constraints.tight(Size(100, 50))) // unchanged — no second fire
+    b.layout(Constraints.tight(Size(60, 50)))  // narrower — fires again
+    assert(seen == List(Size(100, 50), Size(60, 50)))
+
   test("a box wraps its child plus padding under a loose constraint"):
     val b = new RenderBox
     b.padding = EdgeInsets.all(10)
