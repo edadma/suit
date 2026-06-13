@@ -18,31 +18,36 @@ artifacts and a one-line dependency will come once the API stabilises.
 - Scala 3 with sbt
 - The `sbt-scala-native` and `sbt-scala-native-crossproject` plugins
 - LLVM/Clang (the Scala Native toolchain)
-- The **SDL3**, **Cairo**, and **FreeType** shared libraries on your system
+- The **SDL3**, **Cairo**, **FreeType**, **librsvg**, and **libjpeg-turbo** shared libraries on
+  your system
 
 ## Install the native libraries
 
 suit's runtime links against system libraries via `@link`: **SDL3** (window, input, present,
-through the [sdl3 bindings](https://sdl3.edadma.dev/)), **Cairo** (the drawing engine), and
-**FreeType** (font loading). On macOS with Homebrew:
+through the [sdl3 bindings](https://sdl3.edadma.dev/)), **Cairo** (the drawing engine),
+**FreeType** (font loading), **librsvg** (SVG rendered straight into the Cairo context), and
+**libjpeg-turbo** (JPEG decoding). On macOS with Homebrew:
 
 ```bash
-brew install sdl3 cairo
+brew install sdl3 cairo librsvg jpeg-turbo
 ```
 
-Cairo depends on FreeType, so Homebrew pulls it in alongside. On Linux, install the SDL3,
-Cairo, and FreeType development packages from your distribution (or build them from source).
+Cairo depends on FreeType (and librsvg pulls in glib), so Homebrew resolves those alongside. On
+Linux, install the SDL3, Cairo, FreeType, librsvg, and libjpeg-turbo development packages from
+your distribution (or build them from source).
 
 ## Get the sources
 
 suit depends on two sibling repositories, both checked out next to it:
 
-- **[riposte](https://github.com/edadma/riposte)** — supplies the `vdom` core. suit
-  consumes its JVM and Native cross-targets as a **source dependency** (`vdomJVM` /
-  `vdomNative`), because those targets are not published; only `vdom.js` is on Central.
+- **[riposte](https://github.com/edadma/riposte)** — supplies the `vdom` core. The Native
+  build pulls `vdom` from Maven Central, but the **JVM test build** consumes `vdomJVM` as a
+  **source dependency** (that target is not published), so the checkout must be present to run
+  the headless suite.
 - **[sdl3](https://github.com/edadma/sdl3)**, **[libcairo](https://github.com/edadma/libcairo)**,
-  and **[freetype](https://github.com/edadma/freetype)** — the SDL3, Cairo, and FreeType
-  bindings, pulled from Maven Central.
+  **[freetype](https://github.com/edadma/freetype)**, **[librsvg](https://github.com/edadma/librsvg)**,
+  and **[turbojpeg](https://github.com/edadma/turbojpeg)** — the SDL3, Cairo, FreeType, librsvg,
+  and libjpeg-turbo bindings, all pulled from Maven Central.
 
 ```bash
 git clone https://github.com/edadma/riposte.git
@@ -57,21 +62,23 @@ dev/
 └── suit/         # this repo
 ```
 
-suit's `build.sbt` references riposte by relative path:
+suit's `build.sbt` references riposte by relative path for the JVM test build:
 
 ```scala
 .jvmConfigure(_.dependsOn(ProjectRef(file("../riposte"), "vdomJVM")))
-.nativeConfigure(_.dependsOn(ProjectRef(file("../riposte"), "vdomNative")))
 ```
 
-and pulls SDL3 from Central:
+and pulls `vdom` and the native bindings from Central for the Native build:
 
 ```scala
 .nativeSettings(
   libraryDependencies ++= Seq(
-    "io.github.edadma" %%% "sdl3"     % "0.2.3",
-    "io.github.edadma" %%% "libcairo" % "0.0.4",
-    "io.github.edadma" %%% "freetype" % "0.0.4",
+    "io.github.edadma" %%% "vdom"      % "0.3.1",
+    "io.github.edadma" %%% "sdl3"      % "0.2.4",
+    "io.github.edadma" %%% "libcairo"  % "0.0.7",
+    "io.github.edadma" %%% "freetype"  % "0.0.6",
+    "io.github.edadma" %%% "librsvg"   % "0.0.4",
+    "io.github.edadma" %%% "turbojpeg" % "0.0.1",
   ),
 )
 ```

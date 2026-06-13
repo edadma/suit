@@ -92,11 +92,12 @@ val App = view {
 ## Building
 
 suit depends on a [riposte](https://github.com/edadma/riposte) checkout next to it (for the
-`vdom` source dependency) and on the system SDL3 and Cairo libraries.
+`vdom` source dependency the JVM test build links) and on the system SDL3, Cairo, librsvg, and
+libjpeg-turbo libraries.
 
 ```bash
 # native libraries (macOS / Homebrew)
-brew install sdl3 cairo
+brew install sdl3 cairo librsvg jpeg-turbo
 
 # both repos side by side
 git clone https://github.com/edadma/riposte.git
