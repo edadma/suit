@@ -57,8 +57,8 @@ A small library of controls — all theme-driven and animated, composed from the
 primitives: buttons, checkboxes, switches, radio groups, sliders, tabs, progress bars,
 badges, dividers, alerts, cards, tooltips, menus, dropdown `Select`s, right-click context
 menus, modal dialogs, a resizable `splitter`, and a `scrollArea` with a visible draggable
-scrollbar. Text entry comes in a
-single-line `TextField` and a multi-line `TextArea`, and large data sets are served by a
+scrollbar that scrolls one axis or, with `both = true`, both at once. Text entry comes in a
+single-line `TextField` and a soft-wrapping multi-line `TextArea`, and large data sets are served by a
 **virtualized data grid** — `dataTable` over a `virtualList` that only builds the rows under
 the viewport, so a thousand-row result stays smooth, with **sortable, resizable columns**. See the
 [widget reference](https://suit.edadma.dev/reference/widgets/).

@@ -74,7 +74,7 @@ and pulls `vdom` and the native bindings from Central for the Native build:
 .nativeSettings(
   libraryDependencies ++= Seq(
     "io.github.edadma" %%% "vdom"      % "0.3.1",
-    "io.github.edadma" %%% "sdl3"      % "0.2.4",
+    "io.github.edadma" %%% "sdl3"      % "0.2.6",
     "io.github.edadma" %%% "libcairo"  % "0.0.7",
     "io.github.edadma" %%% "freetype"  % "0.0.6",
     "io.github.edadma" %%% "librsvg"   % "0.0.4",
