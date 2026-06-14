@@ -145,6 +145,10 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
       val (anchor, setAnchor, _)   = useState(0)
       val (focused, setFocused, _) = useState(false)
 
+      // Undo/redo stacks on the ref (survive re-renders); runs of typing coalesce (see
+      // [[EditHistory]]).
+      val history = useRef(new EditHistory)
+
       // The caret blinks while the field is focused. `blinkOn` flips on an interval; bumping
       // `blinkEpoch` restarts that interval's phase (and `restartBlink` also forces the caret
       // solid), so any edit or caret move shows a solid caret for a full interval before it
@@ -198,19 +202,44 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
 
       def setCollapsed(i: Int): Unit = { setCaret(i); setAnchor(i); restartBlink() }
 
-      def replaceSel(insert: String): Unit =
-        onChange(value.substring(0, selLo) + insert + value.substring(selHi))
-        setCollapsed(selLo + insert.length)
+      // The single text-changing funnel: record the prior state for undo (coalescing a run of
+      // typing), report the new text, and collapse the caret after it.
+      def commit(newText: String, newCaret: Int, coalesce: Boolean = false): Unit =
+        if newText != value then
+          history.current.record(EditSnapshot(value, c, a), coalesce)
+          onChange(newText)
+        setCollapsed(newCaret)
+
+      def replaceSel(insert: String, coalesce: Boolean = false): Unit =
+        commit(value.substring(0, selLo) + insert + value.substring(selHi), selLo + insert.length, coalesce)
 
       def backspace(): Unit =
         if hasSel then replaceSel("")
-        else if c > 0 then { onChange(value.substring(0, c - 1) + value.substring(c)); setCollapsed(c - 1) }
+        else if c > 0 then commit(value.substring(0, c - 1) + value.substring(c), c - 1)
 
       def del(): Unit =
         if hasSel then replaceSel("")
-        else if c < len then { onChange(value.substring(0, c) + value.substring(c + 1)); setCollapsed(c) }
+        else if c < len then commit(value.substring(0, c) + value.substring(c + 1), c)
+
+      // Delete the word to the left of the caret: a run of whitespace, then a run of non-whitespace.
+      def deleteWordLeft(): Unit =
+        if hasSel then replaceSel("")
+        else if c > 0 then
+          var i = c
+          while i > 0 && value.charAt(i - 1).isWhitespace do i -= 1
+          while i > 0 && !value.charAt(i - 1).isWhitespace do i -= 1
+          commit(value.substring(0, i) + value.substring(c), i)
+
+      def applySnapshot(s: EditSnapshot): Unit =
+        if s.text != value then onChange(s.text)
+        setCaret(s.caret)
+        setAnchor(s.anchor)
+        restartBlink()
+      def undo(): Unit = history.current.undo(EditSnapshot(value, c, a)).foreach(applySnapshot)
+      def redo(): Unit = history.current.redo(EditSnapshot(value, c, a)).foreach(applySnapshot)
 
       def moveTo(i: Int, extend: Boolean): Unit =
+        history.current.breakRun() // a caret move ends any open typing run
         val ni = clampIdx(i, len)
         setCaret(ni)
         if !extend then setAnchor(ni)
@@ -222,9 +251,14 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
       def cut(): Unit   = if hasSel then { copy(); replaceSel("") }
 
       def onKey(e: KeyEvent): Unit =
-        // The conventional shortcut modifier: Ctrl elsewhere, ⌘ on macOS.
+        // The conventional shortcut modifier: Ctrl elsewhere, ⌘ on macOS. Word delete is the
+        // platform's other convention — Option on macOS, Ctrl elsewhere.
         val primary = e.ctrl || e.meta
+        val wordMod = e.alt || e.ctrl
         e.scancode match
+          case Key.Z if primary && e.shift     => redo()
+          case Key.Z if primary                => undo()
+          case Key.Backspace if wordMod        => deleteWordLeft()
           case Key.Backspace             => backspace()
           case Key.Delete                => del()
           case Key.C if primary          => copy()
@@ -271,7 +305,7 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
         ref         = fieldRef,
         onMouseDown = e => setCollapsed(indexAtX(e.local.x - padX + scrollX)),
         onMouseMove = e => if e.button != 0 then setCaret(indexAtX(e.local.x - padX + scrollX)),
-        onTextInput = e => replaceSel(e.text),
+        onTextInput = e => replaceSel(e.text, coalesce = true),
         onKeyDown   = onKey,
         onFocus     = () => { setFocused(true); restartBlink() },
         onBlur      = () => setFocused(false),
@@ -309,6 +343,10 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
       val (caret, setCaret, _)     = useState(0)
       val (anchor, setAnchor, _)   = useState(0)
       val (focused, setFocused, _) = useState(false)
+
+      // The undo/redo stacks survive re-renders on the ref. Edits record the prior state here;
+      // runs of typing coalesce into one undo step (see [[EditHistory]]).
+      val history = useRef(new EditHistory)
 
       // The caret blinks while focused; bumping the epoch restarts the interval's phase so a
       // solid caret shows for a full interval after each edit or move (see [[TextField]]).
@@ -399,13 +437,27 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
         buf.indexOf(line, colInRowAtX(line, start, end, localX - padX))
 
       // Drive the model: apply a pure op, report a text change if any, and move the caret —
-      // the single path every key and pointer edit funnels through.
-      def edit(op: EditBuffer => EditBuffer): Unit =
+      // the single path every key and pointer edit funnels through. A text-changing edit records
+      // the prior state for undo (`coalesce` folds a run of typing into one step); a caret-only
+      // op (a move/selection) records nothing but ends any open typing run.
+      def edit(op: EditBuffer => EditBuffer, coalesce: Boolean = false): Unit =
         val nb = op(buf)
-        if nb.text != value then onChange(nb.text)
+        if nb.text != value then
+          history.current.record(EditSnapshot(value, caret, anchor), coalesce)
+          onChange(nb.text)
+        else history.current.breakRun()
         setCaret(nb.caret)
         setAnchor(nb.anchor)
         restartBlink()
+
+      // Restore an undo/redo snapshot: the text (through onChange) and the selection.
+      def applySnapshot(s: EditSnapshot): Unit =
+        if s.text != value then onChange(s.text)
+        setCaret(s.caret)
+        setAnchor(s.anchor)
+        restartBlink()
+      def undo(): Unit = history.current.undo(EditSnapshot(value, caret, anchor)).foreach(applySnapshot)
+      def redo(): Unit = history.current.redo(EditSnapshot(value, caret, anchor)).foreach(applySnapshot)
 
       // Vertical motion and Home/End follow **visual** rows, not logical lines, so the caret moves
       // by what the eye sees through a wrapped line. The target column on the destination row keeps
@@ -435,9 +487,14 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
       def cut(): Unit   = if buf.hasSelection then { copy(); edit(_.insert("")) }
 
       def onKey(e: KeyEvent): Unit =
-        // The conventional shortcut modifier: Ctrl elsewhere, ⌘ on macOS.
+        // The conventional shortcut modifier: Ctrl elsewhere, ⌘ on macOS. Word delete is the
+        // platform's other convention — Option on macOS, Ctrl elsewhere.
         val primary = e.ctrl || e.meta
+        val wordMod = e.alt || e.ctrl
         e.scancode match
+          case Key.Z if primary && e.shift     => redo()
+          case Key.Z if primary                => undo()
+          case Key.Backspace if wordMod        => edit(_.deleteWordLeft)
           case Key.Backspace       => edit(_.backspace)
           case Key.Delete          => edit(_.delete)
           case Key.Enter           => edit(_.newline)
@@ -506,7 +563,7 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
         onResize    = onResize,
         onMouseDown = e => edit(_.collapseTo(indexAt(e.local.x, e.local.y))),
         onMouseMove = e => if e.button != 0 then edit(b => b.moveTo(indexAt(e.local.x, e.local.y), extend = true)),
-        onTextInput = e => edit(_.insert(e.text)),
+        onTextInput = e => edit(_.insert(e.text), coalesce = true),
         onKeyDown   = onKey,
         onFocus     = () => { setFocused(true); restartBlink() },
         onBlur      = () => setFocused(false),

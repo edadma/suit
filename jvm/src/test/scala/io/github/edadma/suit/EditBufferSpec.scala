@@ -104,3 +104,17 @@ class EditBufferSpec extends AnyFunSuite:
   test("selectAll spans the whole buffer"):
     val b = EditBuffer("abc\ndef").selectAll
     assert(b.selLo == 0 && b.selHi == 7 && b.hasSelection)
+
+  test("deleteWordLeft removes the word (and leading spaces) before the caret"):
+    val b = EditBuffer("hello world", 11, 11) // caret at end
+    val r = b.deleteWordLeft
+    assert(r.text == "hello ")
+    assert(r.caret == 6)
+    assert(r.deleteWordLeft.text == "") // a second delete takes the space run and "hello"
+
+  test("deleteWordLeft at the start of the buffer is a no-op"):
+    assert(EditBuffer("abc", 0, 0).deleteWordLeft.text == "abc")
+
+  test("deleteWordLeft with a selection just removes the selection"):
+    val b = EditBuffer("alpha beta", 0, 5) // selects "alpha"
+    assert(b.deleteWordLeft.text == " beta")

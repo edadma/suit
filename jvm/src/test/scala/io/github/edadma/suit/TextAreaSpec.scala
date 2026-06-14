@@ -124,6 +124,25 @@ class TextAreaSpec extends AnyFunSuite with BeforeAndAfterEach:
     assert(Clipboard.installed.get() == "alpha\nbeta")
     assert(h.current() == "")
 
+  test("Ctrl+Z undoes and Ctrl+Shift+Z redoes, across a line break"):
+    val h = mount()
+    h.typeText("abc")
+    h.key(Key.Enter)                        // "abc\n"
+    h.typeText("def")                       // "abc\ndef"
+    assert(h.current() == "abc\ndef")
+    h.key(Key.Z, ctrl = true)               // undo the "def" run
+    assert(h.current() == "abc\n")
+    h.key(Key.Z, ctrl = true)               // undo the newline
+    assert(h.current() == "abc")
+    h.key(Key.Z, shift = true, ctrl = true) // redo the newline
+    assert(h.current() == "abc\n")
+
+  test("Ctrl+Backspace deletes the word to the left of the caret"):
+    val h = mount()
+    h.typeText("one two three")
+    h.key(Key.Backspace, ctrl = true)
+    assert(h.current() == "one two ")
+
   test("shift+Down extends a selection across the line break, replaced by typing"):
     val h = mount("abc\ndef")
     h.key(Key.Down, shift = true) // from 0 → line 1 col 0, selecting "abc\n"

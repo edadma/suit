@@ -49,6 +49,7 @@ final case class KeyEvent(
     shift:    Boolean = false,
     ctrl:     Boolean = false,
     meta:     Boolean = false,
+    alt:      Boolean = false,
 )
 
 /** A run of typed text delivered to the focused object. This is the layout-resolved
@@ -67,6 +68,7 @@ object Key:
   val C         = 6  // copy
   val V         = 25 // paste
   val X         = 27 // cut
+  val Z         = 29 // undo (with shift: redo)
   val Enter     = 40
   val Escape    = 41
   val Backspace = 42
@@ -187,8 +189,15 @@ final class KeyRouter(focus: FocusManager):
       case r: RenderObject => r.handlers.get(event).foreach(_.apply(e))
       case null            => ()
 
-  def down(scancode: Int, repeat: Boolean, shift: Boolean = false, ctrl: Boolean = false, meta: Boolean = false): Unit =
-    fire("keydown", KeyEvent(scancode, repeat, shift, ctrl, meta))
+  def down(
+      scancode: Int,
+      repeat:   Boolean,
+      shift:    Boolean = false,
+      ctrl:     Boolean = false,
+      meta:     Boolean = false,
+      alt:      Boolean = false,
+  ): Unit =
+    fire("keydown", KeyEvent(scancode, repeat, shift, ctrl, meta, alt))
   def up(scancode: Int): Unit = fire("keyup", KeyEvent(scancode))
 
 /** Routes typed text to the focused object, the text-entry sibling of [[KeyRouter]]. The

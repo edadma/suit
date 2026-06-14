@@ -141,6 +141,20 @@ final case class EditBuffer(text: String, caret: Int = 0, anchor: Int = 0):
       if c >= length then this
       else EditBuffer(text.substring(0, c) + text.substring(c + 1), c, c)
 
+  /** Delete the selection, or — with none — the whole word to the left of the caret: any run of
+    * whitespace immediately before the caret, then the run of non-whitespace before that (the
+    * Option/Ctrl+Backspace behaviour). At the start of the text it is a no-op. */
+  def deleteWordLeft: EditBuffer =
+    if hasSelection then insert("")
+    else
+      val c = clamp(caret)
+      if c == 0 then this
+      else
+        var i = c
+        while i > 0 && text.charAt(i - 1).isWhitespace do i -= 1
+        while i > 0 && !text.charAt(i - 1).isWhitespace do i -= 1
+        EditBuffer(text.substring(0, i) + text.substring(c), i, i)
+
   /** Insert a newline at the caret (the Enter key). */
   def newline: EditBuffer = insert("\n")
 

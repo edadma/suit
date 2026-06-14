@@ -232,6 +232,7 @@ object Suit:
             val shift = (mod & KMOD_SHIFT) != 0
             val ctrl  = (mod & KMOD_CTRL) != 0
             val meta  = (mod & KMOD_GUI) != 0
+            val alt   = (mod & KMOD_ALT) != 0
             // Tab is the global focus-traversal key — it moves focus through the focusable
             // objects rather than reaching the focused widget, so it is intercepted here
             // (Shift+Tab walks backward). Every other key routes to whatever holds focus.
@@ -239,7 +240,7 @@ object Suit:
             // Escape closes a trapping modal from anywhere inside it; with no trap active it
             // is an ordinary key routed to whatever holds focus.
             else if e.keyScancode == Key.Escape && focusManager.escape() then ()
-            else keyRouter.down(e.keyScancode, e.keyRepeat, shift, ctrl, meta)
+            else keyRouter.down(e.keyScancode, e.keyRepeat, shift, ctrl, meta, alt)
           case KEY_UP    => keyRouter.up(e.keyScancode)
           case TEXT_INPUT => textRouter.input(e.text)
           // The window changed size (a user drag, or the OS fitting it to the display). Re-read

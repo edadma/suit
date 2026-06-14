@@ -169,6 +169,40 @@ class TextFieldSpec extends AnyFunSuite with BeforeAndAfterEach:
     h.key(Key.V, ctrl = true)
     assert(h.current() == "a b c")
 
+  // --- undo / redo / word delete -------------------------------------------
+
+  test("ctrl+Z undoes the last edit and ctrl+shift+Z redoes it"):
+    val h = mount()
+    h.typeText("abc")
+    h.key(Key.Backspace)                    // "ab"
+    assert(h.current() == "ab")
+    h.key(Key.Z, ctrl = true)               // undo the backspace
+    assert(h.current() == "abc")
+    h.key(Key.Z, shift = true, ctrl = true) // redo it
+    assert(h.current() == "ab")
+
+  test("a run of single-character typing undoes as one step"):
+    val h = mount()
+    h.typeText("h"); h.typeText("e"); h.typeText("l"); h.typeText("l"); h.typeText("o")
+    assert(h.current() == "hello")
+    h.key(Key.Z, ctrl = true)               // one undo reverts the whole run
+    assert(h.current() == "")
+
+  test("a caret move breaks the typing run so undo reverts only the later run"):
+    val h = mount()
+    h.typeText("abc")
+    h.key(Key.Home)                         // move ends the run
+    h.typeText("X")                         // "Xabc"
+    assert(h.current() == "Xabc")
+    h.key(Key.Z, ctrl = true)               // undo only the "X"
+    assert(h.current() == "abc")
+
+  test("ctrl+Backspace deletes the word to the left of the caret"):
+    val h = mount()
+    h.typeText("hello world")
+    h.key(Key.Backspace, ctrl = true)
+    assert(h.current() == "hello ")
+
   // --- mouse ---------------------------------------------------------------
 
   test("a click places the caret at the nearest character boundary"):
