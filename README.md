@@ -15,7 +15,7 @@ components with `useState`, lay them out with `col` / `row` / `box` / `text`, an
 drive the screen. In short: *Flutter in Scala Native*.
 
 > **Status:** published to Maven Central, but pre-1.0 and evolving — pin a version and expect
-> the occasional breaking change. Add `"io.github.edadma" %%% "suit" % "0.0.10"` to a Scala
+> the occasional breaking change. Add `"io.github.edadma" %%% "suit" % "0.0.11"` to a Scala
 > Native project, or build from the checkout to contribute (see [Documentation](#documentation)).
 
 ## Documentation
@@ -59,7 +59,9 @@ primitives: buttons, checkboxes, switches, radio groups, sliders, tabs, progress
 badges, dividers, alerts, cards, tooltips, menus, dropdown `Select`s, right-click context
 menus, modal dialogs, a resizable `splitter`, and a `scrollArea` with a visible draggable
 scrollbar that scrolls one axis or, with `both = true`, both at once. Text entry comes in a
-single-line `TextField` and a soft-wrapping multi-line `TextArea`, and large data sets are served by a
+single-line `TextField` and a soft-wrapping multi-line `TextArea` — both with full editing: clipboard
+copy/cut/paste, undo/redo, and word-wise cursor movement and deletion (⌘ on macOS, Ctrl elsewhere).
+Large data sets are served by a
 **virtualized data grid** — `dataTable` over a `virtualList` that only builds the rows under
 the viewport, so a thousand-row result stays smooth, with **sortable, resizable columns**. See the
 [widget reference](https://suit.edadma.dev/reference/widgets/).

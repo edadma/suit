@@ -3,7 +3,7 @@ import sbtcrossproject.CrossPlugin.autoImport.{crossProject, CrossType}
 
 ThisBuild / scalaVersion := "3.8.4"
 ThisBuild / organization := "io.github.edadma"
-ThisBuild / version      := "0.0.10"
+ThisBuild / version      := "0.0.11"
 
 // --- Maven Central publishing ----------------------------------------------
 // Metadata for the generated POM and the Sonatype Central wiring, mirroring the
@@ -88,9 +88,6 @@ lazy val suit = crossProject(JVMPlatform, NativePlatform)
   // it keeps source-depending on the sibling riposte checkout's `vdomJVM` for the headless
   // reconciler/hooks substrate the layout tests mount on.
   .jvmConfigure(_.dependsOn(ProjectRef(file("../riposte"), "vdomJVM")))
-  // Source-depend on the sibling sdl3 checkout while the clipboard bindings are in flight, so suit
-  // builds against local sdl3 without a publish round-trip. Drop this once sdl3 0.2.7 is on Central.
-  .nativeConfigure(_.dependsOn(ProjectRef(file("../sdl3"), "core")))
   .jvmSettings(
     // Headless layout/render tests only — the JVM build ships nothing, so it is not published
     // (which also means it never needs vdom's JVM artifact on Central).
