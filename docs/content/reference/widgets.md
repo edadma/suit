@@ -443,6 +443,43 @@ contextMenu()(
 Like `Menu` it portals into the overlay layer, dismisses on an outside click or Escape, and traps
 focus while open. See `ContextMenuSpec` for the headless harness.
 
+## Menu bar
+
+```scala
+case class MenuEntry(label: String, items: (() => Unit) => Seq[VNode])
+
+def menu(label: String)(items: (() => Unit) => Seq[VNode]): MenuEntry
+
+def menuBar(menus: MenuEntry*): VNode                // dropdowns 200px wide
+def menuBar(width: Double)(menus: MenuEntry*): VNode // a different dropdown width
+```
+
+An application **menu bar** — the horizontal `File / Edit / View …` strip across the top of a
+window. Each top-level `menu` carries a label and an item builder (the same `close`-callback shape
+the context menu uses). Clicking a label opens its dropdown below it; with one open, moving the
+pointer onto another label slides the open menu to it — the standard menu-bar sweep. A click
+outside the open menu, or Escape, closes it; choosing an item runs its action and closes the menu.
+
+```scala
+menuBar(
+  menu("File")(close =>
+    Seq(
+      MenuItem("New",   () => { newDoc();  close() }),
+      MenuItem("Open…", () => { openDoc(); close() }),
+    ),
+  ),
+  menu("Edit")(close =>
+    Seq(
+      MenuItem("Undo", () => { undo(); close() }),
+      MenuItem("Redo", () => { redo(); close() }),
+    ),
+  ),
+)
+```
+
+It is built entirely from the toolkit's own widgets and overlay layer — there is no OS menu bar —
+so it looks and behaves identically on every platform. See `MenuBarSpec` for the headless harness.
+
 ## Placement
 
 ```scala

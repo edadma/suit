@@ -228,6 +228,7 @@ val App = view {
   val (tab, setTab, _)         = useState("overview")
   val (dialog, setDialog, _)   = useState(false)
   val (menu, setMenu, _)       = useState(false)
+  val (lastMenu, setLastMenu, _) = useState("ready")
   val menuRef                  = useRef[RenderObject | Null](null)
   val (colour, setColour, _)   = useState("")
   val (pickedRow, setPickedRow, _) = useState(-1)
@@ -272,8 +273,45 @@ val App = view {
           row(crossAxisAlignment = CrossAxisAlignment.Center, spacing = 12)(
             text("suit — styling & input", size = 22, color = Color.rgb(0x0b1418)),
             spacer(),
+            text(s"menu: $lastMenu", color = Color.rgb(0x0b1418)),
+            spacer(),
             text(if isDark then "dark" else "light", color = Color.rgb(0x0b1418)),
             Switch(isDark, setDark),
+          ),
+        ),
+
+        // Application menu bar: top-level menus drawn with the toolkit's own widgets (no OS menu
+        // bar), so it is identical on every platform. Click a label to open it; with one open,
+        // sweep across the labels to slide between menus. Each item records what was chosen.
+        menuBar(
+          widgets.menu("File")(close =>
+            Seq(
+              MenuItem("New", () => { setLastMenu("File ▸ New"); close() }),
+              MenuItem("Open…", () => { setLastMenu("File ▸ Open"); close() }),
+              MenuItem("Save", () => { setLastMenu("File ▸ Save"); close() }),
+            ),
+          ),
+          widgets.menu("Edit")(close =>
+            Seq(
+              MenuItem("Undo", () => { setLastMenu("Edit ▸ Undo"); close() }),
+              MenuItem("Redo", () => { setLastMenu("Edit ▸ Redo"); close() }),
+              MenuItem("Cut", () => { setLastMenu("Edit ▸ Cut"); close() }),
+              MenuItem("Copy", () => { setLastMenu("Edit ▸ Copy"); close() }),
+              MenuItem("Paste", () => { setLastMenu("Edit ▸ Paste"); close() }),
+            ),
+          ),
+          widgets.menu("View")(close =>
+            Seq(
+              MenuItem("Zoom In", () => { setLastMenu("View ▸ Zoom In"); close() }),
+              MenuItem("Zoom Out", () => { setLastMenu("View ▸ Zoom Out"); close() }),
+              MenuItem("Toggle Theme", () => { setDark(!isDark); close() }),
+            ),
+          ),
+          widgets.menu("Help")(close =>
+            Seq(
+              MenuItem("Documentation", () => { setLastMenu("Help ▸ Documentation"); close() }),
+              MenuItem("About suit", () => { setLastMenu("Help ▸ About"); close() }),
+            ),
           ),
         ),
 

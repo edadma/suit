@@ -319,6 +319,176 @@ private[suit] trait WidgetsOverlays extends WidgetsSupport:
   )(items: VNode*): VNode =
     MenuImpl((open, onClose, anchor, exitMs, width, placement))(items*)
 
+  /** One top-level menu in a [[menuBar]]: a `label` for the bar and a builder that, given a
+    * `close` callback, returns the dropdown's rows. Build the rows with [[MenuItem]] and have
+    * each call `close` after doing its work, so choosing an item dismisses the menu:
+    * {{{
+    * menu("File")(close => Seq(
+    *   MenuItem("New",  () => { newDoc();  close() }),
+    *   MenuItem("Open", () => { openDoc(); close() }),
+    * ))
+    * }}}
+    */
+  case class MenuEntry(label: String, items: (() => Unit) => Seq[VNode])
+
+  /** Build a [[MenuEntry]] for [[menuBar]]. See [[MenuEntry]] for the item-builder shape. */
+  def menu(label: String)(items: (() => Unit) => Seq[VNode]): MenuEntry = MenuEntry(label, items)
+
+  private case class MenuBarBtnProps(
+      label:   String,
+      isOpen:  Boolean,
+      anyOpen: Boolean,
+      anchor:  Ref[RenderObject | Null],
+      onOpen:  () => Unit,
+      onClose: () => Unit,
+  )
+
+  // A top-level label in the bar. It highlights while its menu is open and lightly on hover; a
+  // click toggles its menu. This enter handler opens-on-hover only as a fallback before any menu
+  // is open — once one is, the row sits beneath the open menu's overlay, so the bar's catcher (not
+  // this handler) drives the slide between labels.
+  private val MenuBarButton: Component[MenuBarBtnProps] =
+    component[MenuBarBtnProps] { p =>
+      val theme                = useTheme()
+      val (hover, setHover, _) = useState(false)
+      val bg =
+        if p.isOpen then Color.lerp(theme.surface, theme.primary, 0.20)
+        else if hover then Color.lerp(theme.surface, theme.primary, 0.10)
+        else Color.transparent
+      box(
+        bg           = bg,
+        radius       = theme.radius * 0.5,
+        padding      = EdgeInsets.symmetric(horizontal = theme.spacing * 1.25, vertical = theme.spacing * 0.5),
+        ref          = p.anchor,
+        onMouseEnter = _ => { setHover(true); if p.anyOpen && !p.isOpen then p.onOpen() },
+        onMouseLeave = _ => setHover(false),
+        onClick      = _ => if p.isOpen then p.onClose() else p.onOpen(),
+      )(text(p.label))
+    }
+
+  private case class MenuBarProps(menus: Seq[MenuEntry], width: Double)
+
+  private val MenuBarImpl: Component[MenuBarProps] =
+    component[MenuBarProps] { p =>
+      val theme                    = useTheme()
+      val env                      = useOverlay()
+      val (openIdx, setOpenIdx, _) = useState(-1)
+
+      // One stable anchor ref per top-level button, created once for a given menu set. The bar
+      // reads each button's on-screen rectangle through these — to position the open dropdown, and
+      // to hit-test the pointer against the row from the catcher, which covers the row while a menu
+      // is open. A plain holder rebuilt only when the menu count changes, not a per-button hook.
+      val anchorsRef = useRef[Array[Ref[RenderObject | Null]] | Null](null)
+      val existing   = anchorsRef.current
+      val anchors: Array[Ref[RenderObject | Null]] =
+        if existing != null && existing.length == p.menus.length then existing
+        else
+          val a = Array.fill(p.menus.length)(new io.github.edadma.vdom.Ref[RenderObject | Null](null))
+          anchorsRef.current = a
+          a
+
+      def close(): Unit = setOpenIdx(-1)
+
+      // While a menu is open, trap focus to the overlay so Escape closes it — the same trap the
+      // dropdown menus use. Re-runs only when a menu opens or closes, not when it slides between
+      // labels (the trapped overlay is the same object throughout).
+      useEffect(
+        () =>
+          (env.overlay, env.focus) match
+            case (o: RenderObject, f: FocusManager) if openIdx >= 0 =>
+              f.trap(o, () => close())
+              () => f.releaseTrap()
+            case _ => noCleanup
+        ,
+        Array(openIdx >= 0),
+      )
+
+      val buttons = p.menus.zipWithIndex.map { (spec, i) =>
+        MenuBarButton(
+          MenuBarBtnProps(
+            label   = spec.label,
+            isOpen  = openIdx == i,
+            anyOpen = openIdx >= 0,
+            anchor  = anchors(i),
+            onOpen  = () => setOpenIdx(i),
+            onClose = close,
+          ),
+        )
+      }
+
+      val bar = box(
+        bg      = theme.surface,
+        padding = EdgeInsets.symmetric(horizontal = theme.spacing * 0.5, vertical = theme.spacing * 0.25),
+      )(row(spacing = 2, crossAxisAlignment = CrossAxisAlignment.Center)(buttons*))
+
+      // The open menu's overlay: the dropdown card over a full-window catcher (the same structure
+      // the dropdown menus portal). The catcher slides the open menu across the bar as the pointer
+      // moves over the labels — the row now sits under the overlay — and dismisses on a click that
+      // lands neither on the card (its own click is swallowed) nor on a label.
+      val overlayContent: VNode =
+        (env.overlay, openIdx) match
+          case (o: RenderObject, i) if i >= 0 && i < anchors.length =>
+            val win = o.size
+
+            // Which top-level label the pointer is over, by hit-testing the absolute button
+            // rectangles, or -1 when it is over none.
+            def buttonAt(pt: Offset): Int =
+              anchors.indexWhere { a =>
+                a.current match
+                  case r: RenderObject =>
+                    val off = r.absoluteOffset
+                    pt.x >= off.x && pt.x < off.x + r.size.width && pt.y >= off.y && pt.y < off.y + r.size.height
+                  case null => false
+              }
+
+            val (rx, ry, rw, rh) = anchors(i).current match
+              case r: RenderObject => (r.absoluteOffset.x, r.absoluteOffset.y, r.size.width, r.size.height)
+              case null            => (0.0, 0.0, 0.0, 0.0)
+            val cardLeft = math.max(0.0, math.min(rx, win.width - p.width))
+            val cardTop  = ry + rh + 4
+
+            val card   = box(onClick = (_: PointerEvent) => ())(overlayCard(theme, p.width, p.menus(i).items(close)))
+            val placed = positioned(cardLeft, cardTop)(card)
+            val catcher = box(
+              onMouseMove = e =>
+                val b = buttonAt(e.position)
+                if b >= 0 && b != openIdx then setOpenIdx(b),
+              onClick = e =>
+                val b = buttonAt(e.position)
+                if b < 0 || b == openIdx then close() else setOpenIdx(b),
+            )(placed)
+
+            portal(o, catcher)
+          case _ => VEmpty
+
+      VFragment(Vector(bar, overlayContent))
+    }
+
+  /** An application **menu bar**: a horizontal row of top-level [[menu]]s across the top of a
+    * window. Clicking a label opens its dropdown below it; with one open, moving the pointer onto
+    * another label slides the open menu to it — the standard menu-bar sweep. A click outside the
+    * open menu, or Escape, closes it; choosing an item runs its action and closes the menu (so
+    * long as the item's `onSelect` calls the `close` it is built with). It is drawn entirely with
+    * the toolkit's own widgets — there is no OS menu bar — so it looks and behaves the same on
+    * every platform.
+    *
+    * {{{
+    * menuBar(
+    *   menu("File")(close => Seq(
+    *     MenuItem("New",  () => { newDoc();  close() }),
+    *     MenuItem("Open", () => { openDoc(); close() }),
+    *   )),
+    *   menu("Edit")(close => Seq(
+    *     MenuItem("Undo", () => { undo(); close() }),
+    *   )),
+    * )
+    * }}}
+    *
+    * The single-argument overload fixes every dropdown at 200px wide; pass `menuBar(width)(…)` to
+    * set a different width. */
+  def menuBar(menus: MenuEntry*): VNode                = MenuBarImpl(MenuBarProps(menus, 200))
+  def menuBar(width: Double)(menus: MenuEntry*): VNode = MenuBarImpl(MenuBarProps(menus, width))
+
   // A muted ink for secondary text (placeholder, chevron): the surface text blended part-way
   // toward the surface so it reads as quieter without hard-coding a grey.
   private def overlayMuted(theme: Theme): Color = Color.lerp(theme.surfaceText, theme.surface, 0.45)
