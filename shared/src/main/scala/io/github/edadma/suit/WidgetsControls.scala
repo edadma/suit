@@ -308,6 +308,9 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
         border      = if focused then theme.accent else theme.border,
         borderWidth = if focused then 2 else 1,
         radius      = theme.radius,
+        // One line tall: a single-line field must not grow to fill the height it is offered (its
+        // inner stack otherwise expands to a tall container, e.g. inside a dialog).
+        height      = lineH + 2 * padY,
         padding     = EdgeInsets.symmetric(horizontal = padX, vertical = padY),
         clip        = true,
         focusable   = true,

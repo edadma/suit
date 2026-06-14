@@ -244,6 +244,12 @@ class TextFieldSpec extends AnyFunSuite with BeforeAndAfterEach:
     assert(h.field.focusable)
     assert(h.field.acceptsText)
 
+  test("the field is one line tall, not the full height it is offered"):
+    val h = mount() // mounted in a 240×40 root via a Stretch column, so 40px of height is on offer
+    // mono lineH = 16, padY = 6 → 28; it must size to the line, not fill the 40 available.
+    assert(h.field.size.height < 40.0)
+    assert(math.abs(h.field.size.height - (16.0 + 2 * 6.0)) < 0.001)
+
   // --- caret blink ---------------------------------------------------------
 
   test("the caret blinks while focused"):
