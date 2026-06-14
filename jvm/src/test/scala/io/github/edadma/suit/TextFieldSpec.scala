@@ -203,6 +203,24 @@ class TextFieldSpec extends AnyFunSuite with BeforeAndAfterEach:
     h.key(Key.Backspace, ctrl = true)
     assert(h.current() == "hello ")
 
+  test("ctrl+Left and ctrl+Right move the caret by word"):
+    val h = mount()
+    h.typeText("hello world")
+    h.key(Key.Left, ctrl = true)  // caret to the start of "world"
+    h.typeText("X")
+    assert(h.current() == "hello Xworld")
+    h.key(Key.Home)
+    h.key(Key.Right, ctrl = true) // caret to the end of "hello"
+    h.typeText("Y")
+    assert(h.current() == "helloY Xworld")
+
+  test("shift+ctrl+Left selects a word, replaced by typing"):
+    val h = mount()
+    h.typeText("hello world")
+    h.key(Key.Left, shift = true, ctrl = true) // select "world"
+    h.typeText("X")
+    assert(h.current() == "hello X")
+
   // --- mouse ---------------------------------------------------------------
 
   test("a click places the caret at the nearest character boundary"):

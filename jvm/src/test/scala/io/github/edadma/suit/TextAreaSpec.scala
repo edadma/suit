@@ -143,6 +143,13 @@ class TextAreaSpec extends AnyFunSuite with BeforeAndAfterEach:
     h.key(Key.Backspace, ctrl = true)
     assert(h.current() == "one two ")
 
+  test("Ctrl+Left and Ctrl+Right move the caret by word"):
+    val h = mount()
+    h.typeText("one two three")
+    h.key(Key.Left, ctrl = true)  // start of "three"
+    h.typeText("X")
+    assert(h.current() == "one two Xthree")
+
   test("shift+Down extends a selection across the line break, replaced by typing"):
     val h = mount("abc\ndef")
     h.key(Key.Down, shift = true) // from 0 → line 1 col 0, selecting "abc\n"

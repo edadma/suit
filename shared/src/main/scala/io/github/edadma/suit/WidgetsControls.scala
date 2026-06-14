@@ -221,14 +221,22 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
         if hasSel then replaceSel("")
         else if c < len then commit(value.substring(0, c) + value.substring(c + 1), c)
 
-      // Delete the word to the left of the caret: a run of whitespace, then a run of non-whitespace.
+      // Word boundaries from index `i`: skip a run of whitespace, then a run of non-whitespace.
+      def wordLeftIdx(i: Int): Int =
+        var j = i
+        while j > 0 && value.charAt(j - 1).isWhitespace do j -= 1
+        while j > 0 && !value.charAt(j - 1).isWhitespace do j -= 1
+        j
+      def wordRightIdx(i: Int): Int =
+        var j = i
+        while j < len && value.charAt(j).isWhitespace do j += 1
+        while j < len && !value.charAt(j).isWhitespace do j += 1
+        j
+
+      // Delete the word to the left of the caret (Option/Ctrl+Backspace).
       def deleteWordLeft(): Unit =
         if hasSel then replaceSel("")
-        else if c > 0 then
-          var i = c
-          while i > 0 && value.charAt(i - 1).isWhitespace do i -= 1
-          while i > 0 && !value.charAt(i - 1).isWhitespace do i -= 1
-          commit(value.substring(0, i) + value.substring(c), i)
+        else if c > 0 then commit(value.substring(0, wordLeftIdx(c)) + value.substring(c), wordLeftIdx(c))
 
       def applySnapshot(s: EditSnapshot): Unit =
         if s.text != value then onChange(s.text)
@@ -264,6 +272,8 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
           case Key.C if primary          => copy()
           case Key.X if primary          => cut()
           case Key.V if primary          => paste()
+          case Key.Left if wordMod       => moveTo(wordLeftIdx(c), e.shift)
+          case Key.Right if wordMod      => moveTo(wordRightIdx(c), e.shift)
           case Key.Left if !e.shift && hasSel  => setCollapsed(selLo)
           case Key.Left                  => moveTo(c - 1, e.shift)
           case Key.Right if !e.shift && hasSel => setCollapsed(selHi)
@@ -501,6 +511,8 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
           case Key.C if primary    => copy()
           case Key.X if primary    => cut()
           case Key.V if primary    => paste()
+          case Key.Left if wordMod  => edit(_.wordLeft(e.shift))
+          case Key.Right if wordMod => edit(_.wordRight(e.shift))
           case Key.Left            => edit(_.left(e.shift))
           case Key.Right           => edit(_.right(e.shift))
           case Key.Up              => moveVert(-1, e.shift)

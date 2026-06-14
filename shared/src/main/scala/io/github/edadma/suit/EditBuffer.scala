@@ -141,19 +141,36 @@ final case class EditBuffer(text: String, caret: Int = 0, anchor: Int = 0):
       if c >= length then this
       else EditBuffer(text.substring(0, c) + text.substring(c + 1), c, c)
 
-  /** Delete the selection, or — with none — the whole word to the left of the caret: any run of
-    * whitespace immediately before the caret, then the run of non-whitespace before that (the
+  /** The index one word to the left of `i`: skip a run of whitespace, then a run of
+    * non-whitespace. Lands at the start of the previous word, or `0`. */
+  def wordLeftOf(i: Int): Int =
+    var j = clamp(i)
+    while j > 0 && text.charAt(j - 1).isWhitespace do j -= 1
+    while j > 0 && !text.charAt(j - 1).isWhitespace do j -= 1
+    j
+
+  /** The index one word to the right of `i`: skip a run of whitespace, then a run of
+    * non-whitespace. Lands at the end of the next word, or `length`. */
+  def wordRightOf(i: Int): Int =
+    var j = clamp(i)
+    while j < length && text.charAt(j).isWhitespace do j += 1
+    while j < length && !text.charAt(j).isWhitespace do j += 1
+    j
+
+  /** Move the caret one word left (Option/Ctrl+Left); `extend` keeps the anchor for a selection. */
+  def wordLeft(extend: Boolean): EditBuffer = moveTo(wordLeftOf(caret), extend)
+
+  /** Move the caret one word right (Option/Ctrl+Right); `extend` keeps the anchor for a selection. */
+  def wordRight(extend: Boolean): EditBuffer = moveTo(wordRightOf(caret), extend)
+
+  /** Delete the selection, or — with none — the whole word to the left of the caret (the
     * Option/Ctrl+Backspace behaviour). At the start of the text it is a no-op. */
   def deleteWordLeft: EditBuffer =
     if hasSelection then insert("")
     else
       val c = clamp(caret)
-      if c == 0 then this
-      else
-        var i = c
-        while i > 0 && text.charAt(i - 1).isWhitespace do i -= 1
-        while i > 0 && !text.charAt(i - 1).isWhitespace do i -= 1
-        EditBuffer(text.substring(0, i) + text.substring(c), i, i)
+      val i = wordLeftOf(c)
+      if i == c then this else EditBuffer(text.substring(0, i) + text.substring(c), i, i)
 
   /** Insert a newline at the caret (the Enter key). */
   def newline: EditBuffer = insert("\n")

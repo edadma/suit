@@ -118,3 +118,15 @@ class EditBufferSpec extends AnyFunSuite:
   test("deleteWordLeft with a selection just removes the selection"):
     val b = EditBuffer("alpha beta", 0, 5) // selects "alpha"
     assert(b.deleteWordLeft.text == " beta")
+
+  test("wordLeft moves to the start of the previous word; wordRight to the end of the next"):
+    val end = EditBuffer("hello world foo", 15, 15) // caret at end
+    assert(end.wordLeft(false).caret == 12)                       // start of "foo"
+    assert(end.wordLeft(false).wordLeft(false).caret == 6)        // start of "world"
+    val start = EditBuffer("hello world", 0, 0)
+    assert(start.wordRight(false).caret == 5)                     // end of "hello"
+    assert(start.wordRight(false).wordRight(false).caret == 11)   // end of "world"
+
+  test("a word move with extend keeps the anchor so it selects"):
+    val sel = EditBuffer("alpha beta", 10, 10).wordLeft(true) // from the end
+    assert(sel.caret == 6 && sel.anchor == 10 && sel.hasSelection)
