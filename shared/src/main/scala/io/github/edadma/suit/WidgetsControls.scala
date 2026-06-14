@@ -137,9 +137,20 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
     * Caret and selection positions come from measuring text prefixes through the installed
     * [[TextMeasurer]], so the geometry is exact and JVM-testable. The content is clipped to the
     * field and scrolls horizontally to keep the caret in view once the text outgrows it. The
-    * caret blinks while focused and snaps solid for a full interval after any edit or move. */
-  val TextField: Component2[String, String => Unit] =
-    component[String, String => Unit] { (value, onChange) =>
+    * caret blinks while focused and snaps solid for a full interval after any edit or move.
+    *
+    * Pressing Enter fires `onSubmit` when one is given — a single-line field submits on Enter, so a
+    * dialog can wire this to its confirm action. */
+  def TextField(value: String, onChange: String => Unit, onSubmit: (() => Unit) | Null = null): VNode =
+    TextFieldImpl(TextFieldProps(value, onChange, onSubmit))
+
+  private case class TextFieldProps(value: String, onChange: String => Unit, onSubmit: (() => Unit) | Null)
+
+  private val TextFieldImpl: Component[TextFieldProps] =
+    component[TextFieldProps] { p =>
+      val value                    = p.value
+      val onChange                 = p.onChange
+      val onSubmit                 = p.onSubmit
       val theme                    = useTheme()
       val (caret, setCaret, _)     = useState(0)
       val (anchor, setAnchor, _)   = useState(0)
@@ -272,6 +283,7 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
           case Key.C if primary          => copy()
           case Key.X if primary          => cut()
           case Key.V if primary          => paste()
+          case Key.Enter if onSubmit != null => onSubmit()
           case Key.Left if wordMod       => moveTo(wordLeftIdx(c), e.shift)
           case Key.Right if wordMod      => moveTo(wordRightIdx(c), e.shift)
           case Key.Left if !e.shift && hasSel  => setCollapsed(selLo)

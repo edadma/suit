@@ -58,7 +58,7 @@ class TextFieldSpec extends AnyFunSuite with BeforeAndAfterEach:
   /** Mount a controlled TextField (echoing edits through `useState`) filling a 240-wide
     * field, focus it, and return a harness. The Stretch column gives the field a tight width
     * so it fills the row and click coordinates map across the whole field. */
-  private def mount(initial: String = ""): Harness =
+  private def mount(initial: String = "", onSubmit: (() => Unit) | Null = null): Harness =
     Host.config = new SuitHostConfig
     val clockMs = new Array[Double](1)
     val clock   = new FrameClock(() => clockMs(0))
@@ -67,7 +67,7 @@ class TextFieldSpec extends AnyFunSuite with BeforeAndAfterEach:
     val app = view {
       val (v, setV, _) = useState(initial)
       live = v
-      col(crossAxisAlignment = CrossAxisAlignment.Stretch)(TextField(v, setV))
+      col(crossAxisAlignment = CrossAxisAlignment.Stretch)(TextField(v, setV, onSubmit))
     }
     val root = new RenderRoot(Size(240, 40))
     createRoot(root).render(app())
@@ -243,6 +243,14 @@ class TextFieldSpec extends AnyFunSuite with BeforeAndAfterEach:
     val h = mount()
     assert(h.field.focusable)
     assert(h.field.acceptsText)
+
+  test("Enter fires onSubmit (a single-line field submits)"):
+    var submitted = 0
+    val h         = mount(onSubmit = () => submitted += 1)
+    h.typeText("hello")
+    h.key(Key.Enter)
+    assert(submitted == 1)
+    assert(h.current() == "hello") // Enter submits; it does not alter the text
 
   test("the field is one line tall, not the full height it is offered"):
     val h = mount() // mounted in a 240×40 root via a Stretch column, so 40px of height is on offer
