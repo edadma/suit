@@ -220,7 +220,9 @@ object Suit:
       while event.isDefined do
         val e = event.get
         e.kind match
-          case QUIT              => running = false
+          // A close request is routed through WindowControl, so the app can intervene (e.g. confirm
+          // discarding unsaved changes) before the loop actually stops.
+          case QUIT              => WindowControl.requestClose(() => running = false)
           case MOUSE_BUTTON_DOWN => router.down(Offset(e.mouseX, e.mouseY), e.mouseButton)
           case MOUSE_BUTTON_UP   => router.up(Offset(e.mouseX, e.mouseY), e.mouseButton)
           case MOUSE_MOTION =>
