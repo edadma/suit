@@ -6,7 +6,9 @@ import org.scalatest.BeforeAndAfterEach
 // The window-close seam: by default a close proceeds at once; a handler can defer or veto it.
 class WindowControlSpec extends AnyFunSuite with BeforeAndAfterEach:
 
-  override def afterEach(): Unit = WindowControl.onCloseRequest = proceed => proceed()
+  override def afterEach(): Unit =
+    WindowControl.onCloseRequest = proceed => proceed()
+    WindowControl.titleSetter = _ => ()
 
   test("the default handler proceeds with the quit immediately"):
     var quit = false
@@ -21,3 +23,9 @@ class WindowControlSpec extends AnyFunSuite with BeforeAndAfterEach:
     assert(!quit)  // vetoed for now — the app is showing its confirmation
     deferred()     // the user confirms
     assert(quit)
+
+  test("setTitle forwards to the runtime's installed title setter"):
+    var got = ""
+    WindowControl.titleSetter = t => got = t
+    WindowControl.setTitle("doc.tex — Scriptura")
+    assert(got == "doc.tex — Scriptura")

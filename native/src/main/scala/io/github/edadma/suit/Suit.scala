@@ -59,6 +59,9 @@ object Suit:
     // bar and the content runs down into the visible desktop rather than under the dock.
     place.foreach((x, y) => window.setPosition(x, y))
 
+    // Let the application retitle the window at runtime (e.g. the open document's name).
+    WindowControl.titleSetter = t => window.setTitle(t)
+
     val renderer = window.createRenderer()
     if renderer.isNull then
       System.err.println(s"suit: failed to create renderer: ${error}")

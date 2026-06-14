@@ -13,3 +13,9 @@ object WindowControl:
   var onCloseRequest: (() => Unit) => Unit = proceed => proceed()
 
   private[suit] def requestClose(proceed: () => Unit): Unit = onCloseRequest(proceed)
+
+  /** The runtime installs the real title setter here; before a window exists it is a no-op. */
+  private[suit] var titleSetter: String => Unit = _ => ()
+
+  /** Set the window's title bar text — e.g. the open document's name with a `*` when unsaved. */
+  def setTitle(title: String): Unit = titleSetter(title)
