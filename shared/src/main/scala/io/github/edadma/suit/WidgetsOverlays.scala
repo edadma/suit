@@ -266,7 +266,7 @@ private[suit] trait WidgetsOverlays extends WidgetsSupport:
         onMouseLeave = _ => setHover(false),
         onClick      = _ => onSelect(),
         onKeyDown    = e => if e.scancode == Key.Space || e.scancode == Key.Enter then onSelect(),
-      )(text(label))
+      )(text(label, color = theme.surfaceText))
     }
 
   // The dropdown menu implementation. Props: open flag, close callback, the anchor ref (placed
@@ -363,7 +363,7 @@ private[suit] trait WidgetsOverlays extends WidgetsSupport:
         onMouseEnter = _ => { setHover(true); if p.anyOpen && !p.isOpen then p.onOpen() },
         onMouseLeave = _ => setHover(false),
         onClick      = _ => if p.isOpen then p.onClose() else p.onOpen(),
-      )(text(p.label))
+      )(text(p.label, color = theme.surfaceText))
     }
 
   private case class MenuBarProps(menus: Seq[MenuEntry], width: Double)

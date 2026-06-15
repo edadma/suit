@@ -147,3 +147,13 @@ class MenuBarSpec extends AnyFunSuite with BeforeAndAfterEach:
     assert(m.focus.escape())
     m.settle()
     assert(m.overlay.children.isEmpty)
+
+  test("a top-level bar label paints with the theme's surface ink, not the black fallback"):
+    // The bar sits on the surface colour, so its labels must take the theme's surface ink rather
+    // than the inherited black default — which would be unreadable on a dark surface.
+    val m     = mount(barApp(collection.mutable.ListBuffer.empty))
+    m.settle()
+    val label = allObjects(m.root).collectFirst { case t: RenderText if t.text == "File" => t }
+      .getOrElse(fail("bar label not found"))
+    assert(label.resolvedStyle.color == Theme.dark.surfaceText)
+    assert(label.resolvedStyle.color != TextStyle.default.color)

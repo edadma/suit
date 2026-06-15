@@ -50,7 +50,10 @@ object Suit:
     // Window and renderer creation can fail — e.g. when there is no usable display (a process not
     // attached to the desktop GUI session). Detect it and exit with the SDL error, rather than
     // falling through into the event loop and spinning forever with no window.
-    val window = createWindow(title, initW, initH, WINDOW_RESIZABLE)
+    // HIGH_PIXEL_DENSITY makes the window report a true pixel size on a HiDPI/Retina display, so the
+    // backbuffer is allocated at the display's real resolution and the frame rasterises sharp rather
+    // than being drawn at logical (1×) size and stretched up to the screen by the compositor.
+    val window = createWindow(title, initW, initH, WINDOW_RESIZABLE | WINDOW_HIGH_PIXEL_DENSITY)
     if window.isNull then
       System.err.println(s"suit: failed to create window: ${error}")
       quit()

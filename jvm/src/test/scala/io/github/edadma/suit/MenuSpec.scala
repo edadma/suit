@@ -135,3 +135,19 @@ class MenuSpec extends AnyFunSuite:
     m.settle()
     assert(m.focus.escape())
     assert(closed == 1)
+
+  // Depth-first search for the first text node carrying `s`, used to inspect a menu item's ink.
+  private def findText(ro: RenderObject, s: String): Option[RenderText] =
+    ro match
+      case t: RenderText if t.text == s => Some(t)
+      case _                            => ro.children.iterator.flatMap(c => findText(c, s)).nextOption()
+
+  test("a menu item paints with the theme's surface ink, not the black fallback"):
+    // The item draws on the surface-coloured card, so it must take the theme's surface ink.
+    // Without an explicit colour it would inherit nothing in the portal and fall back to the
+    // black default — invisible on a dark surface (the default theme is dark).
+    val m    = mount(menuApp(open = true, () => (), Seq("One" -> (() => ()))))
+    m.settle()
+    val item = findText(m.overlay, "One").getOrElse(fail("menu item text not found"))
+    assert(item.resolvedStyle.color == Theme.dark.surfaceText)
+    assert(item.resolvedStyle.color != TextStyle.default.color)
