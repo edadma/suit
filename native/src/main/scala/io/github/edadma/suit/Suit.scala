@@ -31,6 +31,10 @@ object Suit:
     * file through FreeType instead. */
   def run(title: String, width: Int, height: Int, fontPath: String | Null = null)(app: VNode): Unit =
     setMainReady()
+    // This thread owns the tree, the hooks, and every seam installed below, for the window's
+    // lifetime. Claiming it lets a worker thread tell (via `UiThread.isCurrent`) that it must
+    // hand work over rather than touch state itself.
+    UiThread.claim()
     if !init(INIT_VIDEO) then
       System.err.println(s"suit: SDL_Init failed: ${error}")
       return
@@ -274,6 +278,12 @@ object Suit:
               root.dirty        = true
           case _          => ()
         event = pollEvent()
+
+      // Run work handed over by background threads (a decoded frame, a finished load) before
+      // the scheduler drains, so a posted thunk's state writes commit in this same frame rather
+      // than waiting for the next one. This is the only point at which another thread's work
+      // enters the UI; everything below here is single-threaded again.
+      UiThread.drain()
 
       // Run whatever the handlers produced (state updates, effects), advance any animation
       // by one frame, then commit whatever that produced, before painting.
