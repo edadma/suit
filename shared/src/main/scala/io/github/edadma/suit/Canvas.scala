@@ -17,6 +17,15 @@ trait Canvas:
   def fillRect(rect: Rect, paint: Paint): Unit
   def strokeRect(rect: Rect, paint: Paint, width: Double): Unit
 
+  /** Erase `rect` to fully transparent, replacing whatever was there rather than blending over
+    * it — a hole in the layer, not a fill with a see-through colour.
+    *
+    * This exists for compositing content the frame is *not* rasterised into: a [[RenderVideo]]
+    * punches a hole where its frame goes so the video texture, blitted underneath by the runtime,
+    * shows through the UI layer. It honours the clip in force, so a hole in a scrolled or clipped
+    * subtree cannot erase past the edges its content is confined to. */
+  def clearRect(rect: Rect): Unit
+
   /** Fill a rounded rectangle. `radius` gives the four corner radii (the backend clamps
     * each to half the smaller side). A zero radius is just a rectangle, but callers use
     * [[fillRect]] for that — this path exists for the rounded case. */

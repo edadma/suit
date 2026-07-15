@@ -1034,6 +1034,59 @@ final class RenderSurface(var image: RasterImage | Null) extends RenderObject:
       case img: RasterImage => canvas.drawImage(img, Rect.at(origin, size))
       case null             => ()
 
+/** A leaf that shows a video frame — the one thing suit does not rasterise.
+  *
+  * It paints no pixels of the frame at all. It fills its rectangle with `background` and then
+  * punches a transparent hole ([[Canvas.clearRect]]) exactly where the frame belongs; the runtime
+  * blits the [[VideoLayer]]'s texture into that hole from underneath, and the UI layer composites
+  * over it. So the frame never touches Cairo, never gets colour-converted or scaled on the CPU,
+  * and a new frame costs nothing here at all — no repaint, no relayout, not even a dirty flag.
+  * The next present simply shows the new texture. See `video.scala` for why.
+  *
+  * The background is what shows in the letterbox bars when the frame's shape does not match the
+  * rectangle's ([[VideoFit.Contain]]), which is why it defaults to black rather than to
+  * transparent: bars are part of the picture the editor is judging.
+  *
+  * It sizes to its explicit `width`/`height` when given, otherwise **fills** what the parent
+  * offers (an unbounded axis collapses to nothing), like [[RenderCanvas]] — a preview monitor
+  * takes its pane. It is a leaf for the tree but not for input: give it handlers and a
+  * click-to-scrub surface works. */
+final class RenderVideo(var layer: VideoLayer | Null) extends RenderObject:
+  var width:       Option[Double] = None
+  var height:      Option[Double] = None
+  var fit:         VideoFit       = VideoFit.Contain
+  var background:  Color          = Color.black
+
+  /** The frame's pixel aspect ratio — the displayed width of one stored pixel over its height.
+    * 1 for square-pixel formats; anything else for anamorphic or SD sources, where ignoring it
+    * shows people too thin or too wide. See [[VideoGeometry.place]]. */
+  var pixelAspect: Double = 1.0
+
+  def layout(constraints: Constraints): Unit =
+    val w = width.getOrElse(if constraints.maxWidth.isFinite then constraints.maxWidth else 0.0)
+    val h = height.getOrElse(if constraints.maxHeight.isFinite then constraints.maxHeight else 0.0)
+    size = constraints.constrain(Size(w, h))
+
+  /** Where this widget's frame is read from and where it lands, in the window — the rectangles
+    * the runtime blits between. Empty rectangles until a layer with a decoded frame is attached,
+    * so the runtime skips a widget that has nothing to show yet. */
+  def placement: (Rect, Rect) =
+    layer match
+      case l: VideoLayer =>
+        VideoGeometry.place(fit, Rect.at(absoluteOffset, size), l.frameWidth, l.frameHeight, pixelAspect)
+      case null => (Rect(0, 0, 0, 0), Rect(0, 0, 0, 0))
+
+  // The hole is punched against the origin actually being painted at, not against the absolute
+  // offset, so a partial repaint of this widget lands it in the same place a full frame does.
+  override def paint(canvas: Canvas, origin: Offset): Unit =
+    val bounds = Rect.at(origin, size)
+    canvas.fillRect(bounds, Solid(background))
+    layer match
+      case l: VideoLayer =>
+        val (_, dst) = VideoGeometry.place(fit, bounds, l.frameWidth, l.frameHeight, pixelAspect)
+        if dst.width > 0 && dst.height > 0 then canvas.clearRect(dst)
+      case null => ()
+
 /** A direct drawing surface — the toolkit's analogue of an HTML `<canvas>`. It hands the
   * application the very [[Canvas]] suit's own widgets paint through, so a custom drawing (a
   * chart, a game, a physics simulation) issues the same primitives the rest of the UI does and
@@ -1117,6 +1170,36 @@ final class RenderRoot(var windowSize: Size) extends RenderObject:
         val c = n.children(i)
         if c.isRepaintBoundary && c.needsRepaint then out += c
         else walk(c)
+        i += 1
+    walk(this)
+    out.toList
+
+  /** Every video widget in the tree that has a frame to show, in paint order (back to front),
+    * each with the source and destination rectangles the runtime should blit between.
+    *
+    * The runtime collects these fresh each frame rather than during paint, because the two run on
+    * different schedules: a present happens every iteration, while Cairo repaints only when the
+    * tree is dirty. Harvesting during paint would lose every layer on a frame where nothing was
+    * re-rasterised — which, for a video playing over a still UI, is nearly all of them. Layout
+    * runs every frame, so the absolute offsets read here are current.
+    *
+    * Widgets whose placement is empty (no layer attached, or no size yet) are left out, so the
+    * runtime blits only what can actually be drawn. */
+  def videoLayers: List[(VideoLayer, Rect, Rect)] =
+    val out = mutable.ListBuffer.empty[(VideoLayer, Rect, Rect)]
+    def walk(n: RenderObject): Unit =
+      n match
+        case v: RenderVideo =>
+          v.layer match
+            case l: VideoLayer =>
+              val (src, dst) = v.placement
+              if dst.width > 0 && dst.height > 0 && src.width > 0 && src.height > 0 then
+                out += ((l, src, dst))
+            case null => ()
+        case _ => ()
+      var i = 0
+      while i < n.children.length do
+        walk(n.children(i))
         i += 1
     walk(this)
     out.toList

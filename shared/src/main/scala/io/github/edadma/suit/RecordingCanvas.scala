@@ -15,6 +15,9 @@ final class RecordingCanvas extends Canvas:
   def fillRect(rect: Rect, paint: Paint): Unit =
     commands += Command.FillRect(rect, paint)
 
+  def clearRect(rect: Rect): Unit =
+    commands += Command.ClearRect(rect)
+
   def strokeRect(rect: Rect, paint: Paint, width: Double): Unit =
     commands += Command.StrokeRect(rect, paint, width)
 
@@ -72,6 +75,7 @@ object RecordingCanvas:
     * against the captured list. */
   enum Command:
     case FillRect(rect: Rect, paint: Paint)
+    case ClearRect(rect: Rect)
     case StrokeRect(rect: Rect, paint: Paint, width: Double)
     case FillRoundedRect(rect: Rect, radius: BorderRadius, paint: Paint)
     case StrokeRoundedRect(rect: Rect, radius: BorderRadius, paint: Paint, width: Double)

@@ -35,6 +35,7 @@ final class SuitHostConfig extends HostConfig:
     case "svg"      => new RenderSvg(null)
     case "image"    => new RenderImage(null)
     case "surface"  => new RenderSurface(null)
+    case "video"    => new RenderVideo(null)
     case "canvas"   => new RenderCanvas
     case _          => new RenderBox
 
@@ -198,6 +199,25 @@ final class SuitHostConfig extends HostConfig:
         s.handle = value match
           case h: SurfaceHandle => h.target = s; h
           case _                => null
+
+      case (v: RenderVideo, "layer") =>
+        v.layer = value match
+          case l: VideoLayer => l
+          case _             => null
+      case (v: RenderVideo, "fit") =>
+        v.fit = value match
+          case f: VideoFit => f
+          case _           => VideoFit.Contain
+      case (v: RenderVideo, "pixelAspect") =>
+        v.pixelAspect = value match
+          case d: Double => d
+          case _         => 1.0
+      case (v: RenderVideo, "background") =>
+        v.background = value match
+          case c: Color => c
+          case _        => Color.black
+      case (v: RenderVideo, "width")  => v.width = asDoubleOpt(value)
+      case (v: RenderVideo, "height") => v.height = asDoubleOpt(value)
 
       // The draw routine arrives as a two-argument function; on removal it falls back to a
       // no-op so a canvas whose painter is dropped renders blank rather than holding a stale one.

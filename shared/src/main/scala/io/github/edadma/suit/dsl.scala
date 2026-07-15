@@ -293,6 +293,68 @@ object dsl:
     val eref: ElementRef | Null = if ref != null then BoxRef(ref) else null
     el("surface", props, Nil, eref)
 
+  /** A video frame — the one thing suit does not rasterise. It reserves a rectangle, paints a
+    * hole in it, and the runtime blits `layer`'s texture underneath, converting YUV to RGB and
+    * scaling on the GPU. So a frame never touches Cairo, and delivering a new one costs no
+    * repaint at all: hand the layer a frame and the next present shows it.
+    *
+    * `fit` decides how a frame whose shape differs from the rectangle is placed —
+    * [[VideoFit.Contain]] (the default) shows all of it and fills the leftover with `background`,
+    * the letterbox bars a preview monitor wants. Set `pixelAspect` for anamorphic or SD sources,
+    * whose stored pixels are not square.
+    *
+    * It fills the space the parent offers unless given `width`/`height`, and takes pointer and
+    * key handlers, so a click-to-scrub monitor works.
+    *
+    * ```scala
+    * val layer = useRef(VideoTexture(1920, 1080, Colorspace.BT709)).current
+    *
+    * // on a decoder thread — never touch state here, hand it over (see UiThread)
+    * UiThread.post(() => layer.update(frame.y, frame.yPitch, frame.u, ..., frame.v, ...))
+    *
+    * video(layer, fit = VideoFit.Contain)
+    * ```
+    */
+  def video(
+      layer:        VideoLayer,
+      fit:          VideoFit                        = VideoFit.Contain,
+      pixelAspect:  Double                          = 1.0,
+      background:   Color                           = Color.black,
+      width:        Double                          = Double.NaN,
+      height:       Double                          = Double.NaN,
+      ref:          Ref[RenderObject | Null] | Null = null,
+      onClick:      (PointerEvent => Unit) | Null   = null,
+      onMouseDown:  (PointerEvent => Unit) | Null   = null,
+      onMouseUp:    (PointerEvent => Unit) | Null   = null,
+      onMouseMove:  (PointerEvent => Unit) | Null   = null,
+      onMouseEnter: (PointerEvent => Unit) | Null   = null,
+      onMouseLeave: (PointerEvent => Unit) | Null   = null,
+      onWheel:      (ScrollEvent => Unit)     | Null = null,
+      onKeyDown:    (KeyEvent => Unit)        | Null = null,
+      onKeyUp:      (KeyEvent => Unit)        | Null = null,
+      focusable:    Boolean                          = false,
+  ): VNode =
+    var props = Map[String, Prop](
+      "layer"       -> PropValue(layer),
+      "fit"         -> PropValue(fit),
+      "pixelAspect" -> PropValue(pixelAspect),
+      "background"  -> PropValue(background),
+    )
+    props = sized(props, "width", width)
+    props = sized(props, "height", height)
+    if focusable then props = props.updated("focusable", PropValue(true))
+    props = typed[PointerEvent](props, "click", onClick)
+    props = typed[PointerEvent](props, "mousedown", onMouseDown)
+    props = typed[PointerEvent](props, "mouseup", onMouseUp)
+    props = typed[PointerEvent](props, "mousemove", onMouseMove)
+    props = typed[PointerEvent](props, "mouseenter", onMouseEnter)
+    props = typed[PointerEvent](props, "mouseleave", onMouseLeave)
+    props = typed[ScrollEvent](props, "wheel", onWheel)
+    props = typed[KeyEvent](props, "keydown", onKeyDown)
+    props = typed[KeyEvent](props, "keyup", onKeyUp)
+    val eref: ElementRef | Null = if ref != null then BoxRef(ref) else null
+    el("video", props, Nil, eref)
+
   /** A horizontal stack. Children are laid left to right; flexible children share the
     * leftover width. See [[MainAxisAlignment]] / [[CrossAxisAlignment]] / [[MainAxisSize]]. */
   def row(

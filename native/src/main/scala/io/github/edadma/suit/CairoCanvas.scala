@@ -2,7 +2,7 @@ package io.github.edadma.suit
 
 import scala.collection.mutable
 import scala.scalanative.unsafe.*
-import io.github.edadma.libcairo.{Context, Format, Pattern, imageSurfaceCreate, patternCreateLinear, patternCreateRadial}
+import io.github.edadma.libcairo.{Context, Format, Operator, Pattern, imageSurfaceCreate, patternCreateLinear, patternCreateRadial}
 
 // suit's production paint target: a Canvas backed by a Cairo drawing context. Cairo is a
 // real 2D vector engine, so every primitive is anti-aliased by its coverage rasteriser —
@@ -92,6 +92,18 @@ final class CairoCanvas(cr: Context, fonts: Fonts, shadowScaleX: Double = 1.0, s
     val p = source(paint, rect)
     cr.fill()
     disposeSource(p)
+
+  // CLEAR writes zeroes through the mask instead of compositing, so the rectangle ends up
+  // genuinely absent from the layer rather than painted with a transparent colour — which OVER,
+  // the default, would leave untouched. Bracketed by save/restore so the operator does not escape
+  // into the next call, and the current clip still applies, so the hole cannot exceed the bounds
+  // the widget's content is confined to.
+  def clearRect(rect: Rect): Unit =
+    cr.save()
+    cr.setOperator(Operator.CLEAR)
+    cr.rectangle(rect.x, rect.y, rect.width, rect.height)
+    cr.fill()
+    cr.restore()
 
   // Cairo strokes centred on the path; insetting the rectangle by half the line width keeps
   // the whole border inside the object's bounds, matching how a CSS-style border reads.
