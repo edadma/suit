@@ -388,6 +388,12 @@ Video always composites **under** the UI, which is the right constraint for an e
 monitor and timeline thumbnails, with chrome above them). suit is not a compositing engine: two
 clips dissolving into one another is your pipeline doing the mix and handing suit one output frame.
 
+**Inside a scroll.** Because the frame is blitted straight onto the window rather than drawn by
+Cairo, it is confined to a scroll viewport or clipped box by the same clip that bounds its hole:
+the blit is cropped to the ancestor clips and the source narrowed to the still-visible slice, so a
+preview in scrolling chrome stays within it instead of the texture spilling over the edges. (A
+clip's corner radius is not applied to the blit — the visible frame keeps square corners.)
+
 ## scrollView
 
 ```scala

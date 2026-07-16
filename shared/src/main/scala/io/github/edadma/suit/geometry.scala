@@ -28,6 +28,16 @@ final case class Rect(x: Double, y: Double, width: Double, height: Double):
   def contains(px: Double, py: Double): Boolean =
     px >= x && px < right && py >= y && py < bottom
 
+  /** The overlap of this rectangle with `other`, or a zero-size rectangle at the overlap
+    * corner when they do not overlap (a shared edge counts as no overlap, matching
+    * [[contains]]'s exclusive edges). */
+  def intersect(other: Rect): Rect =
+    val x0 = math.max(x, other.x)
+    val y0 = math.max(y, other.y)
+    val x1 = math.min(right, other.right)
+    val y1 = math.min(bottom, other.bottom)
+    if x1 <= x0 || y1 <= y0 then Rect(x0, y0, 0, 0) else Rect(x0, y0, x1 - x0, y1 - y0)
+
 object Rect:
   def at(origin: Offset, size: Size): Rect = Rect(origin.x, origin.y, size.width, size.height)
 

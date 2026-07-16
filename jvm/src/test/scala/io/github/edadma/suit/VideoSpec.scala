@@ -231,3 +231,92 @@ class VideoSpec extends AnyFunSuite:
     assert(!root.dirty)
     // The layer's rectangles are still available to the runtime with the tree entirely clean.
     assert(root.videoLayers.length == 1)
+
+  // -- clipping to ancestors -------------------------------------------------
+  //
+  // The frame is blitted by the runtime straight onto the window, not drawn by Cairo, so unlike
+  // every other widget it is not confined by the clip stack for free. Without this the GPU blit of
+  // a preview inside a scroll viewport spills over the chrome around it. `clippedPlacement` crops
+  // the blit to every ancestor clip and narrows the source to the still-visible slice, so it agrees
+  // with the hole Cairo actually punches (which the pushed clip already bounds).
+
+  // A minimal clipping ancestor reporting a fixed clip rectangle — a scroll viewport or a clipped
+  // card, without the machinery of a real one, so the arithmetic is checked in isolation.
+  private class ClipNode(clip: Rect) extends RenderObject:
+    def layout(constraints: Constraints): Unit          = size = Size(clip.width, clip.height)
+    override def clipShape: Option[(Rect, BorderRadius)] = Some((clip, BorderRadius.zero))
+
+  /** A Fill video of `frame`, sized `videoSize` at absolute `videoOffset`, sitting inside `clip`.
+    * Fill maps the whole frame across the widget 1:1, so the source crop reads directly. */
+  private def clippedVideo(clip: Rect, videoOffset: Offset, videoSize: Size, frame: (Int, Int)): RenderVideo =
+    val root = new RenderRoot(Size(1000, 1000))
+    val c    = new ClipNode(clip)
+    val v    = new RenderVideo(new FakeLayer(frame._1, frame._2))
+    v.fit = VideoFit.Fill
+    root.insertChild(c, null)
+    c.insertChild(v, null)
+    c.offset = Offset.zero
+    c.size   = Size(clip.width, clip.height)
+    v.offset = videoOffset
+    v.size   = videoSize
+    v
+
+  test("Rect.intersect overlaps, touches, contains, and misses"):
+    assert(Rect(0, 0, 10, 10).intersect(Rect(5, 5, 10, 10)) == Rect(5, 5, 5, 5)) // corner overlap
+    assert(Rect(0, 0, 100, 100).intersect(Rect(10, 10, 20, 20)) == Rect(10, 10, 20, 20)) // contained
+    val miss = Rect(0, 0, 10, 10).intersect(Rect(20, 20, 5, 5))
+    assert(miss.width == 0.0 && miss.height == 0.0) // disjoint
+    val edge = Rect(0, 0, 10, 10).intersect(Rect(10, 0, 5, 10))
+    assert(edge.width == 0.0) // a shared edge is not an overlap
+
+  test("a video scrolled partly out of its clip is cropped, and the source narrowed to match"):
+    // 100x100 frame filling a 100x100 pane, scrolled up 40px so its top is above the viewport.
+    val v          = clippedVideo(Rect(0, 0, 100, 100), Offset(0, -40), Size(100, 100), (100, 100))
+    val (src, dst) = v.clippedPlacement
+    assert(dst == Rect(0, 0, 100, 60))  // only the 60px inside the viewport is blitted
+    assert(src == Rect(0, 40, 100, 60)) // and only the matching bottom 60 rows are read
+
+  test("a video fully inside its clip is placed unchanged"):
+    val v = clippedVideo(Rect(0, 0, 200, 200), Offset(10, 10), Size(50, 50), (50, 50))
+    assert(v.clippedPlacement == v.placement)
+    assert(v.clippedPlacement == (Rect(0, 0, 50, 50), Rect(10, 10, 50, 50)))
+
+  test("a video scrolled entirely out of its clip places nothing"):
+    val v          = clippedVideo(Rect(0, 0, 100, 100), Offset(0, -200), Size(100, 100), (100, 100))
+    val (src, dst) = v.clippedPlacement
+    assert(dst.width == 0.0 && dst.height == 0.0)
+    assert(src.width == 0.0 && src.height == 0.0)
+
+  test("nested clips intersect — a video is confined to their overlap"):
+    val root  = new RenderRoot(Size(1000, 1000))
+    val outer = new ClipNode(Rect(0, 0, 100, 100))
+    val inner = new ClipNode(Rect(0, 0, 100, 50)) // a tighter clip within the outer one
+    val v     = new RenderVideo(new FakeLayer(100, 100))
+    v.fit = VideoFit.Fill
+    root.insertChild(outer, null)
+    outer.insertChild(inner, null)
+    inner.insertChild(v, null)
+    outer.size = Size(100, 100)
+    inner.size = Size(100, 50)
+    v.size     = Size(100, 100)
+    val (src, dst) = v.clippedPlacement
+    assert(dst == Rect(0, 0, 100, 50)) // the inner clip wins on the short axis
+    assert(src == Rect(0, 0, 100, 50))
+
+  test("videoLayers hands the runtime the clipped rectangles, and drops a fully-clipped video"):
+    // The integration: the list the runtime blits from is the clipped one, so nothing it is handed
+    // can spill past a viewport.
+    val visible = clippedVideo(Rect(0, 0, 100, 100), Offset(0, -40), Size(100, 100), (100, 100))
+    visible.parent.asInstanceOf[RenderObject].parent match
+      case r: RenderRoot =>
+        r.videoLayers match
+          case (_, src, dst) :: Nil =>
+            assert(dst == Rect(0, 0, 100, 60))
+            assert(src == Rect(0, 40, 100, 60))
+          case other => fail(s"expected one clipped layer, got $other")
+      case other => fail(s"expected a root, got $other")
+
+    val gone = clippedVideo(Rect(0, 0, 100, 100), Offset(0, -200), Size(100, 100), (100, 100))
+    gone.parent.asInstanceOf[RenderObject].parent match
+      case r: RenderRoot => assert(r.videoLayers.isEmpty)
+      case other         => fail(s"expected a root, got $other")

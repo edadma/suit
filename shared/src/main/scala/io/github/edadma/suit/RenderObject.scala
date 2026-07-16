@@ -1075,12 +1075,44 @@ final class RenderVideo(var layer: VideoLayer | Null) extends RenderObject:
 
   /** Where this widget's frame is read from and where it lands, in the window — the rectangles
     * the runtime blits between. Empty rectangles until a layer with a decoded frame is attached,
-    * so the runtime skips a widget that has nothing to show yet. */
+    * so the runtime skips a widget that has nothing to show yet. This is the *unclipped* mapping;
+    * the runtime blits [[clippedPlacement]] so a video inside a scroll cannot spill past it. */
   def placement: (Rect, Rect) =
     layer match
       case l: VideoLayer =>
         VideoGeometry.place(fit, Rect.at(absoluteOffset, size), l.frameWidth, l.frameHeight, pixelAspect)
       case null => (Rect(0, 0, 0, 0), Rect(0, 0, 0, 0))
+
+  /** [[placement]] confined to every clip its ancestors impose, so the GPU blit is bounded
+    * exactly as Cairo bounds the hole this widget punches — a preview inside a scroll viewport
+    * (or a clipped card) stays within it instead of the texture bleeding over the chrome. `dst`
+    * is intersected with each clipping ancestor's rect and `src` is narrowed by the same fraction
+    * so the still-visible slice of the frame maps correctly; an empty overlap yields empty
+    * rectangles, and the runtime skips the layer. A clip's corner radius is not applied to the
+    * blit — the visible rectangle keeps square corners. */
+  def clippedPlacement: (Rect, Rect) =
+    val (src, dst) = placement
+    if src.width <= 0 || src.height <= 0 || dst.width <= 0 || dst.height <= 0 then (src, dst)
+    else
+      var clipped                = dst
+      var n: RenderObject | Null = parent
+      while n != null do
+        val r = n.asInstanceOf[RenderObject]
+        r.clipShape match
+          case Some((rect, _)) => clipped = clipped.intersect(rect)
+          case None            => ()
+        n = r.parent
+      if clipped.width <= 0 || clipped.height <= 0 then (Rect(0, 0, 0, 0), Rect(0, 0, 0, 0))
+      else
+        val sx = src.width / dst.width
+        val sy = src.height / dst.height
+        val croppedSrc = Rect(
+          src.x + (clipped.x - dst.x) * sx,
+          src.y + (clipped.y - dst.y) * sy,
+          clipped.width * sx,
+          clipped.height * sy,
+        )
+        (croppedSrc, clipped)
 
   // The hole is punched against the origin actually being painted at, not against the absolute
   // offset, so a partial repaint of this widget lands it in the same place a full frame does.
@@ -1198,7 +1230,7 @@ final class RenderRoot(var windowSize: Size) extends RenderObject:
         case v: RenderVideo =>
           v.layer match
             case l: VideoLayer =>
-              val (src, dst) = v.placement
+              val (src, dst) = v.clippedPlacement
               if dst.width > 0 && dst.height > 0 && src.width > 0 && src.height > 0 then
                 out += ((l, src, dst))
             case null => ()
