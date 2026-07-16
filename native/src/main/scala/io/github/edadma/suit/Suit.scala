@@ -258,11 +258,52 @@ object Suit:
       renderer.copy(bb.texture)
       renderer.present()
 
+    // Re-read the window's logical and pixel sizes and, when either moved, point the tree at the new
+    // logical size and rebuild the backbuffer to the new pixel size, forcing a full repaint (the
+    // fresh surface has no prior pixels). Returns whether anything changed. Shared by the event-loop
+    // resize case and the live-resize watch below, so both keep the tree and backbuffer in step.
+    def syncBackbuffer(): Boolean =
+      val (logicalW, logicalH) = window.size
+      val (pixelW, pixelH)     = window.sizeInPixels
+      val changed =
+        logicalW.toDouble != root.windowSize.width || logicalH.toDouble != root.windowSize.height ||
+          pixelW != bb.device.width || pixelH != bb.device.height
+      if changed then
+        root.windowSize = Size(logicalW.toDouble, logicalH.toDouble)
+        bb.cr.destroy()
+        bb.surface.destroy()
+        bb.texture.destroy()
+        bb = makeBackbuffer()
+        root.needsRepaint = true
+        root.dirty        = true
+      changed
+
     val appRoot = createRoot(root)
     appRoot.render(OverlayContext.provide(OverlayEnv(overlay, focusManager), app))
     root.insertChild(overlay, null)
     drainScheduler() // commit any effects the initial mount queued
     repaint()        // lay out and paint the first frame before the loop
+
+    // Redraw *during* a live window resize. macOS (and some window managers) run a modal loop while
+    // the user drags a window edge, and the main frame loop below is blocked for its whole duration
+    // — so without this the OS just stretches the last frame until the drag ends. SDL still pumps
+    // events through an event watch during that modal loop, so re-lay-out and present from here on
+    // every resize/expose, live. The guard stops a present that itself pumped an event (unlikely,
+    // but cheap to rule out) from re-entering.
+    var inResizeWatch = false
+    addEventWatch { e =>
+      e.kind match
+        case (WINDOW_RESIZED | WINDOW_PIXEL_SIZE_CHANGED) if !inResizeWatch =>
+          inResizeWatch = true
+          try
+            syncBackbuffer()
+            if root.dirty then
+              root.dirty = false
+              repaint()
+            presentFrame()
+          finally inResizeWatch = false
+        case _ => ()
+    }
 
     // The wheel event does not carry the cursor position in the bound accessors, so the
     // last position seen from a motion event is used to route the scroll.
@@ -325,28 +366,13 @@ object Suit:
             else keyRouter.down(e.keyScancode, e.keyRepeat, shift, ctrl, meta, alt)
           case KEY_UP    => keyRouter.up(e.keyScancode)
           case TEXT_INPUT => textRouter.input(e.text)
-          // The window changed size (a user drag, or the OS fitting it to the display). Re-read
-          // the logical and pixel sizes, and when either moved, point the tree at the new logical
-          // size and rebuild the backbuffer to the new pixel size — then force a full repaint, the
-          // fresh surface having no prior pixels. The layout reflows on the next frame, so the
-          // panes (and anything riding their edges, like a button or a scrollbar) follow the
-          // window. Both RESIZED and PIXEL_SIZE_CHANGED can fire for one resize; the guard makes
-          // the second a no-op.
-          case WINDOW_RESIZED | WINDOW_PIXEL_SIZE_CHANGED =>
-            val (logicalW, logicalH) = window.size
-            val (pixelW, pixelH)     = window.sizeInPixels
-            val resized =
-              logicalW.toDouble != root.windowSize.width || logicalH.toDouble != root.windowSize.height ||
-                pixelW != bb.device.width || pixelH != bb.device.height
-            if resized then
-              root.windowSize = Size(logicalW.toDouble, logicalH.toDouble)
-              bb.cr.destroy()
-              bb.surface.destroy()
-              bb.texture.destroy()
-              bb = makeBackbuffer()
-              root.needsRepaint = true
-              root.dirty        = true
-          case _          => ()
+          // The window changed size (a user drag, or the OS fitting it to the display). The live
+          // resize is already handled by the event watch above, which fires even while this loop is
+          // blocked in a modal drag; this keeps the non-drag paths (a programmatic resize, a
+          // display move) in step. Both RESIZED and PIXEL_SIZE_CHANGED can fire for one resize; the
+          // size guard inside makes the second a no-op.
+          case WINDOW_RESIZED | WINDOW_PIXEL_SIZE_CHANGED => syncBackbuffer()
+          case _                                          => ()
         event = pollEvent()
 
       // Run work handed over by background threads (a decoded frame, a finished load) before
