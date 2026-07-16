@@ -38,7 +38,7 @@ output = "/juicerdocs.js"
 minify = true
 
 [juicerdocs]
-version    = "v0.0.13"
+version    = "v0.0.14"
 getStarted = true
 
 # Violet palette (distinct from sdl3's amber and riposte's teal). Light mode.
