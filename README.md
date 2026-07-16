@@ -15,7 +15,7 @@ components with `useState`, lay them out with `col` / `row` / `box` / `text`, an
 drive the screen. In short: *Flutter in Scala Native*.
 
 > **Status:** published to Maven Central, but pre-1.0 and evolving — pin a version and expect
-> the occasional breaking change. Add `"io.github.edadma" %%% "suit" % "0.0.12"` to a Scala
+> the occasional breaking change. Add `"io.github.edadma" %%% "suit" % "0.0.13"` to a Scala
 > Native project, or build from the checkout to contribute (see [Documentation](#documentation)).
 
 ## Documentation
