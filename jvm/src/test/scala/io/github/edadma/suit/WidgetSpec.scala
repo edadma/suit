@@ -171,6 +171,64 @@ class WidgetSpec extends AnyFunSuite:
     m.settle()
     assert(math.abs(v - 0.55) < 1e-9)
 
+  test("a slider reports onChangeStart once at the press point, then onChange"):
+    var starts  = 0
+    var startAt = -1.0
+    var changes = 0
+    val m = mount(
+      Slider(0.0, _ => changes += 1, onChangeStart = f => { starts += 1; startAt = f }),
+      Size(200, 24),
+    )
+    m.pointer.down(Offset(50, 12), 1) // a quarter across
+    m.settle()
+    assert(starts == 1)
+    assert(math.abs(startAt - 0.25) < 1e-9)
+    assert(changes == 1) // the press also reports through onChange
+
+  test("a slider reports onChangeEnd once with the final value on release"):
+    var ends  = 0
+    var endAt = -1.0
+    val m = mount(
+      Slider(0.5, _ => (), onChangeEnd = f => { ends += 1; endAt = f }),
+      Size(200, 24),
+    )
+    m.pointer.down(Offset(100, 12), 1) // grab
+    m.pointer.move(Offset(150, 12))    // drag toward 0.75 — no end yet
+    m.settle()
+    assert(ends == 0)
+    m.pointer.up(Offset(150, 12), 1)   // release
+    m.settle()
+    assert(ends == 1)
+    assert(math.abs(endAt - 0.75) < 1e-9)
+
+  test("a slider fill spans the value fraction of the track"):
+    val m = mount(Slider(0.75, _ => (), fill = true), Size(200, 24))
+    m.settle()
+    val fillBox = boxes(m.root).find(b => b.height.contains(4.0) && b.background == Solid(Theme.default.accent))
+    assert(fillBox.isDefined)
+    assert(math.abs(fillBox.get.size.width - 150.0) < 2.0) // 0.75 of the 200-wide track
+
+  test("a slider with fill = false draws no accent bar"):
+    val m = mount(Slider(0.5, _ => (), fill = false), Size(200, 24))
+    m.settle()
+    assert(!boxes(m.root).exists(b => b.height.contains(4.0) && b.background == Solid(Theme.default.accent)))
+
+  test("a drag snaps the thumb to the value without waiting for the glide"):
+    // A stateful slider so the reported value feeds back and re-renders the thumb. During a
+    // drag the thumb has no transition, so it reaches the pressed fraction the instant the
+    // render commits — before any animation clock is pumped. (With the old always-on 90ms
+    // glide the thumb would still be sitting at the left edge here.)
+    val app = view {
+      val (value, setValue, _) = useState(0.0)
+      Slider(value, setValue)
+    }
+    val m = mount(app(), Size(200, 24))
+    m.pointer.down(Offset(160, 12), 1) // press at 0.8, beginning a drag
+    Scheduler.flushSync()
+    m.root.layout(Constraints.tight(m.root.windowSize))
+    val thumb = boxes(m.root).find(_.width.contains(16.0)).get
+    assert(thumb.absoluteOffset.x > 120.0) // snapped well to the right, not still at the left
+
   // --- Card ----------------------------------------------------------------
 
   test("a card paints the theme surface"):

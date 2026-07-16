@@ -89,43 +89,102 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
     * through `onChange` on a press, a drag, or the arrow keys while focused. The new
     * value comes from the press position in the slider's own coordinate space
     * (`local.x / size.width`), which is why the handlers live on the outer track and not
-    * on the thumb. */
-  val Slider: Component2[Double, Double => Unit] =
-    component[Double, Double => Unit] { (value, onChange) =>
-      val theme = useTheme()
-      val v     = clamp01(value)
+    * on the thumb.
+    *
+    * Two optional callbacks bracket a drag, mirroring Flutter's `Slider`: `onChangeStart`
+    * fires once with the value at the press point when the thumb is grabbed, and
+    * `onChangeEnd` fires once with the final value when it is released. suit captures the
+    * pointer on press, so the release (and any move off the bar) still routes back here.
+    * `onChange` fires on the press and on every drag move in between, unchanged. Both
+    * bracketing callbacks are pointer-interaction only — the arrow keys report through
+    * `onChange` alone, having no natural grab/release.
+    *
+    * While a drag is active the thumb tracks the cursor exactly (no transition), so
+    * scrubbing feels direct; a keyboard step or any other non-drag change still glides. An
+    * accent fill from the start of the track to the thumb gives the played-progress look of
+    * a scrubber; pass `fill = false` for a bare groove. */
+  def Slider(
+      value:         Double,
+      onChange:      Double => Unit,
+      onChangeStart: (Double => Unit) | Null = null,
+      onChangeEnd:   (Double => Unit) | Null = null,
+      fill:          Boolean = true,
+  ): VNode =
+    SliderImpl(SliderProps(value, onChange, onChangeStart, onChangeEnd, fill))
+
+  private case class SliderProps(
+      value:         Double,
+      onChange:      Double => Unit,
+      onChangeStart: (Double => Unit) | Null,
+      onChangeEnd:   (Double => Unit) | Null,
+      fill:          Boolean,
+  )
+
+  private val SliderImpl: Component[SliderProps] =
+    component[SliderProps] { p =>
+      val theme                      = useTheme()
+      val v                          = clamp01(p.value)
+      val (dragging, setDragging, _) = useState(false)
 
       // The reported value is always the controlled one; the thumb's drawn position glides
-      // toward it through a short transition, so an arrow-key step slides rather than jumps
-      // and a drag trails the cursor by a hair. `onChange` still carries the exact `v`.
-      val shown = clamp01(useTransition(v, 90))
+      // toward it through a short transition, so an arrow-key step slides rather than jumps.
+      // During a drag the transition duration drops to 0, so the thumb snaps to the cursor
+      // for direct scrubbing; on release the target is unchanged, so it settles without a
+      // jump and the glide returns for later keyboard steps.
+      val shown = clamp01(useTransition(v, if dragging then 0 else 90))
 
       def frac(e: PointerEvent): Double =
         if e.size.width <= 0 then 0.0 else clamp01(e.local.x / e.size.width)
 
+      // The fill is split into an accent segment and a transparent remainder in integer flex
+      // proportion to `shown`, so it stretches to the thumb without knowing the laid-out width.
+      val fillFlex = (shown * 1000).round.toInt
+      val restFlex = math.max(0, 1000 - fillFlex)
+
+      // Layers bottom-to-top: the groove, an optional played-progress fill over it, and the
+      // thumb. The groove is a thin bar stretched to full width and centred vertically; the
+      // fill overlays it up to the thumb; the thumb rides the glided fraction.
+      val groove =
+        col(crossAxisAlignment = CrossAxisAlignment.Stretch, mainAxisAlignment = MainAxisAlignment.Center)(
+          box(height = 4, bg = theme.track, radius = 2)(),
+        )
+      val played =
+        col(crossAxisAlignment = CrossAxisAlignment.Stretch, mainAxisAlignment = MainAxisAlignment.Center)(
+          row()(
+            box(height = 4, bg = theme.accent, radius = 2, flex = fillFlex)(),
+            box(flex = restFlex)(),
+          ),
+        )
+      // Alignment x = shown*2-1 maps 0..1 to left..right.
+      val thumb =
+        align(Alignment(shown * 2 - 1, 0))(
+          box(width = 16, height = 16, bg = theme.accent, border = theme.surface, borderWidth = 2, radius = 8)(),
+        )
+      val layers = if p.fill then Seq(groove, played, thumb) else Seq(groove, thumb)
+
       box(
-        height      = 24,
-        focusable   = true,
-        cursor      = Cursor.Pointer,
-        onMouseDown = e => onChange(frac(e)),
-        onMouseMove = e => if e.button != 0 then onChange(frac(e)),
+        height    = 24,
+        focusable = true,
+        cursor    = Cursor.Pointer,
+        onMouseDown = e =>
+          val f = frac(e)
+          setDragging(true)
+          if p.onChangeStart != null then p.onChangeStart(f)
+          p.onChange(f)
+        ,
+        onMouseMove = e => if e.button != 0 then p.onChange(frac(e)),
+        onMouseUp = e =>
+          if dragging then
+            setDragging(false)
+            if p.onChangeEnd != null then p.onChangeEnd(frac(e))
+        ,
         onKeyDown = e =>
           e.scancode match
-            case Key.Left  => onChange(clamp01(v - 0.05))
-            case Key.Right => onChange(clamp01(v + 0.05))
+            case Key.Left  => p.onChange(clamp01(v - 0.05))
+            case Key.Right => p.onChange(clamp01(v + 0.05))
             case _         => (),
       )(
-        stack(Alignment.center)(
-          // The groove: a thin bar stretched to the full width and centred vertically.
-          col(crossAxisAlignment = CrossAxisAlignment.Stretch, mainAxisAlignment = MainAxisAlignment.Center)(
-            box(height = 4, bg = theme.track, radius = 2)(),
-          ),
-          // The thumb: positioned by the glided fraction — alignment x = shown*2-1 maps
-          // 0..1 to left..right.
-          align(Alignment(shown * 2 - 1, 0))(
-            box(width = 16, height = 16, bg = theme.accent, border = theme.surface, borderWidth = 2, radius = 8)(),
-          ),
-        ),
+        stack(Alignment.center)(layers*),
       )
     }
 

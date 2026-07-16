@@ -59,7 +59,13 @@ Checkbox(checked, setChecked)
 ## Slider
 
 ```scala
-val Slider: Component2[Double, Double => Unit]
+def Slider(
+    value:         Double,
+    onChange:      Double => Unit,
+    onChangeStart: (Double => Unit) | Null = null,
+    onChangeEnd:   (Double => Unit) | Null = null,
+    fill:          Boolean = true,
+): VNode
 ```
 
 A horizontal slider over the range `0..1`: a full-width track with a draggable thumb. It is
@@ -75,6 +81,34 @@ box(width = 240)(
   Slider(level, setLevel),
 )
 ```
+
+Two optional callbacks bracket a drag, mirroring Flutter's `Slider`:
+
+- **`onChangeStart`** fires **once** with the value at the press point when the thumb is
+  grabbed.
+- **`onChangeEnd`** fires **once** with the final value when it is released.
+
+suit captures the pointer on press, so the release — and any move off the bar in between —
+still routes back to the widget. `onChange` fires on the press and on every drag move as
+before. Both bracketing callbacks are **pointer-interaction only**: the arrow keys report
+through `onChange` alone, having no natural grab/release. Use them to commit an edit or start
+a preview only while the user is actively scrubbing:
+
+```scala
+val (level, setLevel, _)         = useState(0.4)
+val (scrubbing, setScrubbing, _) = useState(false)
+Slider(
+  level,
+  setLevel,
+  onChangeStart = _ => setScrubbing(true),
+  onChangeEnd   = _ => setScrubbing(false),
+)
+```
+
+While a drag is active the thumb **tracks the cursor exactly** (no transition), so scrubbing
+feels direct; a keyboard step or any other non-drag change still glides. An **accent fill**
+runs from the start of the track to the thumb for the played-progress look of a scrubber —
+pass `fill = false` for a bare groove.
 
 ## TextField
 

@@ -366,6 +366,7 @@ val App = view {
   val (count, setCount, _)     = useState(0)
   val (checked, setChecked, _) = useState(false)
   val (level, setLevel, _)     = useState(0.4)
+  val (scrubbing, setScrubbing, _) = useState(false)
   val (details, setDetails, _) = useState(false)
   val (name, setName, _)       = useState("")
   val (live, setLive, _)       = useState(true)
@@ -486,9 +487,19 @@ val App = view {
                 ),
                 card(
                   col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
-                    text(s"level: ${(level * 100).toInt}%", color = muted),
+                    // onChangeStart/onChangeEnd bracket the drag, so the label reads "scrubbing…"
+                    // only while the thumb is held — the played-progress fill shows the value.
+                    text(
+                      if scrubbing then s"scrubbing… ${(level * 100).toInt}%" else s"level: ${(level * 100).toInt}%",
+                      color = muted,
+                    ),
                     box(width = 260)(
-                      Slider(level, setLevel),
+                      Slider(
+                        level,
+                        setLevel,
+                        onChangeStart = _ => setScrubbing(true),
+                        onChangeEnd = _ => setScrubbing(false),
+                      ),
                     ),
                     // A determinate progress bar tracks the slider's value, fill animating.
                     ProgressBar(level),
