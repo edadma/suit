@@ -109,7 +109,7 @@ lazy val suit = crossProject(JVMPlatform, NativePlatform)
     // binding's `@link`.
     libraryDependencies ++= Seq(
       "io.github.edadma" %%% "vdom"      % "0.3.1",
-      "io.github.edadma" %%% "sdl3"      % "0.2.9",
+      "io.github.edadma" %%% "sdl3"      % "0.2.10",
       "io.github.edadma" %%% "libcairo"  % "0.0.7",
       "io.github.edadma" %%% "freetype"  % "0.0.7",
       "io.github.edadma" %%% "librsvg"   % "0.0.4",
