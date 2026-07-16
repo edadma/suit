@@ -8,7 +8,7 @@ place — the **Scala Native toolchain** and the **native libraries** (SDL3, Cai
 librsvg, libjpeg-turbo) — and then the library itself from Maven Central:
 
 ```scala
-libraryDependencies += "io.github.edadma" %%% "suit" % "0.0.14"
+libraryDependencies += "io.github.edadma" %%% "suit" % "0.0.16"
 ```
 
 [= note =]
