@@ -149,6 +149,34 @@ box(onWheel = e => {
 })(...)
 ```
 
+## Cursor
+
+A widget names the pointer shape shown while the cursor is over it with the `cursor` prop,
+a value of the `Cursor` enum:
+
+```scala
+box(cursor = Cursor.Pointer)(...) // the hand, over anything clickable
+```
+
+`Cursor` is a *semantic* set — `Pointer`, `Text`, `Crosshair`, `Move`, `NotAllowed`,
+`Progress`, `Wait`, and the four resize arrows `ResizeEW` / `ResizeNS` / `ResizeNESW` /
+`ResizeNWSE` — that the native runtime maps to the platform's own system cursors, so a link
+reads as the OS hand and a text field as its I-beam.
+
+The shape **resolves like the text-style cascade**: the runtime shows the `Cursor` of the
+nearest object at or above whatever is under the pointer that names one, so a `Button` sets
+`Cursor.Pointer` once and its inner label inherits it. A widget that names no cursor (the
+default) leaves the shape to its surroundings; with nothing named anywhere, the arrow shows.
+`Cursor.Default` is a real preference — it forces the arrow, overriding an inherited shape —
+distinct from naming nothing, which inherits.
+
+During a drag the shape sticks to the widget the press started on, so a splitter keeps its
+resize arrow while the pointer strays off the thin gutter. The runtime re-resolves every
+frame, so a shape also follows a layout change under a still pointer, not only a move.
+
+The built-in widgets already carry sensible cursors: `Button` / `Checkbox` / `Slider` show
+the hand, `TextField` / `TextArea` the I-beam, and a `splitter` its resize arrow.
+
 ## Handlers on box
 
 All of this is reached through the typed handlers on the `box` builder:
@@ -156,6 +184,7 @@ All of this is reached through the typed handlers on the `box` builder:
 ```scala
 box(
   focusable    = true,
+  cursor       = Cursor.Pointer,               // pointer shape while hovered
   onClick      = (e: PointerEvent) => ...,
   onMouseDown  = (e: PointerEvent) => ...,
   onMouseUp    = (e: PointerEvent) => ...,

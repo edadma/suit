@@ -2,7 +2,7 @@ package io.github.edadma.suit
 
 import scala.collection.mutable
 import io.github.edadma.vdom.{Host, Scheduler}
-import io.github.edadma.sdl3.{Color => SdlColor, *}
+import io.github.edadma.sdl3.{Color => SdlColor, Cursor => SdlCursor, *}
 import io.github.edadma.libcairo.{Context, Format, Surface, imageSurfaceCreate}
 import io.github.edadma.freetype.*
 
@@ -267,6 +267,31 @@ object Suit:
     // last position seen from a motion event is used to route the scroll.
     var lastMouse = Offset.zero
 
+    // The pointer shape. Which suit `Cursor` a widget asks for is pure tree logic (the router
+    // resolves it); mapping that to a platform cursor is the one part that needs SDL. The system
+    // cursors are built on first use and cached — they are process-wide, so one is set as the
+    // active shape whenever the resolved shape changes. `hasMouse` gates it so the arrow is not
+    // moved before the pointer has even entered the window.
+    val systemCursors                = mutable.Map.empty[Cursor, SdlCursor]
+    var currentCursor: Cursor        = Cursor.Default
+    var hasMouse                     = false
+    def cursorShapeId(c: Cursor): Int = c match
+      case Cursor.Default    => SYSTEM_CURSOR_DEFAULT
+      case Cursor.Pointer    => SYSTEM_CURSOR_POINTER
+      case Cursor.Text       => SYSTEM_CURSOR_TEXT
+      case Cursor.Crosshair  => SYSTEM_CURSOR_CROSSHAIR
+      case Cursor.Move       => SYSTEM_CURSOR_MOVE
+      case Cursor.NotAllowed => SYSTEM_CURSOR_NOT_ALLOWED
+      case Cursor.Progress   => SYSTEM_CURSOR_PROGRESS
+      case Cursor.Wait       => SYSTEM_CURSOR_WAIT
+      case Cursor.ResizeEW   => SYSTEM_CURSOR_EW_RESIZE
+      case Cursor.ResizeNS   => SYSTEM_CURSOR_NS_RESIZE
+      case Cursor.ResizeNESW => SYSTEM_CURSOR_NESW_RESIZE
+      case Cursor.ResizeNWSE => SYSTEM_CURSOR_NWSE_RESIZE
+    def applyCursor(c: Cursor): Unit =
+      val sc = systemCursors.getOrElseUpdate(c, createSystemCursor(cursorShapeId(c)))
+      if !sc.isNull then sc.set(): Unit
+
     var running = true
     while running do
       var event = pollEvent()
@@ -280,6 +305,7 @@ object Suit:
           case MOUSE_BUTTON_UP   => router.up(Offset(e.mouseX, e.mouseY), e.mouseButton)
           case MOUSE_MOTION =>
             lastMouse = Offset(e.mouseX, e.mouseY)
+            hasMouse  = true
             router.move(lastMouse)
           case MOUSE_WHEEL => router.wheel(lastMouse, e.wheelX, e.wheelY)
           case KEY_DOWN =>
@@ -343,6 +369,15 @@ object Suit:
         if wantText then window.startTextInput() else window.stopTextInput()
         textInputOn = wantText
 
+      // Match the pointer shape to whatever is under it now — recomputed each frame (after the
+      // tree has settled), so a cursor tracks a layout change beneath a still pointer, not only a
+      // move. Only a change touches SDL.
+      if hasMouse then
+        val wantCursor = router.cursorAt(lastMouse)
+        if wantCursor != currentCursor then
+          applyCursor(wantCursor)
+          currentCursor = wantCursor
+
       // Re-draw and re-upload only when the tree changed; blit and present every frame so an
       // expose or resize always shows a full frame.
       if root.dirty then
@@ -351,6 +386,7 @@ object Suit:
       presentFrame()
 
     measurer.close()
+    systemCursors.values.foreach(_.destroy()) // only the shapes we created; never the default
     bb.cr.destroy()
     bb.surface.destroy()
     bb.texture.destroy()

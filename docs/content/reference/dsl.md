@@ -50,6 +50,7 @@ def box(
     flex:          Int                 = 0,
     focusable:     Boolean             = false,
     acceptsText:   Boolean             = false,  // open text input while focused (text fields)
+    cursor:        Cursor | Null       = null,   // pointer shape while hovered — see the Input guide
     ref: Ref[RenderObject | Null] | Null = null, // bind the live render object into a useRef box
     // pointer / wheel / key / focus handlers — see the Input guide
     onClick: (PointerEvent => Unit) | Null = null,

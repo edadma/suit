@@ -49,6 +49,13 @@ abstract class RenderObject:
     * clicks meant for the content it hovers over. */
   var ignorePointer: Boolean = false
 
+  /** The pointer shape this object asks for while the cursor is over it, or `null` for "no
+    * preference" — the resolver then keeps looking up the ancestor chain (see
+    * [[PointerRouter.cursorAt]]), so a button sets [[Cursor.Pointer]] once and its inner label
+    * inherits it. [[Cursor.Default]] is a real preference (force the arrow), distinct from `null`
+    * (inherit). Only the native runtime reads it, to set the process-wide system cursor. */
+  var cursor: Cursor | Null = null
+
   /** Whether this object caches and repaints independently of the rest of the tree — a
     * **repaint boundary** (Flutter's `RepaintBoundary`). When only the content inside a
     * boundary changes, the runtime re-rasterises just that boundary's region and leaves

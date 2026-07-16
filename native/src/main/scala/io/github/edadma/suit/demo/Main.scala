@@ -49,6 +49,28 @@ private def mutedInk(theme: Theme): Color = Color.lerp(theme.surfaceText, theme.
 private def cardShadow(theme: Theme): Shadow =
   Shadow(color = Color(0, 0, 0, if theme.isDark then 110 else 40), offset = Offset(0, 4), blur = 12)
 
+// The pointer shapes shown in the demo's cursor card, split across two rows.
+private val cursorSwatchesTop: Seq[(String, Cursor)] =
+  Seq("pointer" -> Cursor.Pointer, "text" -> Cursor.Text, "crosshair" -> Cursor.Crosshair,
+    "move" -> Cursor.Move, "not-allowed" -> Cursor.NotAllowed, "wait" -> Cursor.Wait)
+private val cursorSwatchesBottom: Seq[(String, Cursor)] =
+  Seq("progress" -> Cursor.Progress, "resize ↔" -> Cursor.ResizeEW, "resize ↕" -> Cursor.ResizeNS,
+    "resize ⤢" -> Cursor.ResizeNESW, "resize ⤡" -> Cursor.ResizeNWSE, "default" -> Cursor.Default)
+
+/** One labelled swatch that shows `shape` while hovered. */
+private def cursorSwatch(theme: Theme, muted: Color, label: String, shape: Cursor): VNode =
+  box(
+    bg      = theme.background,
+    border  = theme.border,
+    borderWidth = 1,
+    radius  = 8,
+    padding = EdgeInsets.symmetric(horizontal = 10, vertical = 12),
+    cursor  = shape,
+  )(text(label, size = 12, color = muted))
+
+private def cursorRow(theme: Theme, muted: Color, swatches: Seq[(String, Cursor)]): Seq[VNode] =
+  swatches.map((label, shape) => box(flex = 1)(cursorSwatch(theme, muted, label, shape)))
+
 /** A vector icon loaded once through librsvg. The same document renders crisp at any size — the
   * demo draws it at several — because librsvg paints it as vectors straight into suit's Cairo
   * context, with no intermediate raster. */
@@ -624,6 +646,18 @@ val App = view {
                   col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
                     text("Video — YUV straight to the GPU, bypassing Cairo", color = muted),
                     VideoPanel(),
+                  ),
+                ),
+                // Cursors: hover each swatch to see the pointer shape change. The runtime resolves
+                // the Cursor of whatever is under the pointer (inheriting from ancestors) and sets
+                // the platform's own system cursor. The built-in widgets already carry these.
+                card(
+                  col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
+                    text("Cursors — hover a swatch to change the pointer shape", color = muted),
+                    col(spacing = 8)(
+                      row(spacing = 8)(cursorRow(theme, muted, cursorSwatchesTop)*),
+                      row(spacing = 8)(cursorRow(theme, muted, cursorSwatchesBottom)*),
+                    ),
                   ),
                 ),
                 // A splitter: two panes divided by a draggable gutter. Drag the divider (or focus

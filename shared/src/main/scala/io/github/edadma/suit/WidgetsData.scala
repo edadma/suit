@@ -318,6 +318,8 @@ private[suit] trait WidgetsData extends WidgetsSupport:
           width        = if p.axis == Axis.Horizontal then p.gutter else Double.NaN,
           height       = if p.axis == Axis.Vertical then p.gutter else Double.NaN,
           focusable    = true,
+          // A side-by-side split drags left/right; a stacked one up/down.
+          cursor       = if p.axis == Axis.Horizontal then Cursor.ResizeEW else Cursor.ResizeNS,
           onMouseDown  = e => { setDrag(true); update(posFrac(e)) },
           onMouseMove  = e => if e.button != 0 then update(posFrac(e)),
           onMouseUp    = _ => setDrag(false),

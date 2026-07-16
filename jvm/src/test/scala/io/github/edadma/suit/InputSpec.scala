@@ -280,3 +280,56 @@ class InputSpec extends AnyFunSuite:
     outer.layout(Constraints.tight(Size(100, 100)))
     new PointerRouter(outer).wheel(Offset(50, 50), 0, -3)
     assert(seen.toList == List(ScrollEvent(Offset(50, 50), 0, -3)))
+
+  // --- cursor resolution ---------------------------------------------------
+  //
+  // The shape shown for the pointer: the nearest object at or above the target that names a
+  // Cursor, the arrow otherwise. The target is the captured object during a drag, else the hit.
+
+  /** An outer 100×100 box holding an inner 50×50 box at the top-left, laid out. */
+  private def cursorTree(): (RenderBox, RenderBox, PointerRouter) =
+    val outer = fixed(100, 100)
+    val inner = fixed(50, 50)
+    outer.insertChild(inner, null)
+    outer.layout(Constraints.tight(Size(100, 100)))
+    (outer, inner, new PointerRouter(outer))
+
+  test("with nothing set, the pointer resolves to the default arrow"):
+    val (_, _, router) = cursorTree()
+    assert(router.cursorAt(Offset(25, 25)) == Cursor.Default)
+
+  test("a widget's cursor is shown while the pointer is over it"):
+    val (outer, _, router) = cursorTree()
+    outer.cursor = Cursor.Pointer
+    assert(router.cursorAt(Offset(75, 75)) == Cursor.Pointer)
+
+  test("the cursor is inherited from the nearest ancestor that names one"):
+    val (outer, _, router) = cursorTree()
+    outer.cursor = Cursor.Pointer // inner names none, so it inherits the outer's
+    assert(router.cursorAt(Offset(10, 10)) == Cursor.Pointer)
+
+  test("an inner widget overrides the ancestor's cursor, including back to the arrow"):
+    val (outer, inner, router) = cursorTree()
+    outer.cursor = Cursor.Pointer
+    inner.cursor = Cursor.Text
+    assert(router.cursorAt(Offset(10, 10)) == Cursor.Text)     // inner wins over outer
+    inner.cursor = Cursor.Default                              // an explicit override, not "inherit"
+    assert(router.cursorAt(Offset(10, 10)) == Cursor.Default)  // the arrow, not the inherited hand
+    assert(router.cursorAt(Offset(75, 75)) == Cursor.Pointer)  // still the outer's where inner isn't
+
+  test("during a capture the cursor sticks to the captured widget, not what is under the pointer"):
+    // A splitter sets a resize cursor and captures on press; the shape must hold while the drag
+    // strays off the thin gutter onto a neighbour that wants a different (or no) cursor.
+    val (outer, inner, router) = cursorTree()
+    inner.cursor = Cursor.ResizeEW
+    router.down(Offset(10, 10), 1)                              // capture the inner box
+    assert(router.cursorAt(Offset(90, 90)) == Cursor.ResizeEW)  // pointer off it, shape unchanged
+    router.up(Offset(90, 90), 1)                                // release
+    assert(router.cursorAt(Offset(90, 90)) == Cursor.Default)   // now resolves from the hit again
+
+  test("an ignore-pointer child does not steal the cursor from the box behind it"):
+    val (outer, inner, router) = cursorTree()
+    outer.cursor          = Cursor.Pointer
+    inner.cursor          = Cursor.Text
+    inner.ignorePointer   = true // the pointer passes through inner to outer, so does the cursor
+    assert(router.cursorAt(Offset(10, 10)) == Cursor.Pointer)

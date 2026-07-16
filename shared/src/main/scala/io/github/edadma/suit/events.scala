@@ -291,6 +291,23 @@ final class PointerRouter(root: RenderObject, focus: FocusManager | Null = null)
           hovered = owner
         bubble(target, "mousemove", p, 0)
 
+  /** The pointer shape to show for the pointer at `p`: the [[Cursor]] of the nearest object at or
+    * above the relevant target that names one, or [[Cursor.Default]] when none does. The target is
+    * the captured object during a drag — so a splitter keeps its resize shape while the pointer
+    * strays off the thin gutter — and otherwise whatever is under the pointer. The runtime calls
+    * this each frame (cheap: a hit-test and a walk) and sets the system cursor when it changes, so
+    * a shape follows a tree change under a still pointer, not only a move. */
+  def cursorAt(p: Offset): Cursor =
+    val target = captured match
+      case c: RenderObject => c
+      case null            => hit(p)
+    var n = target
+    while n != null && n.asInstanceOf[RenderObject].cursor == null do
+      n = n.asInstanceOf[RenderObject].parent
+    n match
+      case r: RenderObject => r.cursor.asInstanceOf[Cursor]
+      case null            => Cursor.Default
+
   /** A button went down at `p`: capture the pointer at the hit object, fire `mousedown`,
     * and move focus to the nearest focusable ancestor. */
   def down(p: Offset, button: Int): Unit =

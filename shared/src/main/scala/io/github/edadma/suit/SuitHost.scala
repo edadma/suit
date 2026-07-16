@@ -97,6 +97,12 @@ final class SuitHostConfig extends HostConfig:
       case (o, "acceptsText") => o.acceptsText = value == true
       // `ignorePointer` makes an object (and its subtree) transparent to hit-testing.
       case (o, "ignorePointer") => o.ignorePointer = value == true
+      // `cursor` is the pointer shape shown while over this object; null (a removed prop) clears
+      // the preference so the shape falls back to an ancestor's or the arrow.
+      case (o, "cursor") =>
+        o.cursor = value match
+          case c: Cursor => c
+          case _         => null
 
       case (b: RenderBox, "bg")           => b.background = asPaintOrNull(value)
       case (b: RenderBox, "border")       => b.border = asPaintOrNull(value)

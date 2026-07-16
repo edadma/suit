@@ -82,6 +82,7 @@ object dsl:
       flex:          Int                            = 0,
       focusable:     Boolean                        = false,
       acceptsText:   Boolean                        = false,
+      cursor:        Cursor | Null                  = null,
       ref:           Ref[RenderObject | Null] | Null = null,
       onClick:       (PointerEvent => Unit) | Null  = null,
       onMouseDown:  (PointerEvent => Unit) | Null  = null,
@@ -116,6 +117,7 @@ object dsl:
     if flex != 0 then props = props.updated("flex", PropValue(flex))
     if focusable then props = props.updated("focusable", PropValue(true))
     if acceptsText then props = props.updated("acceptsText", PropValue(true))
+    if cursor != null then props = props.updated("cursor", PropValue(cursor))
     props = typed[PointerEvent](props, "click", onClick)
     props = typed[PointerEvent](props, "mousedown", onMouseDown)
     props = typed[PointerEvent](props, "mouseup", onMouseUp)
