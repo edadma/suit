@@ -258,7 +258,8 @@ object Suit:
       renderer.copy(bb.texture)
       renderer.present()
 
-    createRoot(root).render(OverlayContext.provide(OverlayEnv(overlay, focusManager), app))
+    val appRoot = createRoot(root)
+    appRoot.render(OverlayContext.provide(OverlayEnv(overlay, focusManager), app))
     root.insertChild(overlay, null)
     drainScheduler() // commit any effects the initial mount queued
     repaint()        // lay out and paint the first frame before the loop
@@ -384,6 +385,14 @@ object Suit:
         root.dirty = false
         repaint()
       presentFrame()
+
+    // The window is closing. Unmount the application tree first, so every mount effect's cleanup
+    // runs — closing files, stopping worker threads, releasing native handles — while the renderer,
+    // the window and SDL are still alive. Without this an application's background thread (a decoder,
+    // a scanner) keeps running as the runtime tears SDL down beneath it and crashes on a freed device;
+    // effect cleanups are the toolkit's contract for orderly teardown and must fire on shutdown, not
+    // only on a mid-run unmount. The runtime's own resources are torn down after.
+    appRoot.unmount()
 
     measurer.close()
     systemCursors.values.foreach(_.destroy()) // only the shapes we created; never the default
