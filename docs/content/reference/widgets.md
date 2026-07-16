@@ -587,8 +587,11 @@ def virtualList(itemCount: Int, itemExtent: Double, overscan: Int = 3)(
 A vertically **virtualized** list: only the items under the viewport (plus a little overscan) are
 ever built, so a list of many thousands of fixed-height rows costs the handful on screen rather
 than all of them. `builder(i)` produces item `i` on demand and `itemExtent` is each item's fixed
-height, which is what makes the windowing exact. The wheel scrolls it. Like `dataTable` it fills
-the space its parent gives and **must be given a bounded height** — that height is the viewport.
+height, which is what makes the windowing exact. The wheel scrolls it — and a wheel it cannot use
+(the list is at an end, or too short to scroll at all) passes out to the view around it, so a
+cursor resting on a short list never kills the page scroll under it; see
+[Chaining](/guide/input/#chaining). Like `dataTable` it fills the space its parent gives and
+**must be given a bounded height** — that height is the viewport.
 
 ```scala
 box(flex = 1)(

@@ -411,6 +411,10 @@ to paint a draggable bar along the trailing edge (it shows only when the content
 callers reach for the themed [`scrollArea`](/reference/widgets/#scroll-area) widget instead, which
 wires these from the active theme.
 
+Views nest safely: a wheel this viewport cannot use — because it is already at that end, or its
+content fits — passes out to the scroll view around it rather than being swallowed. See
+[Chaining](/guide/input/#chaining).
+
 ```scala
 scrollView(Axis.Vertical)(
   col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 12)(

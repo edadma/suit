@@ -38,10 +38,18 @@ private[suit] trait WidgetsData extends WidgetsSupport:
       val items: Seq[VNode] =
         (range.first until range.last).map(i => sizedBox(height = p.itemExtent)(p.builder(i)))
 
+      // A list with nothing left to scroll — already at an end, or shorter than its viewport —
+      // leaves the wheel unclaimed, so it chains to the view outside instead of dying here.
+      def onWheel(e: ScrollEvent): Unit =
+        val next = math.max(0.0, math.min(s - e.deltaY * RenderScroll.WheelStep, maxS))
+        if next != s then
+          setScroll(next)
+          e.consume()
+
       box(
         clip    = true,
         ref     = sizeRef,
-        onWheel = e => setScroll(math.max(0.0, math.min(s - e.deltaY * RenderScroll.WheelStep, maxS))),
+        onWheel = onWheel,
       )(
         positioned(0, range.offsetY)(
           col(mainAxisSize = MainAxisSize.Min)(items*),

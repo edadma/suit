@@ -66,6 +66,76 @@ class ScrollSpec extends AnyFunSuite:
     new PointerRouter(s).wheel(Offset(200, 100), -2, 0)
     assert(s.scrollOffset == 2 * RenderScroll.WheelStep)
 
+  // --- wheel chaining -------------------------------------------------------
+  //
+  // A wheel the inner view cannot use must reach the outer one. Without this a cursor
+  // resting on a short list (or on any view already at its end) kills the page scroll
+  // underneath it, which reads to a user as the whole window having frozen.
+
+  /** An outer vertical scroll with room to move, wrapping an inner vertical scroll of
+    * `innerContent` in a 200x200 viewport. Returns both. */
+  private def nested(innerContent: Size): (RenderScroll, RenderScroll) =
+    val outer = new RenderScroll(Axis.Vertical)
+    val col   = new RenderBox
+    col.width = Some(200)
+    col.height = Some(2000) // outer has plenty of overflow
+    val inner = new RenderScroll(Axis.Vertical)
+    val box   = new RenderBox
+    box.width = Some(innerContent.width)
+    box.height = Some(innerContent.height)
+    inner.insertChild(box, null)
+    col.insertChild(inner, null)
+    outer.insertChild(col, null)
+    outer.layout(Constraints.tight(Size(200, 400)))
+    inner.layout(Constraints.tight(Size(200, 200)))
+    (outer, inner)
+
+  test("an inner view with nothing to scroll passes the wheel to the view outside it"):
+    val (outer, inner) = nested(Size(200, 100)) // content shorter than the inner viewport
+    assert(inner.maxScroll == 0)
+    new PointerRouter(outer).wheel(Offset(100, 100), 0, -3)
+    assert(inner.scrollOffset == 0)
+    assert(outer.scrollOffset == 3 * RenderScroll.WheelStep) // the outer view moved instead
+
+  test("an inner view that can scroll claims the wheel and the outer view stays put"):
+    val (outer, inner) = nested(Size(200, 1000))
+    assert(inner.maxScroll == 800)
+    new PointerRouter(outer).wheel(Offset(100, 100), 0, -3)
+    assert(inner.scrollOffset == 3 * RenderScroll.WheelStep)
+    assert(outer.scrollOffset == 0)
+
+  test("a wheel at the inner view's end chains to the outer view"):
+    val (outer, inner) = nested(Size(200, 1000))
+    inner.scrollBy(10000) // pin the inner view to its bottom
+    assert(inner.scrollOffset == 800)
+    new PointerRouter(outer).wheel(Offset(100, 100), 0, -3) // still scrolling down
+    assert(inner.scrollOffset == 800)                       // nothing left to give
+    assert(outer.scrollOffset == 3 * RenderScroll.WheelStep)
+
+  test("a vertical wheel over a horizontal-only view chains to the vertical view outside"):
+    val outer = new RenderScroll(Axis.Vertical)
+    val col   = new RenderBox
+    col.width = Some(200)
+    col.height = Some(2000)
+    val inner = new RenderScroll(Axis.Horizontal)
+    val box   = new RenderBox
+    box.width = Some(1000)
+    box.height = Some(200)
+    inner.insertChild(box, null)
+    col.insertChild(inner, null)
+    outer.insertChild(col, null)
+    outer.layout(Constraints.tight(Size(200, 400)))
+    inner.layout(Constraints.tight(Size(200, 200)))
+    new PointerRouter(outer).wheel(Offset(100, 100), 0, -3) // a purely vertical wheel
+    assert(inner.scrollOffset == 0)
+    assert(outer.scrollOffset == 3 * RenderScroll.WheelStep)
+
+  test("a consumed event stops at the handler that claimed it"):
+    val e = ScrollEvent(Offset.zero, 0, -3)
+    assert(!e.consumed)
+    e.consume()
+    assert(e.consumed)
+
   // --- visible scrollbar ----------------------------------------------------
 
   /** A scroller with the visible bar switched on, as the `scrollArea` widget configures it. */

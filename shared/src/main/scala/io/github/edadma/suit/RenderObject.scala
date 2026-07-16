@@ -392,10 +392,16 @@ final class RenderScroll(var axis: Axis = Axis.Vertical) extends RenderObject:
   // wheel delta (which SDL reports as a small ±1-per-notch float), so one notch scrolls a
   // readable amount regardless of the platform's wheel granularity. Each axis takes its own
   // delta, so a biaxial viewport scrolls vertically and horizontally from the one wheel.
+  // The event is claimed only when the view actually moved, so a viewport sitting at its limit
+  // (or one that does not scroll on the wheel's axis at all) lets the wheel chain to the view
+  // outside it rather than swallowing it.
   handlers("wheel") = e =>
-    val s = e.asInstanceOf[ScrollEvent]
+    val s       = e.asInstanceOf[ScrollEvent]
+    val beforeY = offsetY
+    val beforeX = offsetX
     if canScrollY then scrollByY(-s.deltaY * RenderScroll.WheelStep)
     if canScrollX then scrollByX(-s.deltaX * RenderScroll.WheelStep)
+    if offsetY != beforeY || offsetX != beforeX then s.consume()
 
   // Dragging a scrollbar thumb. A press is claimed only when it lands on a thumb (so a press
   // anywhere else in the viewport flows to the content untouched); the capture the pointer router

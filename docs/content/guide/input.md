@@ -118,10 +118,36 @@ characters through `onTextInput`.
 A wheel turn bubbles a `ScrollEvent` to the nearest `wheel` handler at the cursor.
 
 ```scala
-final case class ScrollEvent(position: Offset, deltaX: Double, deltaY: Double)
+final case class ScrollEvent(position: Offset, deltaX: Double, deltaY: Double):
+  def consume(): Unit
+  def consumed: Boolean
 ```
 
 Positive `deltaY` is a downward/away scroll, matching SDL's convention.
+
+### Chaining
+
+Unlike the other pointer events, a wheel event does not stop at the first handler that
+sees it: it **chains**. The nearest scrollable under the cursor is offered the event, and
+if it does not claim it, the event passes on to the next scrollable ancestor.
+
+A handler claims the event by calling `consume()`. The built-in views claim it only when
+they actually moved — so a view already at its end, or a list too short to scroll, leaves
+the wheel unclaimed and the view outside it scrolls instead. Without this a cursor resting
+on a short inner list would silently kill the page scroll under it, which reads to a user
+as the window having frozen.
+
+This mirrors what a browser does with an exhausted inner scroll: the page keeps scrolling.
+
+A custom `onWheel` that handles the wheel itself — a zoom, say — should `consume()` it, or
+the scroll view it sits inside will act on the same turn:
+
+```scala
+box(onWheel = e => {
+  zoom += e.deltaY * 0.1
+  e.consume() // stop it here; do not also scroll the page
+})(...)
+```
 
 ## Handlers on box
 

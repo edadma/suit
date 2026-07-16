@@ -31,8 +31,25 @@ final case class PointerEvent(position: Offset, local: Offset, size: Size, butto
   def localY: Double = local.y
 
 /** A wheel/scroll event: where the cursor was and how far the wheel turned. Positive
-  * `deltaY` is a downward/away scroll, matching SDL's convention. */
-final case class ScrollEvent(position: Offset, deltaX: Double, deltaY: Double)
+  * `deltaY` is a downward/away scroll, matching SDL's convention.
+  *
+  * A wheel event *chains*: it is offered to the nearest scrollable under the cursor, and
+  * whatever that one does not use passes on up to the next scrollable ancestor. A handler
+  * that acts on the event calls [[consume]] to stop it there; one that cannot move — a
+  * viewport already at its limit, or a short list with nothing to scroll — simply returns,
+  * and the wheel reaches the enclosing view instead of vanishing. This is what stops the
+  * page from going dead the moment the cursor crosses an inner list.
+  *
+  * A custom `onWheel` that handles the wheel itself (a zoom, say) should call `consume()`;
+  * otherwise the scroll it sits inside will also act on it. */
+final case class ScrollEvent(position: Offset, deltaX: Double, deltaY: Double):
+  private var used = false
+
+  /** Mark this event as acted on, so it stops here instead of chaining to an ancestor. */
+  def consume(): Unit = used = true
+
+  /** Whether a handler has claimed this event. */
+  def consumed: Boolean = used
 
 /** A keyboard event delivered to the focused object. `scancode` is the physical key
   * (see [[Key]] for the common names); `repeat` is true for the auto-repeat events a
@@ -297,9 +314,17 @@ final class PointerRouter(root: RenderObject, focus: FocusManager | Null = null)
         .apply(event(releaseOwner.asInstanceOf[RenderObject], p, button))
     captured = null
 
-  /** The wheel turned by `(dx, dy)` over `p`: bubble a `wheel` event to the nearest
-    * scroll handler. */
+  /** The wheel turned by `(dx, dy)` over `p`: offer a `wheel` event to the nearest scroll
+    * handler, and chain on up the parent scrolls until one claims it.
+    *
+    * Stopping at the first handler would let a viewport with nothing to scroll swallow the
+    * wheel — the cursor crossing a short list would kill the page scroll under it. So a
+    * handler that does not [[ScrollEvent.consume]] passes the event to its next scrollable
+    * ancestor, the way a browser hands an exhausted inner scroll's wheel to the page. */
   def wheel(p: Offset, dx: Double, dy: Double): Unit =
-    nearest(hit(p), "wheel") match
-      case r: RenderObject => r.handlers("wheel").apply(ScrollEvent(p, dx, dy))
-      case null            => ()
+    val e                      = ScrollEvent(p, dx, dy)
+    var n: RenderObject | Null = nearest(hit(p), "wheel")
+    while n != null do
+      val r = n.asInstanceOf[RenderObject]
+      r.handlers("wheel").apply(e)
+      n = if e.consumed then null else nearest(r.parent, "wheel")
