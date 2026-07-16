@@ -72,6 +72,12 @@ surface** you draw into yourself with the full underlying graphics API (raw Cair
 re-blit on demand via a `SurfaceHandle` — the retained route for content suit's `Canvas` doesn't
 cover. See the [DSL reference](https://suit.edadma.dev/reference/dsl/).
 
+And one thing suit deliberately does **not** rasterise: `video` takes a decoder's YUV frames
+straight to the GPU, which converts and scales them in the blit's shader. The widget paints a
+transparent hole and the frame is composited underneath, so a new frame costs no repaint at all —
+not even a dirty flag. Background threads hand frames over with `UiThread.post`, the one
+cross-thread entry point (see the [threading guide](https://suit.edadma.dev/guide/threading/)).
+
 ## A counter
 
 ```scala

@@ -1,5 +1,7 @@
 package io.github.edadma.suit.demo
 
+import scala.scalanative.unsafe.*
+import scala.scalanative.libc.stdlib
 import io.github.edadma.suit.*
 import io.github.edadma.suit.dsl.*
 import io.github.edadma.suit.widgets.*
@@ -212,6 +214,127 @@ private val SurfacePanel: Component[Unit] =
       ),
       row(mainAxisAlignment = MainAxisAlignment.Center)(
         Button("Redraw", () => setGen(gen + 1)),
+      ),
+    )
+  }
+
+// ---- video ----------------------------------------------------------------
+//
+// A stand-in decoder: a background thread that synthesises I420 frames (scrolling colour bars) and
+// hands each to the UI thread. It is the shape a real decoder has, and it exercises the two things
+// that make video work — `UiThread.post` for the thread hop, and a `video` widget whose frames
+// never touch Cairo.
+//
+// Frames alternate between two plane sets. The worker fills one while the UI thread may still be
+// uploading the other, which is what a decoder's frame pool does and what keeps the handover from
+// racing the upload.
+
+private val videoW = 320
+private val videoH = 180
+
+// The panel matches the frame's 16:9, so Contain has no bars to add. Give it a different shape and
+// the frame keeps its own, centred, with the background showing either side — which is what a
+// preview monitor should do.
+private val videoPanelW = 400.0
+private val videoPanelH = videoPanelW * videoH / videoW
+
+// Y, U, V for the eight classic colour bars. Chroma planes are half-size on both axes (4:2:0), so
+// each bar's U/V is written at half the resolution of its Y.
+private val bars: Array[(Int, Int, Int)] = Array(
+  (235, 128, 128), // white
+  (210, 16, 146),  // yellow
+  (170, 166, 16),  // cyan
+  (145, 54, 34),   // green
+  (106, 202, 222), // magenta
+  (81, 90, 240),   // red
+  (41, 240, 110),  // blue
+  (16, 128, 128),  // black
+)
+
+private final class Planes(w: Int, h: Int):
+  val y: Ptr[Byte] = stdlib.malloc(w * h).asInstanceOf[Ptr[Byte]]
+  val u: Ptr[Byte] = stdlib.malloc((w / 2) * (h / 2)).asInstanceOf[Ptr[Byte]]
+  val v: Ptr[Byte] = stdlib.malloc((w / 2) * (h / 2)).asInstanceOf[Ptr[Byte]]
+
+  def free(): Unit = { stdlib.free(y.asInstanceOf[Ptr[Byte]]); stdlib.free(u.asInstanceOf[Ptr[Byte]]); stdlib.free(v.asInstanceOf[Ptr[Byte]]) }
+
+  /** Draw the bars shifted by `phase` pixels, so successive frames scroll. */
+  def render(phase: Int): Unit =
+    val barW = w / bars.length
+    var row  = 0
+    while row < h do
+      var col = 0
+      while col < w do
+        val (by, _, _) = bars((((col + phase) / barW) % bars.length + bars.length) % bars.length)
+        y(row * w + col) = by.toByte
+        col += 1
+      row += 1
+    var crow = 0
+    while crow < h / 2 do
+      var ccol = 0
+      while ccol < w / 2 do
+        val (_, bu, bv) = bars(((((ccol * 2) + phase) / barW) % bars.length + bars.length) % bars.length)
+        u(crow * (w / 2) + ccol) = bu.toByte
+        v(crow * (w / 2) + ccol) = bv.toByte
+        ccol += 1
+      crow += 1
+
+/** The video panel: a `video` widget fed by a worker thread.
+  *
+  * Worth noticing what is *absent*. Nothing here requests a repaint, and nothing marks the tree
+  * dirty — a frame arriving changes no Cairo pixel, because the widget paints a hole and the
+  * runtime blits the texture underneath. Playback rides the present the loop already does each
+  * vsync. The bars are letterboxed into the panel by [[VideoFit.Contain]], so the 16:9 frame keeps
+  * its shape whatever the pane does. */
+private val VideoPanel: Component[Unit] =
+  view {
+    val theme = useTheme()
+
+    // The texture and the plane pool, built once. Creating a texture needs the runtime's renderer,
+    // so this cannot run before the window is up — which useMemo-on-mount guarantees.
+    val st = useMemo(
+      () => {
+        val tex = VideoTexture(videoW, videoH, VideoFormat.I420, VideoColorspace.BT601)
+        (tex, Array(new Planes(videoW, videoH), new Planes(videoW, videoH)))
+      },
+      Array(),
+    )
+    val (tex, pool) = st
+
+    // The "decoder". It owns the planes and the pacing; it never touches the tree, the texture, or
+    // any state — it fills a frame and hands it over. That restraint is the whole rule (see the
+    // threading guide): a setter called from here would race vdom's bookkeeping, not just a queue.
+    useEffect(
+      () => {
+        @volatile var running = true
+        val worker = new Thread(() => {
+          var phase = 0
+          var slot  = 0
+          while running do
+            val p = pool(slot)
+            p.render(phase)
+            UiThread.post(() => tex.update(p.y, videoW, p.u, videoW / 2, p.v, videoW / 2): Unit)
+            phase += 3
+            slot = (slot + 1) % pool.length
+            Thread.sleep(33) // ~30fps
+        })
+        worker.setDaemon(true)
+        worker.start()
+        () => running = false
+      },
+      Array(),
+    )
+
+    useEffect(() => () => { tex.destroy(); pool.foreach(_.free()) }, Array())
+
+    col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
+      row(mainAxisAlignment = MainAxisAlignment.Center)(
+        box(radius = 12, clip = true)(
+          video(tex, fit = VideoFit.Contain, width = videoPanelW, height = videoPanelH),
+        ),
+      ),
+      row(mainAxisAlignment = MainAxisAlignment.Center)(
+        text("YUV frames from a worker thread — no Cairo, no repaint", size = 12, color = mutedInk(theme)),
       ),
     )
   }
@@ -491,6 +614,16 @@ val App = view {
                   col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
                     text("Surface — an app-owned Cairo surface, drawn with raw Cairo", color = muted),
                     SurfacePanel(),
+                  ),
+                ),
+                // Video: the one thing suit does not rasterise. A worker thread synthesises YUV
+                // frames and hands them over with UiThread.post; the widget punches a hole and the
+                // runtime blits the texture underneath, converting and scaling on the GPU. Nothing
+                // here asks for a repaint — the frames ride the vsync present.
+                card(
+                  col(crossAxisAlignment = CrossAxisAlignment.Stretch, spacing = 10)(
+                    text("Video — YUV straight to the GPU, bypassing Cairo", color = muted),
+                    VideoPanel(),
                   ),
                 ),
                 // A splitter: two panes divided by a draggable gutter. Drag the divider (or focus

@@ -77,6 +77,11 @@ object Suit:
       return
     renderer.setVSync(true)
 
+    // Publish the renderer so application code can create its own GPU-side layers (a
+    // `VideoTexture` for a decoded frame). It is the same kind of seam as DevicePixelRatio and
+    // Clipboard: the app needs something the runtime owns, and has no other way to reach it.
+    VideoTexture.renderer = renderer.ptr
+
     // Load the font through FreeType. With no `fontPath`, the variable Inter font embedded in
     // the binary is loaded straight from memory; otherwise the given file is read. Inter is a
     // variable font, so a face is created per weight on demand and wrapped as a Cairo font face
@@ -135,6 +140,11 @@ object Suit:
       // context and never reset, so it underlies every frame drawn through this backbuffer.
       ctx.scale(dev.scaleX, dev.scaleY)
       val tex = renderer.createTexture(PIXELFORMAT_ARGB8888, TEXTUREACCESS_STREAMING, dev.width, dev.height)
+      // The UI layer composites over whatever is beneath it rather than replacing it, which is
+      // what lets a video texture show through the hole a `video` widget punches. A texture
+      // defaults to BLENDMODE_NONE, and with the UI opaque everywhere except its holes, blending
+      // costs nothing where there is no video.
+      tex.setBlendMode(BLENDMODE_BLEND)
       new Backbuffer(surf, ctx, tex, new CairoCanvas(ctx, fonts, dev.scaleX, dev.scaleY), dev)
 
     var bb = makeBackbuffer()
@@ -214,6 +224,39 @@ object Suit:
       else Compositor.partialFrame(bb.canvas, root.dirtyBoundaries, overlay, clearColor)
       bb.surface.flush()
       bb.texture.update(bb.surface.getData, bb.surface.getStride)
+
+    // Compose the window and show it. Video is the one thing suit does not rasterise: a `video`
+    // widget leaves a transparent hole where its frame belongs, so the layers go down in z-order —
+    // video textures first, then the UI over them — rather than the single blit a Cairo-only
+    // window needs.
+    //
+    // This runs every iteration, not only on a dirty frame, and that is the point: a decoder
+    // swapping a texture's contents changes nothing in the tree, so nothing is marked dirty and
+    // Cairo is never re-run. Playback rides the present the loop was doing anyway.
+    //
+    // The video rectangles arrive in logical coordinates (everything the tree computes is
+    // logical); the render target is in device pixels, like the backbuffer texture that fills it.
+    // Hence the scale.
+    def presentFrame(): Unit =
+      val layers = root.videoLayers
+      if layers.nonEmpty then
+        renderer.clear(SdlColor(clearColor.r, clearColor.g, clearColor.b))
+        val sx = bb.device.scaleX
+        val sy = bb.device.scaleY
+        layers.foreach { (layer, src, dst) =>
+          layer match
+            case v: VideoTexture =>
+              renderer.copy(
+                v.texture,
+                (src.x, src.y, src.width, src.height),
+                (dst.x * sx, dst.y * sy, dst.width * sx, dst.height * sy),
+              )
+            // A layer from another backend (or a test stub) has no texture to blit; the widget's
+            // background stays, so it reads as a black frame rather than a hole onto nothing.
+            case _ => ()
+        }
+      renderer.copy(bb.texture)
+      renderer.present()
 
     createRoot(root).render(OverlayContext.provide(OverlayEnv(overlay, focusManager), app))
     root.insertChild(overlay, null)
@@ -305,8 +348,7 @@ object Suit:
       if root.dirty then
         root.dirty = false
         repaint()
-      renderer.copy(bb.texture)
-      renderer.present()
+      presentFrame()
 
     measurer.close()
     bb.cr.destroy()

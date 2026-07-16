@@ -324,6 +324,70 @@ as above, lets your drawing code stay in logical units.)
 You own the surface, so you free it (`surface.destroy()`) when the panel goes away — suit only reads
 it. A `repaint()` before the widget mounts, or after it unmounts, is a harmless no-op.
 
+## video
+
+```scala
+def video(
+  layer:       VideoLayer,
+  fit:         VideoFit = VideoFit.Contain,
+  pixelAspect: Double   = 1.0,
+  background:  Color    = Color.black,
+  width:       Double   = Double.NaN,
+  height:      Double   = Double.NaN,
+  // … the same pointer / key handlers and `focusable` as `canvas`
+): VNode
+```
+
+A video frame — **the one thing suit does not rasterise**.
+
+Everything else in a window is drawn by Cairo into one image surface and uploaded as one texture.
+Push video through that and every frame costs a colourspace conversion (a decoder emits YUV, Cairo
+wants BGRA), a CPU blit, a CPU scale, and a re-upload of the whole window — three full-frame passes,
+thirty or sixty times a second.
+
+So a video layer skips Cairo. Its frame stays in the decoder's own YUV layout in its own texture,
+and the renderer converts and scales it in the blit's shader. `video` reserves a rectangle, fills it
+with `background`, and punches a transparent hole exactly where the frame belongs; the runtime blits
+the texture into that hole from underneath and the UI composites over it. **The hole is the whole
+mechanism.**
+
+The payoff: **a new frame costs no repaint** — no relayout, not even a dirty flag. Nothing Cairo
+drew has changed. Hand the layer a frame and the next present shows it, riding the vsync the loop
+was already doing.
+
+```scala
+val tex = useMemo(() => VideoTexture(1920, 1080, VideoFormat.I420, VideoColorspace.BT709), Array())
+
+// on a decoder thread — never touch state or the tree here; hand it over (see the threading guide)
+UiThread.post(() => tex.update(f.y, f.yPitch, f.u, f.uPitch, f.v, f.vPitch))
+
+video(tex, fit = VideoFit.Contain)
+```
+
+**Fitting.** `VideoFit.Contain` (the default) scales the frame to fit entirely inside, preserving
+aspect, and centres it — the whole frame is visible and the leftover shows `background` as letterbox
+or pillarbox bars. That is what a preview monitor wants: never crop what the editor is judging.
+`Cover` fills the rectangle and crops the overhang instead (by reading a sub-rect of the frame, so
+no clip is involved). `Fill` stretches to the rectangle exactly, ignoring aspect.
+
+**Pixel aspect.** `pixelAspect` is the displayed width of one *stored* pixel over its height. Leave
+it at `1.0` for square-pixel formats — everything HD, and most modern files — but set it for
+anamorphic and SD sources, where ignoring it shows people visibly too thin or too wide.
+
+It fills the space the parent offers unless given `width` / `height`, and takes pointer and key
+handlers, so a click-to-scrub monitor works.
+
+[= warning =]
+**Match the colorspace to the source.** A `VideoTexture` fixes its colorspace at creation, because
+that is the only point SDL allows it. `VideoColorspace.BT709` is right for HD and is the default;
+`BT601` for SD; `JPEG` for full-range sources. Getting it wrong is not an error — the picture just
+comes out with shifted colour.
+[= /warning =]
+
+Video always composites **under** the UI, which is the right constraint for an editor (a preview
+monitor and timeline thumbnails, with chrome above them). suit is not a compositing engine: two
+clips dissolving into one another is your pipeline doing the mix and handing suit one output frame.
+
 ## scrollView
 
 ```scala
