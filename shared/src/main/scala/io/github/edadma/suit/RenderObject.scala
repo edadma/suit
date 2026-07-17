@@ -441,6 +441,29 @@ final class RenderScroll(var axis: Axis = Axis.Vertical) extends RenderObject:
 
   handlers("mouseup") = _ => { dragVertical = false; dragHorizontal = false }
 
+  // A visible scrollbar claims presses on its band, so the bar drives the scroll (thumb drag) rather
+  // than the press falling through to the content that fills the viewport beneath it. Only a bar that
+  // is actually shown — an axis with something to scroll — claims; elsewhere the point flows to the
+  // content as usual.
+  override def hitTest(point: Offset, origin: Offset): RenderObject | Null =
+    if ignorePointer then null
+    else if !Rect.at(origin, size).contains(point.x, point.y) then null
+    else
+      if scrollbar then
+        if thumbRectFor(vertical = true) != null &&
+          point.x >= origin.x + size.width - scrollbarThickness
+        then return this
+        if thumbRectFor(vertical = false) != null &&
+          point.y >= origin.y + size.height - scrollbarThickness
+        then return this
+      var i = children.length - 1
+      while i >= 0 do
+        val child = children(i)
+        val hit   = child.hitTest(point, origin + child.offset)
+        if hit != null then return hit
+        i -= 1
+      this
+
   // Map the dragged cursor coordinate to a scroll offset on the given axis and apply it.
   private def dragTo(coord: Double, vertical: Boolean): Unit =
     thumbMetricsFor(vertical) match

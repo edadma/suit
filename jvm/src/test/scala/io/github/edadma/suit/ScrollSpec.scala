@@ -193,6 +193,32 @@ class ScrollSpec extends AnyFunSuite:
     assert(r.y == 200 - 8)           // along the bottom
     assert(math.abs(r.width - 160.0) < 0.001) // 400/1000 of the 400px track
 
+  test("a press on the visible scrollbar band hits the scroll view, not the content beneath"):
+    val s   = new RenderScroll(Axis.Vertical)
+    val box = new RenderBox
+    box.width = Some(200.0)
+    box.height = Some(1000.0)
+    s.insertChild(box, null)
+    s.scrollbar = true
+    s.scrollbarThickness = 8.0
+    s.layout(Constraints.tight(Size(200, 400)))
+    // A point in the right-edge band (x >= 200-8) claims the scroll itself; the content beneath
+    // would otherwise receive the press meant for the bar.
+    assert(s.hitTest(Offset(197, 100), Offset.zero) eq s)
+    // A point in the content area still hits the child.
+    assert(s.hitTest(Offset(100, 100), Offset.zero) eq box)
+
+  test("the scrollbar band claims nothing when the content fits (no bar shown)"):
+    val s   = new RenderScroll(Axis.Vertical)
+    val box = new RenderBox
+    box.width = Some(200.0)
+    box.height = Some(200.0) // fits the 400-tall viewport — nothing to scroll
+    s.insertChild(box, null)
+    s.scrollbar = true
+    s.scrollbarThickness = 8.0
+    s.layout(Constraints.tight(Size(200, 400)))
+    assert(s.hitTest(Offset(197, 100), Offset.zero) eq box)
+
   // --- biaxial (both-ways) scrolling ----------------------------------------
 
   /** A both-ways scroll view: content larger than the viewport on each axis, scrolling on both. */
