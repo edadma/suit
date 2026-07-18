@@ -69,6 +69,27 @@ object Suit:
     // Let the application retitle the window at runtime (e.g. the open document's name).
     WindowControl.titleSetter = t => window.setTitle(t)
 
+    // Present native file panels parented to this window, so a dialog is a non-blocking sheet on
+    // macOS rather than a modal that freezes the frame loop. SDL delivers the panel's callback on
+    // this (UI) thread through the event pump, so it forwards straight to the app's callback.
+    FileDialog.impl = (request, callback) =>
+      val sdlFilters = request.filters.map(f => FileFilter(f.name, f.pattern))
+      val onResult: DialogResult => Unit = r =>
+        callback(r match
+          case DialogResult.Chosen(paths) => FileDialog.Result.Chosen(paths)
+          case DialogResult.Cancelled     => FileDialog.Result.Cancelled
+          case DialogResult.Failed(msg)   => FileDialog.Result.Failed(msg))
+      request.kind match
+        case FileDialog.Kind.OpenFile =>
+          showOpenFileDialog(window, sdlFilters, request.defaultLocation, request.allowMany,
+            request.title, request.accept, request.cancel)(onResult)
+        case FileDialog.Kind.SaveFile =>
+          showSaveFileDialog(window, sdlFilters, request.defaultLocation,
+            request.title, request.accept, request.cancel)(onResult)
+        case FileDialog.Kind.OpenFolder =>
+          showOpenFolderDialog(window, request.defaultLocation, request.allowMany,
+            request.title, request.accept, request.cancel)(onResult)
+
     val renderer = window.createRenderer()
     if renderer.isNull then
       System.err.println(s"suit: failed to create renderer: ${error}")
