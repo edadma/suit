@@ -77,3 +77,30 @@ reads true and `run` takes the direct path.
 Everything else in suit is UI-thread-only, including `Repaint.request` and every
 `SurfaceHandle`. A worker that wants a redraw posts a thunk that asks for one.
 [= /note =]
+
+## File dialogs
+
+`FileDialog` presents the platform's native Open / Save / folder panel. Like `UiThread`, it is a
+seam the runtime fills in: the native `Suit.run` installs a presenter that owns the real window,
+because a panel needs a parent — on macOS a parentless panel spins its own modal run loop and
+freezes the app, whereas a window-parented one is a sheet that leaves the frame loop painting.
+
+```scala
+FileDialog.open(
+  filters = Seq(FileDialog.Filter("Projects", "kut;json")),
+) {
+  case FileDialog.Result.Chosen(paths) => setPath(paths.head)
+  case FileDialog.Result.Cancelled     => ()
+  case FileDialog.Result.Failed(msg)   => setError(msg)
+}
+```
+
+There are three entry points — `open` (an existing file, or several with `allowMany`), `save` (a
+name to write, with the platform's own overwrite prompt), and `folder` — plus a general `show` over
+a `Request`. The result is one of `Chosen` / `Cancelled` / `Failed`; a cancel is a normal outcome,
+distinct from a failure. Filters are advisory — a platform may ignore them, so never treat a
+returned path as matching its pattern.
+
+The callback runs **on the UI thread**, so it reads and sets state directly with no `UiThread.post`
+hop. Before a window exists — headless tests, a backend with no dialog support — every request is
+answered `Failed`, so a caller always hears back exactly once.

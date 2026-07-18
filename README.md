@@ -15,7 +15,7 @@ components with `useState`, lay them out with `col` / `row` / `box` / `text`, an
 drive the screen. In short: *Flutter in Scala Native*.
 
 > **Status:** published to Maven Central, but pre-1.0 and evolving — pin a version and expect
-> the occasional breaking change. Add `"io.github.edadma" %%% "suit" % "0.0.17"` to a Scala
+> the occasional breaking change. Add `"io.github.edadma" %%% "suit" % "0.0.18"` to a Scala
 > Native project, or build from the checkout to contribute (see [Documentation](#documentation)).
 
 ## Documentation
@@ -120,5 +120,7 @@ sbt suitNative/run   # build and launch the widget demo
 
 ISC.
 
-Bundles the [Inter](https://rsms.me/inter/) font (Inter 18pt Regular) under the SIL Open
-Font License — see [`fonts/OFL.txt`](fonts/OFL.txt).
+Bundles the [Inter](https://rsms.me/inter/) font (Inter 18pt Regular) and
+[JetBrains Mono](https://www.jetbrains.com/lp/mono/) (the monospaced family) under the SIL Open
+Font License — see [`fonts/OFL.txt`](fonts/OFL.txt) and
+[`fonts/OFL-JetBrainsMono.txt`](fonts/OFL-JetBrainsMono.txt).

@@ -85,6 +85,7 @@ def text(
     size:     Double       = Double.NaN,
     color:    Color | Null = null,
     weight:   Int          = 0,                  // 0 = inherit; 100–900 (see FontWeight)
+    mono:     Boolean      = false,              // true = monospaced family
     align:    TextAlign    = TextAlign.Left,     // Left | Center | Right
     maxLines: Int          = 1,                  // 1 = single line; 0 = unlimited
     overflow: TextOverflow = TextOverflow.Clip,  // Clip | Ellipsis
@@ -96,7 +97,9 @@ A run of text. `size`, `color`, and `weight` are **optional**: omit any and it i
 the nearest enclosing `box` that sets `textSize` / `textColor` / `textWeight`, falling back to the
 default text style if nothing in the tree sets one. `weight` is a numeric font weight (`100`–`900`,
 e.g. `FontWeight.Bold`) rendered through the bundled variable font's `wght` axis — one Inter file
-serves every weight.
+serves every weight. `mono = true` switches the run to the bundled **monospaced** family (JetBrains
+Mono) instead of the proportional default — for code, tabular figures, or anything that wants a
+fixed advance.
 
 It is **single-line by default**. Set `maxLines` to something other than `1` (use `0` for
 unlimited) and it **word-wraps** to the width the layout gives it, breaking at spaces and
@@ -114,6 +117,7 @@ text(
 text("Capped at two lines, the rest trimmed…", maxLines = 2, overflow = TextOverflow.Ellipsis)
 text("centred", align = TextAlign.Center)
 text("heavier", weight = FontWeight.Bold)        // 700; FontWeight has Thin…Black (100–900)
+text("monospaced", mono = true)                  // JetBrains Mono
 ```
 
 ## svg
