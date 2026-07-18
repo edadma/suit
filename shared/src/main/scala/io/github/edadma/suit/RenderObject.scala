@@ -777,9 +777,10 @@ final class RenderText(var text: String) extends RenderObject:
   /** This node's own explicit overrides. A field left `None` is inherited from the
     * nearest ancestor that sets it (see [[resolvedStyle]]); a field set here wins over
     * anything inherited. */
-  var explicitSize: Option[Double] = None
-  var explicitColor: Option[Color] = None
-  var explicitWeight: Option[Int]  = None
+  var explicitSize: Option[Double]         = None
+  var explicitColor: Option[Color]         = None
+  var explicitWeight: Option[Int]          = None
+  var explicitFamily: Option[FontFamily]   = None
 
   /** Per-line horizontal placement within the laid-out block. */
   var align: TextAlign = TextAlign.Left
@@ -820,6 +821,7 @@ final class RenderText(var text: String) extends RenderObject:
       size.getOrElse(TextStyle.default.size),
       color.getOrElse(TextStyle.default.color),
       weight.getOrElse(TextStyle.default.weight),
+      explicitFamily.getOrElse(TextStyle.default.family),
     )
 
   def layout(constraints: Constraints): Unit =

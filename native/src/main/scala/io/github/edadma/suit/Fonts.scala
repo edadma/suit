@@ -82,3 +82,17 @@ object Fonts:
     openFace() match
       case Right(base) => Right(new Fonts(ftLib, openFace, base))
       case Left(err)   => Left(s"cannot load font ($err)")
+
+/** The two font families the Cairo backend paints with — the proportional default and a
+  * monospaced face — resolving a run's face from its [[TextStyle]]'s [[FontFamily]] and weight.
+  * The measurer and the canvas share one of these so a string measures exactly as it draws. */
+final class FontSet(val sans: Fonts, val mono: Fonts):
+  def faceFor(style: TextStyle): FontFace =
+    val family = style.family match
+      case FontFamily.Mono => mono
+      case _               => sans
+    family.faceFor(style.weight)
+
+  def close(): Unit =
+    sans.close()
+    mono.close()

@@ -98,10 +98,18 @@ object Suit:
       case Right(f)  => f
       case Left(msg) => System.err.println(s"suit: $msg"); return
 
+    // The monospaced family (JetBrains Mono), always the embedded face — a `fontPath` overrides
+    // only the proportional default. The two together are the FontSet the text seams resolve a
+    // run's face from by its family and weight.
+    val monoFonts = Fonts.open(ftLib, () => ftLib.newMemoryFace(MonoFont.suit_mono_font_data(), MonoFont.suit_mono_font_size().toLong, 0)) match
+      case Right(f)  => f
+      case Left(msg) => System.err.println(s"suit: $msg"); return
+    val fontSet = new FontSet(fonts, monoFonts)
+
     // Cairo serves both halves of text: the measurer the layout pass consults and the canvas
-    // that rasterises glyphs, both selecting the face for a run's weight from the same cache,
-    // so a string measures and paints identically.
-    val measurer = new CairoTextMeasurer(fonts)
+    // that rasterises glyphs, both selecting the face for a run's family and weight from the same
+    // FontSet, so a string measures and paints identically.
+    val measurer = new CairoTextMeasurer(fontSet)
     TextMeasurer.installed = measurer
 
     // Back the text widgets' copy/paste with the system clipboard (the headless default is
@@ -145,7 +153,7 @@ object Suit:
       // defaults to BLENDMODE_NONE, and with the UI opaque everywhere except its holes, blending
       // costs nothing where there is no video.
       tex.setBlendMode(BLENDMODE_BLEND)
-      new Backbuffer(surf, ctx, tex, new CairoCanvas(ctx, fonts, dev.scaleX, dev.scaleY), dev)
+      new Backbuffer(surf, ctx, tex, new CairoCanvas(ctx, fontSet, dev.scaleX, dev.scaleY), dev)
 
     var bb = makeBackbuffer()
 
@@ -427,6 +435,6 @@ object Suit:
     bb.texture.destroy()
     renderer.destroy()
     window.destroy()
-    fonts.close()
+    fontSet.close()
     ftLib.doneFreeType
     quit()

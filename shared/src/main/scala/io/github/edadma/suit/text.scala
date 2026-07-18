@@ -10,14 +10,24 @@ package io.github.edadma.suit
 // and tests install a deterministic fake. This mirrors the `Canvas` seam (how to draw)
 // and `vdom.Host.config` (the installed host) — one global, swapped per environment.
 
-/** How a run of text is drawn: its point `size`, `color`, and `weight`. This is the
+/** The two font families a backend provides: the proportional default and a monospaced face
+  * (fixed-advance digits and glyphs, for timecodes, tables, and code). A backend with only one
+  * face maps both to it. */
+enum FontFamily:
+  case Sans, Mono
+
+/** How a run of text is drawn: its point `size`, `color`, `weight`, and `family`. This is the
   * *resolved* style — every field concrete — that the measurement and paint seams receive. A
   * [[RenderText]] computes it from its own explicit values overlaid on whatever it inherits
   * (see [[TextStyleAttrs]]). `weight` is a CSS-style numeric weight (100–900) driven through
   * the font's variable `wght` axis by the backend; a backend with only a fixed face ignores
-  * it. Font family is still a single global choice; richer styling layers on here later
-  * without changing the layout contract. */
-final case class TextStyle(size: Double = 16.0, color: Color = Color(0, 0, 0), weight: Int = FontWeight.Normal)
+  * it. `family` selects the proportional or monospaced face (see [[FontFamily]]). */
+final case class TextStyle(
+    size:   Double     = 16.0,
+    color:  Color      = Color(0, 0, 0),
+    weight: Int        = FontWeight.Normal,
+    family: FontFamily = FontFamily.Sans,
+)
 
 object TextStyle:
   val default: TextStyle = TextStyle()

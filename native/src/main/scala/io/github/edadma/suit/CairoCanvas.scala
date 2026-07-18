@@ -24,7 +24,7 @@ import io.github.edadma.libcairo.{Context, Format, Operator, Pattern, imageSurfa
 // drawing is resolution-independent for free; the one exception is the shadow, which is
 // rasterised into an offscreen buffer and would soften if that buffer were at logical size and
 // then upscaled. It is rendered at this scale and composited back down so it stays sharp at 2×.
-final class CairoCanvas(cr: Context, fonts: Fonts, shadowScaleX: Double = 1.0, shadowScaleY: Double = 1.0)
+final class CairoCanvas(cr: Context, fonts: FontSet, shadowScaleX: Double = 1.0, shadowScaleY: Double = 1.0)
     extends Canvas:
 
   // The inputs that determine a blurred shadow surface's pixels (everything but where it lands).
@@ -306,7 +306,7 @@ final class CairoCanvas(cr: Context, fonts: Fonts, shadowScaleX: Double = 1.0, s
   // so paint lands exactly where layout reserved it.
   def drawText(origin: Offset, text: String, style: TextStyle): Unit =
     if text.nonEmpty then
-      cr.setFontFace(fonts.faceFor(style.weight))
+      cr.setFontFace(fonts.faceFor(style))
       cr.setFontSize(style.size)
       rgba(style.color)
       val fe = cr.fontExtents

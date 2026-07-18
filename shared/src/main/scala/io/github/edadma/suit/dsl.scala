@@ -149,6 +149,7 @@ object dsl:
       size:     Double       = Double.NaN,
       color:    Color | Null = null,
       weight:   Int          = 0,
+      mono:     Boolean      = false,
       align:    TextAlign    = TextAlign.Left,
       maxLines: Int          = 1,
       overflow: TextOverflow = TextOverflow.Clip,
@@ -158,6 +159,7 @@ object dsl:
     props = sized(props, "size", size)
     if color != null then props = props.updated("color", PropValue(color))
     if weight != 0 then props = props.updated("weight", PropValue(weight))
+    if mono then props = props.updated("family", PropValue(FontFamily.Mono))
     if align != TextAlign.Left then props = props.updated("align", PropValue(align))
     if maxLines != 1 then props = props.updated("maxLines", PropValue(maxLines))
     if overflow != TextOverflow.Clip then props = props.updated("overflow", PropValue(overflow))

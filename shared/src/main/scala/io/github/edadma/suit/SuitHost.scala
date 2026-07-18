@@ -161,6 +161,10 @@ final class SuitHostConfig extends HostConfig:
       case (t: RenderText, "size")   => t.explicitSize = asDoubleOpt(value)
       case (t: RenderText, "color")  => t.explicitColor = asColorOpt(value)
       case (t: RenderText, "weight") => t.explicitWeight = asIntOpt(value)
+      case (t: RenderText, "family") =>
+        t.explicitFamily = value match
+          case f: FontFamily => Some(f)
+          case _             => None
       // Multi-line controls; on removal each falls back to its single-line default.
       case (t: RenderText, "align") =>
         t.align = value match

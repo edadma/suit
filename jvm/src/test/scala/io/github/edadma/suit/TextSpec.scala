@@ -74,6 +74,16 @@ class TextSpec extends AnyFunSuite:
     h.setText(node, "changed")
     assert(t.text == "changed")
 
+  test("a text node's family defaults to sans and takes an explicit mono override"):
+    val h = new SuitHostConfig
+    val node = h.createElement("text", null)
+    val t = node.asInstanceOf[RenderText]
+    assert(t.resolvedStyle.family == FontFamily.Sans) // default
+    h.setProperty(node, "family", FontFamily.Mono)
+    assert(t.resolvedStyle.family == FontFamily.Mono)
+    h.setProperty(node, "family", null) // clearing falls back to the default
+    assert(t.resolvedStyle.family == FontFamily.Sans)
+
   // --- the text-style cascade ------------------------------------------------
 
   test("text inherits colour and size from the nearest ancestor that sets them"):
