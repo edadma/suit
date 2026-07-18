@@ -29,7 +29,9 @@ object Suit:
     * on the frame loop for the lifetime of the window. Text is rendered in the bundled Inter
     * font by default; pass `fontPath` to load a specific TrueType/OpenType (or collection)
     * file through FreeType instead. */
-  def run(title: String, width: Int, height: Int, fontPath: String | Null = null)(app: VNode): Unit =
+  def run(title: String, width: Int, height: Int, fontPath: String | Null = null, maximized: Boolean = false)(
+      app: VNode,
+  ): Unit =
     setMainReady()
     // This thread owns the tree, the hooks, and every seam installed below, for the window's
     // lifetime. Claiming it lets a worker thread tell (via `UiThread.isCurrent`) that it must
@@ -57,7 +59,12 @@ object Suit:
     // HIGH_PIXEL_DENSITY makes the window report a true pixel size on a HiDPI/Retina display, so the
     // backbuffer is allocated at the display's real resolution and the frame rasterises sharp rather
     // than being drawn at logical (1×) size and stretched up to the screen by the compositor.
-    val window = createWindow(title, initW, initH, WINDOW_RESIZABLE | WINDOW_HIGH_PIXEL_DENSITY)
+    // `maximized` opens the window filling the desktop work area (the OS maximized state); the requested
+    // size is then the restored size. The frame loop reflows to whatever size the window reports.
+    // SDL_WINDOW_MAXIMIZED as a literal: this build compiles against the published sdl3, which does not
+    // yet export the flag (source sdl3 adds `WINDOW_MAXIMIZED`) — switch to it on the next sdl3 bump.
+    val maximizedFlag = if maximized then 0x00000080L else 0L
+    val window = createWindow(title, initW, initH, WINDOW_RESIZABLE | WINDOW_HIGH_PIXEL_DENSITY | maximizedFlag)
     if window.isNull then
       System.err.println(s"suit: failed to create window: ${error}")
       quit()
