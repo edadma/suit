@@ -80,6 +80,16 @@ specific TrueType/OpenType file through FreeType instead:
 Suit.run("my app", 640, 480, fontPath = "/path/to/MyFont.ttf")(App())
 ```
 
+## Opening maximized
+
+Pass `maximized = true` to open the window filling the desktop work area; the `width` / `height`
+then become the window's *restored* size. The frame loop reflows to whatever size the window
+actually reports, so the layout adapts either way.
+
+```scala
+Suit.run("my app", 640, 480, maximized = true)(App())
+```
+
 ## Handling input
 
 Widgets are pointer- and keyboard-driven out of the box. To handle raw input yourself, the

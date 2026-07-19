@@ -118,12 +118,33 @@ characters through `onTextInput`.
 A wheel turn bubbles a `ScrollEvent` to the nearest `wheel` handler at the cursor.
 
 ```scala
-final case class ScrollEvent(position: Offset, deltaX: Double, deltaY: Double):
+final case class ScrollEvent(
+    position: Offset,           // window-absolute cursor position
+    deltaX:   Double,
+    deltaY:   Double,
+    local:    Offset = Offset.zero,  // cursor within the receiving object
+    size:     Size   = Size.zero,    // the receiving object's size
+    shift:    Boolean = false,
+    ctrl:     Boolean = false,
+    meta:     Boolean = false,
+    alt:      Boolean = false,
+):
   def consume(): Unit
   def consumed: Boolean
+  def localX: Double
+  def localY: Double
 ```
 
 Positive `deltaY` is a downward/away scroll, matching SDL's convention.
+
+`local` and `size` are resolved against the **receiving** object — the same pair
+`PointerEvent` carries — so a handler knows where in *its own* box the cursor sits without
+subtracting `absoluteOffset` itself. Because the event chains (below), each receiver gets a
+fresh event with its own local mapping. This is what lets a custom surface **anchor a zoom on
+the cursor**: read `localX`/`localY`, scale around that point, and the content under the pointer
+stays put. `shift` / `ctrl` / `meta` / `alt` report the modifiers held at the turn (`ctrl || meta`
+is the conventional cross-platform "primary"), so a surface can give the plain wheel and a
+modified wheel different jobs — the universal scroll-versus-zoom split.
 
 ### Chaining
 
@@ -144,8 +165,9 @@ the scroll view it sits inside will act on the same turn:
 
 ```scala
 box(onWheel = e => {
-  zoom += e.deltaY * 0.1
-  e.consume() // stop it here; do not also scroll the page
+  if e.ctrl || e.meta then       // modified wheel zooms, plain wheel falls through to scroll
+    zoomAround(e.localX, e.localY, e.deltaY)  // anchor the zoom on the cursor
+    e.consume()                  // stop it here; do not also scroll the page
 })(...)
 ```
 
