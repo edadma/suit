@@ -279,7 +279,43 @@ class InputSpec extends AnyFunSuite:
     outer.handlers("wheel") = e => seen += e.asInstanceOf[ScrollEvent]
     outer.layout(Constraints.tight(Size(100, 100)))
     new PointerRouter(outer).wheel(Offset(50, 50), 0, -3)
-    assert(seen.toList == List(ScrollEvent(Offset(50, 50), 0, -3)))
+    assert(seen.toList == List(ScrollEvent(Offset(50, 50), 0, -3, Offset(50, 50), Size(100, 100))))
+
+  test("a wheel event carries the held modifiers and the receiver's own local/size"):
+    // The receiver sits inset in a parent, so its local coordinates differ from the window's —
+    // a zoom handler anchoring on `localX` must get the cursor relative to itself. The modifier
+    // flags ride along so one surface can split plain-wheel from modified-wheel behaviour.
+    val seen  = mutable.ArrayBuffer.empty[ScrollEvent]
+    val outer = fixed(100, 100)
+    val inner = fixed(60, 60)
+    outer.insertChild(inner, null)
+    inner.handlers("wheel") = e => seen += e.asInstanceOf[ScrollEvent]
+    outer.layout(Constraints.tight(Size(100, 100)))
+    inner.offset = Offset(20, 10)
+    new PointerRouter(outer).wheel(Offset(50, 50), 0, -3, ctrl = true, shift = true)
+    val e = seen.head
+    assert(e.local == Offset(30, 40) && e.size == Size(60, 60))
+    assert(e.ctrl && e.shift && !e.meta && !e.alt)
+
+  test("a chaining wheel event is re-resolved against each receiver"):
+    // The inner handler leaves the event unconsumed, so it chains to the outer — and each must
+    // see its own local mapping, not the other's. Consuming at the inner stops the chain.
+    val locals = mutable.ArrayBuffer.empty[(String, Offset)]
+    val outer  = fixed(100, 100)
+    val inner  = fixed(60, 60)
+    outer.insertChild(inner, null)
+    inner.handlers("wheel") = e => locals += ("inner" -> e.asInstanceOf[ScrollEvent].local)
+    outer.handlers("wheel") = e => locals += ("outer" -> e.asInstanceOf[ScrollEvent].local)
+    outer.layout(Constraints.tight(Size(100, 100)))
+    inner.offset = Offset(20, 10)
+    val router = new PointerRouter(outer)
+    router.wheel(Offset(50, 50), 0, -3)
+    assert(locals.toList == List("inner" -> Offset(30, 40), "outer" -> Offset(50, 50)))
+
+    locals.clear()
+    inner.handlers("wheel") = e => { locals += ("inner" -> e.asInstanceOf[ScrollEvent].local); e.asInstanceOf[ScrollEvent].consume() }
+    router.wheel(Offset(50, 50), 0, -3)
+    assert(locals.toList == List("inner" -> Offset(30, 40)))
 
   // --- cursor resolution ---------------------------------------------------
   //

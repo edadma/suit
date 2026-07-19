@@ -31,18 +31,36 @@ final case class PointerEvent(position: Offset, local: Offset, size: Size, butto
   def localY: Double = local.y
 
 /** A wheel/scroll event: where the cursor was and how far the wheel turned. Positive
-  * `deltaY` is a downward/away scroll, matching SDL's convention.
+  * `deltaY` is a downward/away scroll, matching SDL's convention. `local` is the cursor
+  * relative to the receiving object's top-left and `size` that object's size — the same
+  * pair a [[PointerEvent]] carries, so a handler can work in its own coordinate space (a
+  * zoom anchored on `local.x / size.width`, say). `shift`/`ctrl`/`meta`/`alt` report the
+  * modifiers held as the wheel turned, which lets one surface give the plain wheel and a
+  * modified wheel different jobs (scroll versus zoom, the near-universal convention).
+  * `meta` is the platform command key, so `ctrl || meta` is the conventional "primary"
+  * modifier cross-platform.
   *
   * A wheel event *chains*: it is offered to the nearest scrollable under the cursor, and
   * whatever that one does not use passes on up to the next scrollable ancestor. A handler
   * that acts on the event calls [[consume]] to stop it there; one that cannot move — a
   * viewport already at its limit, or a short list with nothing to scroll — simply returns,
   * and the wheel reaches the enclosing view instead of vanishing. This is what stops the
-  * page from going dead the moment the cursor crosses an inner list.
+  * page from going dead the moment the cursor crosses an inner list. (Each receiver in the
+  * chain gets its own event, resolved against itself; consuming stops the chain.)
   *
   * A custom `onWheel` that handles the wheel itself (a zoom, say) should call `consume()`;
   * otherwise the scroll it sits inside will also act on it. */
-final case class ScrollEvent(position: Offset, deltaX: Double, deltaY: Double):
+final case class ScrollEvent(
+    position: Offset,
+    deltaX:   Double,
+    deltaY:   Double,
+    local:    Offset  = Offset.zero,
+    size:     Size    = Size.zero,
+    shift:    Boolean = false,
+    ctrl:     Boolean = false,
+    meta:     Boolean = false,
+    alt:      Boolean = false,
+):
   private var used = false
 
   /** Mark this event as acted on, so it stops here instead of chaining to an ancestor. */
@@ -50,6 +68,9 @@ final case class ScrollEvent(position: Offset, deltaX: Double, deltaY: Double):
 
   /** Whether a handler has claimed this event. */
   def consumed: Boolean = used
+
+  def localX: Double = local.x
+  def localY: Double = local.y
 
 /** A keyboard event delivered to the focused object. `scancode` is the physical key
   * (see [[Key]] for the common names); `repeat` is true for the auto-repeat events a
@@ -331,17 +352,24 @@ final class PointerRouter(root: RenderObject, focus: FocusManager | Null = null)
         .apply(event(releaseOwner.asInstanceOf[RenderObject], p, button))
     captured = null
 
-  /** The wheel turned by `(dx, dy)` over `p`: offer a `wheel` event to the nearest scroll
-    * handler, and chain on up the parent scrolls until one claims it.
+  /** The wheel turned by `(dx, dy)` over `p`, with `shift`/`ctrl`/`meta`/`alt` held: offer a
+    * `wheel` event to the nearest scroll handler, and chain on up the parent scrolls until one
+    * claims it. Each receiver gets an event resolved against itself (its own `local`/`size`),
+    * so a handler works in its own coordinate space wherever it sits in the chain.
     *
     * Stopping at the first handler would let a viewport with nothing to scroll swallow the
     * wheel — the cursor crossing a short list would kill the page scroll under it. So a
     * handler that does not [[ScrollEvent.consume]] passes the event to its next scrollable
     * ancestor, the way a browser hands an exhausted inner scroll's wheel to the page. */
-  def wheel(p: Offset, dx: Double, dy: Double): Unit =
-    val e                      = ScrollEvent(p, dx, dy)
+  def wheel(
+      p: Offset, dx: Double, dy: Double,
+      shift: Boolean = false, ctrl: Boolean = false, meta: Boolean = false, alt: Boolean = false,
+  ): Unit =
     var n: RenderObject | Null = nearest(hit(p), "wheel")
-    while n != null do
+    var claimed                = false
+    while n != null && !claimed do
       val r = n.asInstanceOf[RenderObject]
+      val e = ScrollEvent(p, dx, dy, p - r.absoluteOffset, r.size, shift, ctrl, meta, alt)
       r.handlers("wheel").apply(e)
-      n = if e.consumed then null else nearest(r.parent, "wheel")
+      claimed = e.consumed
+      n = if claimed then null else nearest(r.parent, "wheel")

@@ -345,6 +345,13 @@ object Suit:
     // last position seen from a motion event is used to route the scroll.
     var lastMouse = Offset.zero
 
+    // The modifiers currently held, mirrored from the keyboard events' own mod mask. A wheel
+    // event carries no modifier field, but a wheel handler may give a modified wheel a second
+    // job (the universal scroll-versus-zoom split), so the state is kept current here: SDL
+    // updates the mask before posting a key event in both directions, so the last mask seen —
+    // including from a modifier key's own press or release — is the live state.
+    var heldMods = 0
+
     // The pointer shape. Which suit `Cursor` a widget asks for is pure tree logic (the router
     // resolves it); mapping that to a platform cursor is the one part that needs SDL. The system
     // cursors are built on first use and cached — they are process-wide, so one is set as the
@@ -385,9 +392,17 @@ object Suit:
             lastMouse = Offset(e.mouseX, e.mouseY)
             hasMouse  = true
             router.move(lastMouse)
-          case MOUSE_WHEEL => router.wheel(lastMouse, e.wheelX, e.wheelY)
+          case MOUSE_WHEEL =>
+            router.wheel(
+              lastMouse, e.wheelX, e.wheelY,
+              shift = (heldMods & KMOD_SHIFT) != 0,
+              ctrl  = (heldMods & KMOD_CTRL) != 0,
+              meta  = (heldMods & KMOD_GUI) != 0,
+              alt   = (heldMods & KMOD_ALT) != 0,
+            )
           case KEY_DOWN =>
             val mod   = e.keyMod
+            heldMods  = mod
             val shift = (mod & KMOD_SHIFT) != 0
             val ctrl  = (mod & KMOD_CTRL) != 0
             val meta  = (mod & KMOD_GUI) != 0
@@ -400,7 +415,9 @@ object Suit:
             // is an ordinary key routed to whatever holds focus.
             else if e.keyScancode == Key.Escape && focusManager.escape() then ()
             else keyRouter.down(e.keyScancode, e.keyRepeat, shift, ctrl, meta, alt)
-          case KEY_UP    => keyRouter.up(e.keyScancode)
+          case KEY_UP =>
+            heldMods = e.keyMod
+            keyRouter.up(e.keyScancode)
           case TEXT_INPUT => textRouter.input(e.text)
           // The window changed size (a user drag, or the OS fitting it to the display). The live
           // resize is already handled by the event watch above, which fires even while this loop is
