@@ -121,6 +121,8 @@ object Key:
   // Letters are USB-HID 4..29 (a..z); only the ones widgets react to are named.
   val A         = 4
   val C         = 6  // copy
+  val K         = 14
+  val S         = 22 // split / save, per app
   val V         = 25 // paste
   val X         = 27 // cut
   val Z         = 29 // undo (with shift: redo)
