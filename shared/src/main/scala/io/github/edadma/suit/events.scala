@@ -72,6 +72,23 @@ final case class ScrollEvent(
   def localX: Double = local.x
   def localY: Double = local.y
 
+/** A drag-and-drop event delivered to a drop target: the pointer position (absolute, plus `local` to
+  * the receiving object and its `size` — the same pair a [[PointerEvent]] carries, so a handler works
+  * in its own coordinate space), and the `payload` the drag carries, whatever value the drag source
+  * declared. `onDragOver` fires as the cursor moves over a target — so it can preview where a drop
+  * would land — and `onDrop` fires on release over it.
+  *
+  * suit *synthesises* drag-and-drop from the raw pointer stream (there is no OS drag on the native
+  * backend): a source is any object with a `dragPayload`, a target any with an `onDragOver`/`onDrop`
+  * handler. A press on a source arms a drag that goes active once the cursor moves past a small
+  * threshold, so a plain click on a draggable still clicks. This is the same app-facing contract a
+  * DOM backend would expose over the browser's native drag events. */
+final case class DragEvent(position: Offset, local: Offset, size: Size, payload: Any):
+  def x: Double      = position.x
+  def y: Double      = position.y
+  def localX: Double = local.x
+  def localY: Double = local.y
+
 /** A keyboard event delivered to the focused object. `scancode` is the physical key
   * (see [[Key]] for the common names); `repeat` is true for the auto-repeat events a
   * held key produces; `shift` / `ctrl` report whether those modifiers were held (the
@@ -259,7 +276,57 @@ final class PointerRouter(root: RenderObject, focus: FocusManager | Null = null)
   private var captured: RenderObject | Null = null
   private var captureButton: Int            = 0
 
+  // Drag-and-drop state, synthesised from the ordinary pointer stream (there is no OS drag here). A
+  // press over a draggable object *arms* a drag; once the cursor moves past `DragThreshold` the drag
+  // goes *active*, and from then until release the moves route to whatever drop target is under the
+  // cursor (as `dragover`) rather than to the press target, and the release fires `drop` there instead
+  // of a click. A press that never crosses the threshold stays an ordinary click.
+  private var dragArmed:  RenderObject | Null = null // a draggable was pressed; the drag has not started
+  private var dragData:   Any                 = null // the armed/active drag's payload
+  private var dragStart:  Offset              = Offset.zero
+  private var dragActive: Boolean             = false
+  private var dragOver:   RenderObject | Null = null // the drop target currently under the cursor
+  private val DragThreshold                   = 5.0
+
   private def hit(p: Offset): RenderObject | Null = root.hitTest(p, Offset.zero)
+
+  private def dist(a: Offset, b: Offset): Double = math.hypot(a.x - b.x, a.y - b.y)
+
+  /** The nearest object at or above `target` that is a drag source (declares a `dragPayload`). */
+  private def dragSourceOf(target: RenderObject | Null): RenderObject | Null =
+    var n = target
+    while n != null && n.asInstanceOf[RenderObject].dragPayload == null do n = n.asInstanceOf[RenderObject].parent
+    n
+
+  /** The nearest object at or above `target` that is a drop target (has a `drop` or `dragover` handler). */
+  private def dropTargetOf(target: RenderObject | Null): RenderObject | Null =
+    var n = target
+    while n != null && {
+        val r = n.asInstanceOf[RenderObject]
+        !(r.handlers.contains("drop") || r.handlers.contains("dragover"))
+      }
+    do n = n.asInstanceOf[RenderObject].parent
+    n
+
+  private def dragEventFor(owner: RenderObject, p: Offset): DragEvent =
+    DragEvent(p, p - owner.absoluteOffset, owner.size, dragData)
+
+  /** Fire a payload-less handler (`dragstart`/`dragleave`/`dragend`) on `o` if it has one. */
+  private def fireBare(o: RenderObject | Null, name: String): Unit =
+    o match
+      case r: RenderObject => r.handlers.get(name).foreach(_.apply(()))
+      case null            => ()
+
+  /** Route the in-flight drag to the target under `p`: `dragleave` the target being left, `dragover`
+    * the one now under the cursor (so it can preview the drop). */
+  private def dragTo(p: Offset): Unit =
+    val t = dropTargetOf(hit(p))
+    if !(t eq dragOver) then
+      fireBare(dragOver, "dragleave")
+      dragOver = t
+    t match
+      case r: RenderObject => r.handlers.get("dragover").foreach(_.apply(dragEventFor(r, p)))
+      case null            => ()
 
   /** The nearest object at or above `target` that has a handler for `event`, or null. */
   private def nearest(target: RenderObject | Null, event: String): RenderObject | Null =
@@ -300,17 +367,24 @@ final class PointerRouter(root: RenderObject, focus: FocusManager | Null = null)
     * widget left and `mouseenter` on the one entered when the hover owner changes) then
     * deliver `mousemove`. */
   def move(p: Offset): Unit =
-    captured match
-      case c: RenderObject =>
-        bubble(c, "mousemove", p, captureButton)
-      case null =>
-        val target = hit(p)
-        val owner  = hoverOwner(target)
-        if !(owner eq hovered) then
-          fireOn(hovered, "mouseleave", p)
-          fireOn(owner, "mouseenter", p)
-          hovered = owner
-        bubble(target, "mousemove", p, 0)
+    if dragActive then dragTo(p)
+    else if dragArmed != null && dist(p, dragStart) > DragThreshold then
+      // The press has travelled far enough to be a drag, not a click: start it and route to targets.
+      dragActive = true
+      fireBare(dragArmed, "dragstart")
+      dragTo(p)
+    else
+      captured match
+        case c: RenderObject =>
+          bubble(c, "mousemove", p, captureButton)
+        case null =>
+          val target = hit(p)
+          val owner  = hoverOwner(target)
+          if !(owner eq hovered) then
+            fireOn(hovered, "mouseleave", p)
+            fireOn(owner, "mouseenter", p)
+            hovered = owner
+          bubble(target, "mousemove", p, 0)
 
   /** The pointer shape to show for the pointer at `p`: the [[Cursor]] of the nearest object at or
     * above the relevant target that names one, or [[Cursor.Default]] when none does. The target is
@@ -337,20 +411,44 @@ final class PointerRouter(root: RenderObject, focus: FocusManager | Null = null)
     captureButton = button
     bubble(target, "mousedown", p, button)
     if focus != null then focus.pointerFocus(target)
+    // Arm a drag when the press lands on a draggable source (left button only). It only becomes a real
+    // drag once the cursor moves past the threshold (see `move`), so a plain click on a draggable clicks.
+    if button == 1 then
+      dragSourceOf(target) match
+        case s: RenderObject =>
+          dragArmed  = s
+          dragData   = s.dragPayload
+          dragStart  = p
+          dragActive = false
+        case null => ()
 
   /** A button came up at `p`: fire `mouseup` to the capturing object, then `click` if
     * the press and the release resolve to the same click handler — i.e. the release
     * landed on the widget the press started on. */
   def up(p: Offset, button: Int): Unit =
-    val target = hit(p)
-    val holder = captured
-    bubble(holder, "mouseup", p, button)
-    val pressOwner   = nearest(holder, "click")
-    val releaseOwner = nearest(target, "click")
-    if releaseOwner != null && (releaseOwner eq pressOwner) then
-      releaseOwner.asInstanceOf[RenderObject].handlers("click")
-        .apply(event(releaseOwner.asInstanceOf[RenderObject], p, button))
-    captured = null
+    if dragActive then
+      // A drag ends: drop on the target under the cursor (if any) and tell the source, then reset —
+      // no mouseup/click, because the gesture was a drag, not a press.
+      dropTargetOf(hit(p)) match
+        case r: RenderObject => r.handlers.get("drop").foreach(_.apply(dragEventFor(r, p)))
+        case null            => ()
+      fireBare(dragArmed, "dragend")
+      dragActive = false
+      dragArmed  = null
+      dragOver   = null
+      dragData   = null
+      captured   = null
+    else
+      val target = hit(p)
+      val holder = captured
+      bubble(holder, "mouseup", p, button)
+      val pressOwner   = nearest(holder, "click")
+      val releaseOwner = nearest(target, "click")
+      if releaseOwner != null && (releaseOwner eq pressOwner) then
+        releaseOwner.asInstanceOf[RenderObject].handlers("click")
+          .apply(event(releaseOwner.asInstanceOf[RenderObject], p, button))
+      captured  = null
+      dragArmed = null // clear an armed press that never became a drag
 
   /** The wheel turned by `(dx, dy)` over `p`, with `shift`/`ctrl`/`meta`/`alt` held: offer a
     * `wheel` event to the nearest scroll handler, and chain on up the parent scrolls until one

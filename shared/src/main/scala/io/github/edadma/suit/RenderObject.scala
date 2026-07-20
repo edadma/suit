@@ -56,6 +56,12 @@ abstract class RenderObject:
     * (inherit). Only the native runtime reads it, to set the process-wide system cursor. */
   var cursor: Cursor | Null = null
 
+  /** The payload this object carries as a drag source, or `null` when it is not draggable. A press over
+    * an object with a non-null payload arms a drag (see [[PointerRouter]]); the value — whatever the app
+    * put here — rides along and is handed to the drop target's `onDragOver`/`onDrop` as
+    * [[DragEvent.payload]]. suit treats it opaquely, so it can be an id, a model object, anything. */
+  var dragPayload: Any | Null = null
+
   /** Whether this object caches and repaints independently of the rest of the tree — a
     * **repaint boundary** (Flutter's `RepaintBoundary`). When only the content inside a
     * boundary changes, the runtime re-rasterises just that boundary's region and leaves

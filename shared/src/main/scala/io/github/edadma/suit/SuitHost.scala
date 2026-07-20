@@ -103,6 +103,9 @@ final class SuitHostConfig extends HostConfig:
         o.cursor = value match
           case c: Cursor => c
           case _         => null
+      // `dragPayload` marks an object as a drag source carrying this value; null (a removed prop) clears
+      // it. suit holds it opaquely and hands it to a drop target as `DragEvent.payload`.
+      case (o, "dragPayload") => o.dragPayload = value
 
       case (b: RenderBox, "bg")           => b.background = asPaintOrNull(value)
       case (b: RenderBox, "border")       => b.border = asPaintOrNull(value)

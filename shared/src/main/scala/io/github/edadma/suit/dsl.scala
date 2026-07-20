@@ -83,8 +83,14 @@ object dsl:
       focusable:     Boolean                        = false,
       acceptsText:   Boolean                        = false,
       cursor:        Cursor | Null                  = null,
+      dragPayload:   Any | Null                     = null,
       ref:           Ref[RenderObject | Null] | Null = null,
       onClick:       (PointerEvent => Unit) | Null  = null,
+      onDragStart:  (() => Unit)            | Null = null,
+      onDragOver:   (DragEvent => Unit)     | Null = null,
+      onDragLeave:  (() => Unit)            | Null = null,
+      onDrop:       (DragEvent => Unit)     | Null = null,
+      onDragEnd:    (() => Unit)            | Null = null,
       onMouseDown:  (PointerEvent => Unit) | Null  = null,
       onMouseUp:    (PointerEvent => Unit) | Null  = null,
       onMouseMove:  (PointerEvent => Unit) | Null  = null,
@@ -118,6 +124,12 @@ object dsl:
     if focusable then props = props.updated("focusable", PropValue(true))
     if acceptsText then props = props.updated("acceptsText", PropValue(true))
     if cursor != null then props = props.updated("cursor", PropValue(cursor))
+    if dragPayload != null then props = props.updated("dragPayload", PropValue(dragPayload))
+    props = focus(props, "dragstart", onDragStart)
+    props = typed[DragEvent](props, "dragover", onDragOver)
+    props = focus(props, "dragleave", onDragLeave)
+    props = typed[DragEvent](props, "drop", onDrop)
+    props = focus(props, "dragend", onDragEnd)
     props = typed[PointerEvent](props, "click", onClick)
     props = typed[PointerEvent](props, "mousedown", onMouseDown)
     props = typed[PointerEvent](props, "mouseup", onMouseUp)
