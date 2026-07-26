@@ -439,14 +439,20 @@ object dsl:
     * It is wheel-only by default — no visible bar. Pass `scrollbar = true` (with `scrollbarThumb`/
     * `scrollbarTrack` colours and a `scrollbarThickness`) to paint a draggable bar along the
     * trailing edge; the `scrollArea` widget wraps this with theme colours so most callers reach
-    * for that instead. The bar shows only when the content overflows. */
+    * for that instead. The bar shows only when the content overflows.
+    *
+    * Pass a `ref` to reach the viewport's [[RenderObject]] and drive the scroll position from
+    * outside — `scrollOffset`, `maxScroll` and `scrollBy` act on the scroll axis, so a caller can
+    * bring a known offset into view (jumping to a page, following a caret). */
   def scrollView(
-      axis:               Axis         = Axis.Vertical,
-      both:               Boolean      = false,
-      scrollbar:          Boolean      = false,
-      scrollbarThumb:     Color | Null = null,
-      scrollbarTrack:     Color | Null = null,
-      scrollbarThickness: Double       = Double.NaN,
+      axis:               Axis                            = Axis.Vertical,
+      both:               Boolean                         = false,
+      scrollbar:          Boolean                         = false,
+      scrollbarThumb:     Color | Null                    = null,
+      scrollbarTrack:     Color | Null                    = null,
+      scrollbarThickness: Double                          = Double.NaN,
+      ref:                Ref[RenderObject | Null] | Null = null,
+      onScroll:           (Offset => Unit) | Null         = null,
   )(children: VNode*): VNode =
     var props = Map[String, Prop]("axis" -> PropValue(axis))
     if both then props = props.updated("biaxial", PropValue(true))
@@ -454,7 +460,9 @@ object dsl:
     if scrollbarThumb != null then props = props.updated("scrollbarThumb", PropValue(scrollbarThumb))
     if scrollbarTrack != null then props = props.updated("scrollbarTrack", PropValue(scrollbarTrack))
     props = sized(props, "scrollbarThickness", scrollbarThickness)
-    el("scroll", props, children)
+    props = typed[Offset](props, "scroll", onScroll)
+    val eref: ElementRef | Null = if ref != null then BoxRef(ref) else null
+    el("scroll", props, children, eref)
 
   /** Places its child at the absolute pixel offset `(dx, dy)` within the space it is given,
     * laying the child out at its natural size (it may overflow). Fills that space, so dropped

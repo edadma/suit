@@ -394,10 +394,12 @@ private[suit] trait WidgetsData extends WidgetsSupport:
 
   // --- scroll area (themed visible scrollbar) --------------------------------
 
-  private val ScrollAreaImpl: ContainerP[(Axis, Boolean, Double)] =
-    container[(Axis, Boolean, Double)] { (props, children) =>
-      val (axis, both, thickness) = props
-      val theme                   = useTheme()
+  private type ScrollAreaProps = (Axis, Boolean, Double, Ref[RenderObject | Null] | Null, (Offset => Unit) | Null)
+
+  private val ScrollAreaImpl: ContainerP[ScrollAreaProps] =
+    container[ScrollAreaProps] { (props, children) =>
+      val (axis, both, thickness, ref, onScroll) = props
+      val theme                                  = useTheme()
       // The thumb reads as a translucent slug of the ink; the track is a fainter wash of the same,
       // so the bar sits over either light or dark content without a hard-coded grey.
       scrollView(
@@ -407,6 +409,8 @@ private[suit] trait WidgetsData extends WidgetsSupport:
         scrollbarThumb     = theme.surfaceText.withAlpha(90),
         scrollbarTrack     = theme.surfaceText.withAlpha(20),
         scrollbarThickness = thickness,
+        ref                = ref,
+        onScroll           = onScroll,
       )(children*)
     }
 
@@ -421,8 +425,18 @@ private[suit] trait WidgetsData extends WidgetsSupport:
     * Pass `both = true` for a viewport that scrolls on **both** axes at once — the content keeps
     * its natural size in either direction and a bar appears on each axis that overflows. Useful
     * for content with a fixed intrinsic size larger than the viewport (a document page, an image,
-    * a wide table) that should neither wrap nor shrink to fit. */
-  def scrollArea(axis: Axis = Axis.Vertical, both: Boolean = false, thickness: Double = 8.0)(
+    * a wide table) that should neither wrap nor shrink to fit.
+    *
+    * Pass a `ref` to reach the viewport's [[RenderObject]] and drive the scroll position from
+    * outside, and `onScroll` to be told the offset whenever the view moves — by wheel, by a drag
+    * of the bar, or by a caller setting it — see [[dsl.scrollView]]. */
+  def scrollArea(
+      axis:      Axis                            = Axis.Vertical,
+      both:      Boolean                         = false,
+      thickness: Double                          = 8.0,
+      ref:       Ref[RenderObject | Null] | Null = null,
+      onScroll:  (Offset => Unit) | Null         = null,
+  )(
       children: VNode*,
   ): VNode =
-    ScrollAreaImpl((axis, both, thickness))(children*)
+    ScrollAreaImpl((axis, both, thickness, ref, onScroll))(children*)

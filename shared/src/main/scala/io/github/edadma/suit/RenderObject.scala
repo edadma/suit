@@ -398,7 +398,10 @@ final class RenderScroll(var axis: Axis = Axis.Vertical) extends RenderObject:
   // active (the `axis` direction), so a plain vertical or horizontal viewport behaves exactly as
   // before while the per-axis fields above carry the biaxial case.
   def scrollOffset: Double = if isVertical then offsetY else offsetX
-  def scrollOffset_=(v: Double): Unit = if isVertical then offsetY = v else offsetX = v
+  // Routed through the same setters the wheel and the scrollbar use, so an assignment is clamped to
+  // the scrollable range, re-places the content, repaints, and reports the move — rather than
+  // leaving the field and the view disagreeing until something else happened to trigger a layout.
+  def scrollOffset_=(v: Double): Unit = if isVertical then setOffsetY(v) else setOffsetX(v): Unit
   def maxScroll: Double = if isVertical then maxScrollY else maxScrollX
 
   // A wheel notch moves the view by this many pixels — a fixed step rather than the raw
@@ -513,13 +516,19 @@ final class RenderScroll(var axis: Axis = Axis.Vertical) extends RenderObject:
     * content fits. (Biaxial viewports also expose the other axis's bar internally.) */
   def scrollbarThumbRect: Rect | Null = thumbRectFor(isVertical)
 
+  // Notify a `scroll` listener when the view actually moves, however it moved — wheel, scrollbar
+  // drag, or a caller setting the offset. Mirrors the `resize` notification: the callback typically
+  // schedules a re-render, which vdom batches, so calling it from here is safe.
+  private def notifyScrolled(): Unit =
+    handlers.get("scroll").foreach(_.apply(Offset(offsetX, offsetY)))
+
   private def setOffsetX(v: Double): Boolean =
     val n = clamp(v, maxScrollX)
-    if n != offsetX then { offsetX = n; placeChild(); markDirty(); true } else false
+    if n != offsetX then { offsetX = n; placeChild(); markDirty(); notifyScrolled(); true } else false
 
   private def setOffsetY(v: Double): Boolean =
     val n = clamp(v, maxScrollY)
-    if n != offsetY then { offsetY = n; placeChild(); markDirty(); true } else false
+    if n != offsetY then { offsetY = n; placeChild(); markDirty(); notifyScrolled(); true } else false
 
   /** Scroll horizontally by `delta` px (positive toward the content's right), clamped to
     * `[0, maxScrollX]`; returns whether the offset moved. */
