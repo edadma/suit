@@ -425,8 +425,23 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
     * viewport is scrolled. Give it a **bounded width** (a `Stretch` column, or a `box` width) to
     * wrap into. The caret blinks while focused and snaps solid for a full interval after any edit
     * or move. */
-  val TextArea: Component2[String, String => Unit] =
-    component[String, String => Unit] { (value, onChange) =>
+  /** A request to place the caret from outside the widget — what a "jump to this position" command
+    * sends. `token` distinguishes one request from the next, so asking twice for the same offset
+    * still moves the caret back to it; a caller with nothing in flight passes `None`.
+    */
+  case class CaretRequest(offset: Int, token: Long)
+
+  private case class TextAreaProps(
+      value:         String,
+      onChange:      String => Unit,
+      caretRequest:  Option[CaretRequest],
+      onCaretAt:     (Double, Double) => Unit,
+  )
+
+  private val TextAreaImpl: Component[TextAreaProps] =
+    component[TextAreaProps] { props =>
+      val value                    = props.value
+      val onChange                 = props.onChange
       val theme                    = useTheme()
       val (caret, setCaret, _)     = useState(0)
       val (anchor, setAnchor, _)   = useState(0)
@@ -505,6 +520,25 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
         var j           = 0
         while j + 1 < segs.length && segs(j + 1)._1 <= col do j += 1
         (firstRowOfLine(line) + j, prefixW(line, col) - prefixW(line, segs(j)._1))
+
+      // Honour a caret placement asked for from outside: collapse the selection there and report
+      // where it landed, as the top of its visual row and the row's height. The widget sizes to its
+      // content rather than scrolling itself, so bringing the caret into view is the enclosing
+      // viewport's job — and only this component knows which wrapped row an offset falls on. Keyed
+      // on the request's token, so a repeat of the same offset is still honoured.
+      useEffect(
+        () => {
+          props.caretRequest.foreach { req =>
+            val pos = math.max(0, math.min(value.length, req.offset))
+            setCaret(pos)
+            setAnchor(pos)
+            restartBlink()
+            props.onCaretAt(padY + caretRowX(pos)._1 * lineH, lineH)
+          }
+          noCleanup
+        },
+        Array(props.caretRequest.map(_.token)),
+      )
 
       // The nearest character boundary within a visual row to a target x (measured from the row's
       // start, since every row paints at content x = 0).
@@ -666,3 +700,18 @@ private[suit] trait WidgetsControls extends WidgetsSupport:
         ),
       )
     }
+
+  /** The multi-line text editor — see [[TextAreaImpl]] above for its behaviour.
+    *
+    * `caretRequest` places the caret from outside: pass `Some(CaretRequest(offset, token))` and the
+    * caret moves there, with a fresh `token` each time so a repeat of the same offset still takes.
+    * `onCaretAt` then reports where it landed — the top of the caret's visual row, and the row
+    * height — which is what an enclosing viewport needs to scroll it into view, since the editor
+    * sizes to its content rather than scrolling itself. */
+  def TextArea(
+      value:        String,
+      onChange:     String => Unit,
+      caretRequest: Option[CaretRequest]     = None,
+      onCaretAt:    (Double, Double) => Unit = (_, _) => (),
+  ): VNode =
+    TextAreaImpl(TextAreaProps(value, onChange, caretRequest, onCaretAt))
