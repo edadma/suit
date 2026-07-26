@@ -49,13 +49,15 @@ private def mutedInk(theme: Theme): Color = Color.lerp(theme.surfaceText, theme.
 private def cardShadow(theme: Theme): Shadow =
   Shadow(color = Color(0, 0, 0, if theme.isDark then 110 else 40), offset = Offset(0, 4), blur = 12)
 
-// The pointer shapes shown in the demo's cursor card, split across two rows.
+// The pointer shapes shown in the demo's cursor card, split across two rows. The diagonal pairs
+// spell their axis with two single arrows because Inter carries no double-headed diagonal arrow
+// (U+2921/U+2922) — one would render as a missing-glyph box.
 private val cursorSwatchesTop: Seq[(String, Cursor)] =
   Seq("pointer" -> Cursor.Pointer, "text" -> Cursor.Text, "crosshair" -> Cursor.Crosshair,
     "move" -> Cursor.Move, "not-allowed" -> Cursor.NotAllowed, "wait" -> Cursor.Wait)
 private val cursorSwatchesBottom: Seq[(String, Cursor)] =
   Seq("progress" -> Cursor.Progress, "resize ↔" -> Cursor.ResizeEW, "resize ↕" -> Cursor.ResizeNS,
-    "resize ⤢" -> Cursor.ResizeNESW, "resize ⤡" -> Cursor.ResizeNWSE, "default" -> Cursor.Default)
+    "resize ↗↙" -> Cursor.ResizeNESW, "resize ↖↘" -> Cursor.ResizeNWSE, "default" -> Cursor.Default)
 
 /** One labelled swatch that shows `shape` while hovered. */
 private def cursorSwatch(theme: Theme, muted: Color, label: String, shape: Cursor): VNode =
@@ -432,31 +434,31 @@ val App = view {
         menuBar(
           widgets.menu("File")(close =>
             Seq(
-              MenuItem("New", () => { setLastMenu("File ▸ New"); close() }),
-              MenuItem("Open…", () => { setLastMenu("File ▸ Open"); close() }),
-              MenuItem("Save", () => { setLastMenu("File ▸ Save"); close() }),
+              MenuItem("New", () => { setLastMenu("File › New"); close() }),
+              MenuItem("Open…", () => { setLastMenu("File › Open"); close() }),
+              MenuItem("Save", () => { setLastMenu("File › Save"); close() }),
             ),
           ),
           widgets.menu("Edit")(close =>
             Seq(
-              MenuItem("Undo", () => { setLastMenu("Edit ▸ Undo"); close() }),
-              MenuItem("Redo", () => { setLastMenu("Edit ▸ Redo"); close() }),
-              MenuItem("Cut", () => { setLastMenu("Edit ▸ Cut"); close() }),
-              MenuItem("Copy", () => { setLastMenu("Edit ▸ Copy"); close() }),
-              MenuItem("Paste", () => { setLastMenu("Edit ▸ Paste"); close() }),
+              MenuItem("Undo", () => { setLastMenu("Edit › Undo"); close() }),
+              MenuItem("Redo", () => { setLastMenu("Edit › Redo"); close() }),
+              MenuItem("Cut", () => { setLastMenu("Edit › Cut"); close() }),
+              MenuItem("Copy", () => { setLastMenu("Edit › Copy"); close() }),
+              MenuItem("Paste", () => { setLastMenu("Edit › Paste"); close() }),
             ),
           ),
           widgets.menu("View")(close =>
             Seq(
-              MenuItem("Zoom In", () => { setLastMenu("View ▸ Zoom In"); close() }),
-              MenuItem("Zoom Out", () => { setLastMenu("View ▸ Zoom Out"); close() }),
+              MenuItem("Zoom In", () => { setLastMenu("View › Zoom In"); close() }),
+              MenuItem("Zoom Out", () => { setLastMenu("View › Zoom Out"); close() }),
               MenuItem("Toggle Theme", () => { setDark(!isDark); close() }),
             ),
           ),
           widgets.menu("Help")(close =>
             Seq(
-              MenuItem("Documentation", () => { setLastMenu("Help ▸ Documentation"); close() }),
-              MenuItem("About suit", () => { setLastMenu("Help ▸ About"); close() }),
+              MenuItem("Documentation", () => { setLastMenu("Help › Documentation"); close() }),
+              MenuItem("About suit", () => { setLastMenu("Help › About"); close() }),
             ),
           ),
         ),

@@ -537,6 +537,9 @@ private[suit] trait WidgetsOverlays extends WidgetsSupport:
       // A field-styled trigger: looks like a text input, borders in the accent while open, and
       // toggles the dropdown on click or Space/Enter (Escape closes). The chevron marks it as a
       // dropdown — a text glyph, since SVG loading is native-only and this widget is shared code.
+      // It is U+25BC (the full-size down triangle) scaled down rather than U+25BE (the small one):
+      // the bundled Inter has no small-triangle glyph, so U+25BE renders as a missing-glyph box.
+      // Scaling the glyph that exists is how the table's sort caret gets the same small mark.
       val trigger =
         box(
           bg          = theme.surface,
@@ -557,7 +560,7 @@ private[suit] trait WidgetsOverlays extends WidgetsSupport:
           row(crossAxisAlignment = CrossAxisAlignment.Center)(
             text(selectedLabel, color = if current.isEmpty then muted else theme.surfaceText),
             spacer(),
-            text("▾", color = muted),
+            text("▼", color = muted, size = theme.textSize * 0.7),
           ),
         )
 
