@@ -148,7 +148,14 @@ fills the row; like the other controlled widgets it does not impose a width of i
 ## TextArea
 
 ```scala
-val TextArea: Component2[String, String => Unit]
+def TextArea(
+    value:        String,
+    onChange:     String => Unit,
+    caretRequest: Option[CaretRequest]     = None,
+    onCaretAt:    (Double, Double) => Unit = (_, _) => (),
+): VNode
+
+case class CaretRequest(offset: Int, token: Long)
 ```
 
 A **multi-line** text editor — the `TextField` counterpart for text that spans many lines. It
@@ -174,6 +181,42 @@ box(height = 150, clip = true)(
   scrollView(Axis.Vertical)(
     col(crossAxisAlignment = CrossAxisAlignment.Stretch)(
       TextArea(sql, setSql),
+    ),
+  ),
+)
+```
+
+### Jumping to a position
+
+`caretRequest` places the caret from outside — what a "go to the line this error names" command
+sends. Pass a fresh `token` each time so that asking twice for the same offset is honoured twice
+rather than collapsing into nothing.
+
+Since the editor sizes to its content, scrolling that caret into view is the enclosing viewport's
+job; only the editor knows which **wrapped** row an offset falls on, so it reports through
+`onCaretAt` with the top of the caret's visual row and that row's height. Pair it with a
+[`scrollArea`](#scroll-area) `ref`:
+
+```scala
+val view                     = useRef[RenderObject | Null](null)
+val (jump, setJump, _)       = useState(Option.empty[CaretRequest])
+val (token, setToken, _)     = useState(0L)
+
+def goTo(offset: Int): Unit =
+  setToken(token + 1)
+  setJump(Some(CaretRequest(offset, token + 1)))
+
+def reveal(top: Double, h: Double): Unit =
+  view.current match
+    case r: RenderScroll =>
+      if top < r.scrollOffset then r.scrollOffset = top
+      else if top + h > r.scrollOffset + r.size.height then r.scrollOffset = top + h - r.size.height
+    case _ => ()
+
+box(height = 150, clip = true)(
+  scrollArea(Axis.Vertical, ref = view)(
+    col(crossAxisAlignment = CrossAxisAlignment.Stretch)(
+      TextArea(sql, setSql, caretRequest = jump, onCaretAt = reveal),
     ),
   ),
 )
@@ -675,7 +718,13 @@ box(flex = 1)(
 ## Scroll area
 
 ```scala
-def scrollArea(axis: Axis = Axis.Vertical, thickness: Double = 8.0)(children: VNode*): VNode
+def scrollArea(
+    axis:      Axis                            = Axis.Vertical,
+    both:      Boolean                         = false,
+    thickness: Double                          = 8.0,
+    ref:       Ref[RenderObject | Null] | Null = null,
+    onScroll:  (Offset => Unit) | Null         = null,
+)(children: VNode*): VNode
 ```
 
 A scrolling viewport with a **visible, draggable scrollbar** — the themed counterpart to the bare
@@ -686,6 +735,29 @@ colours come from the active theme.
 
 Like `scrollView` it **must be given a bounded size** along the scroll axis — that extent is the
 viewport it scrolls within — and takes a single content node (wrap several in a `col`/`row`).
+
+Pass `both = true` for a viewport that scrolls on **both** axes at once: the content keeps its
+natural size in either direction and a bar appears on each axis that overflows. Useful for content
+with a fixed intrinsic size larger than the viewport — a document page, an image, a wide table —
+that should neither wrap nor shrink to fit.
+
+**Driving it from code.** `ref` reaches the viewport's `RenderScroll`, whose `scrollOffset`,
+`maxScroll`, `scrollBy` (and the per-axis `offsetX` / `offsetY`, `scrollByX` / `scrollByY` for a
+biaxial viewport) move it. `onScroll` reports the offset whenever the view moves — by the wheel, by
+a drag of the bar, or by a caller setting it — so a position indicator cannot drift out of step with
+what is on screen:
+
+```scala
+val view                   = useRef[RenderObject | Null](null)
+val (atTop, setAtTop, _)   = useState(true)
+
+def toTop(): Unit =
+  view.current match
+    case r: RenderScroll => r.scrollOffset = 0
+    case _               => ()
+
+scrollArea(ref = view, onScroll = off => setAtTop(off.y <= 0))(content)
+```
 
 ```scala
 sizedBox(height = 240)(

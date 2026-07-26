@@ -403,11 +403,14 @@ clip's corner radius is not applied to the blit — the visible frame keeps squa
 
 ```scala
 def scrollView(
-    axis:               Axis         = Axis.Vertical,
-    scrollbar:          Boolean      = false,
-    scrollbarThumb:     Color | Null = null,
-    scrollbarTrack:     Color | Null = null,
-    scrollbarThickness: Double       = Double.NaN,
+    axis:               Axis                            = Axis.Vertical,
+    both:               Boolean                         = false,
+    scrollbar:          Boolean                         = false,
+    scrollbarThumb:     Color | Null                    = null,
+    scrollbarTrack:     Color | Null                    = null,
+    scrollbarThickness: Double                          = Double.NaN,
+    ref:                Ref[RenderObject | Null] | Null = null,
+    onScroll:           (Offset => Unit) | Null         = null,
 )(children: VNode*): VNode
 ```
 
@@ -421,6 +424,10 @@ It is **wheel-only by default** — no visible bar. Pass `scrollbar = true` with
 to paint a draggable bar along the trailing edge (it shows only when the content overflows). Most
 callers reach for the themed [`scrollArea`](/reference/widgets/#scroll-area) widget instead, which
 wires these from the active theme.
+
+Pass `both = true` to scroll on **both** axes at once. `ref` reaches the viewport's `RenderScroll`
+to drive the position from code, and `onScroll` reports the offset whenever the view moves —
+however it moved. See [`scrollArea`](/reference/widgets/#scroll-area) for both.
 
 Views nest safely: a wheel this viewport cannot use — because it is already at that end, or its
 content fits — passes out to the scroll view around it rather than being swallowed. See
